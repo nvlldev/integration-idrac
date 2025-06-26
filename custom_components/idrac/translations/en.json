@@ -6,7 +6,7 @@
         "description": "Configure your Dell iDRAC connection",
         "data": {
           "host": "Hostname or IP Address",
-          "port": "SNMP Port",
+          "port": "SNMP Port", 
           "community": "SNMP Community String",
           "scan_interval": "Update Interval (seconds)"
         }
@@ -14,7 +14,7 @@
     },
     "error": {
       "cannot_connect": "Failed to connect to iDRAC",
-      "invalid_auth": "Invalid authentication", 
+      "invalid_auth": "Invalid authentication",
       "unknown": "Unexpected error occurred"
     },
     "abort": {

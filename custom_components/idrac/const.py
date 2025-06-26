@@ -7,6 +7,7 @@ DOMAIN: Final = "idrac"
 CONF_COMMUNITY: Final = "community"
 CONF_DISCOVERED_FANS: Final = "discovered_fans"
 CONF_DISCOVERED_CPUS: Final = "discovered_cpus"
+CONF_SCAN_INTERVAL: Final = "scan_interval"
 
 # Default values
 DEFAULT_PORT: Final = 161
@@ -22,7 +23,7 @@ IDRAC_OIDS: Final = {
     "fan_base": "1.3.6.1.4.1.674.10892.5.4.700.12.1.6.1",
 }
 
-# SNMP walk base OIDs for discovery
+# SNMP base OIDs for discovery
 SNMP_WALK_OIDS: Final = {
     "fans": "1.3.6.1.4.1.674.10892.5.4.700.12.1.6.1",
     "cpu_temps": "1.3.6.1.4.1.674.10892.5.4.700.20.1.6.1",

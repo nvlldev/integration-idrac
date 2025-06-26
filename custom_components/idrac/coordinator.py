@@ -24,6 +24,7 @@ from .const import (
     CONF_COMMUNITY,
     CONF_DISCOVERED_CPUS,
     CONF_DISCOVERED_FANS,
+    CONF_SCAN_INTERVAL,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     IDRAC_OIDS,
@@ -53,11 +54,17 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
         # Store server identification for logging
         self._server_id = f"{self.host}:{self.port}"
 
+        # Get scan interval from options first, then config data, then default
+        scan_interval = entry.options.get(
+            CONF_SCAN_INTERVAL,
+            entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+        )
+
         super().__init__(
             hass,
             _LOGGER,
             name=DOMAIN,
-            update_interval=timedelta(seconds=DEFAULT_SCAN_INTERVAL),
+            update_interval=timedelta(seconds=scan_interval),
         )
 
     async def _async_update_data(self) -> dict[str, Any]:

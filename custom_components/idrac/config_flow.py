@@ -26,8 +26,10 @@ from .const import (
     CONF_COMMUNITY,
     CONF_DISCOVERED_CPUS,
     CONF_DISCOVERED_FANS,
+    CONF_SCAN_INTERVAL,
     DEFAULT_COMMUNITY,
     DEFAULT_PORT,
+    DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     SNMP_WALK_OIDS,
 )
@@ -36,9 +38,10 @@ _LOGGER = logging.getLogger(__name__)
 
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
-        vol.Required(CONF_HOST, description="Hostname or IP Address"): str,
-        vol.Optional(CONF_PORT, default=DEFAULT_PORT, description="SNMP Port"): int,
-        vol.Optional(CONF_COMMUNITY, default=DEFAULT_COMMUNITY, description="SNMP Community String"): str,
+        vol.Required(CONF_HOST): str,
+        vol.Optional(CONF_PORT, default=DEFAULT_PORT): int,
+        vol.Optional(CONF_COMMUNITY, default=DEFAULT_COMMUNITY): str,
+        vol.Optional(CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL): vol.All(int, vol.Range(min=10, max=300)),
     }
 )
 
@@ -77,6 +80,8 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
         discovered_cpus = await _discover_cpu_sensors(engine, community_data, transport_target, context_data, SNMP_WALK_OIDS["cpu_temps"])
 
         _LOGGER.info("Discovered %d fans and %d CPU temperature sensors", len(discovered_fans), len(discovered_cpus))
+        _LOGGER.debug("Fan sensor IDs: %s", discovered_fans)
+        _LOGGER.debug("CPU sensor IDs: %s", discovered_cpus)
 
         return {
             "title": f"Dell iDRAC ({host})",
@@ -95,32 +100,35 @@ async def _discover_sensors(
     context_data: ContextData,
     base_oid: str,
 ) -> list[int]:
-    """Discover available sensors by walking the SNMP tree."""
+    """Discover available sensors by testing individual OIDs."""
     results = []
     
     try:
-        async for error_indication, error_status, error_index, var_binds in nextCmd(
-            engine,
-            community_data,
-            transport_target,
-            context_data,
-            ObjectType(ObjectIdentity(base_oid)),
-            lexicographicMode=False,
-            maxRows=20,
-        ):
-            if error_indication or error_status:
-                break
-            
-            for var_bind in var_binds:
-                oid_str = str(var_bind[0])
-                if oid_str.startswith(f"{base_oid}."):
-                    try:
-                        sensor_id = int(oid_str.split(".")[-1])
-                        if var_bind[1] is not None:
-                            results.append(sensor_id)
-                    except (ValueError, IndexError):
-                        continue
+        _LOGGER.debug("Testing individual OIDs for base: %s", base_oid)
+        
+        # Test up to 20 sensor indices (should be more than enough for any server)
+        for sensor_id in range(1, 21):
+            test_oid = f"{base_oid}.{sensor_id}"
+            try:
+                error_indication, error_status, error_index, var_binds = await getCmd(
+                    engine,
+                    community_data,
+                    transport_target,
+                    context_data,
+                    ObjectType(ObjectIdentity(test_oid)),
+                )
+                
+                if not error_indication and not error_status and var_binds:
+                    value = var_binds[0][1]
+                    if value is not None and str(value) != "No Such Object currently exists at this OID":
+                        results.append(sensor_id)
+                        _LOGGER.debug("Found sensor ID %d at OID %s with value: %s", sensor_id, test_oid, value)
+                
+            except Exception as exc:
+                _LOGGER.debug("Error testing OID %s: %s", test_oid, exc)
+                continue
 
+        _LOGGER.info("Direct OID testing for %s found %d sensors: %s", base_oid, len(results), results)
         results.sort()
         
     except Exception as exc:
@@ -144,10 +152,17 @@ async def _discover_cpu_sensors(
     return [sensor_id for sensor_id in all_temp_sensors if sensor_id > 2]
 
 
+
+
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Dell iDRAC."""
 
     VERSION = 1
+
+    @staticmethod
+    def async_get_options_flow(config_entry: config_entries.ConfigEntry) -> OptionsFlow:
+        """Get the options flow for this handler."""
+        return OptionsFlow(config_entry)
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -187,3 +202,35 @@ class CannotConnect(HomeAssistantError):
 
 class InvalidAuth(HomeAssistantError):
     """Error to indicate there is invalid auth."""
+
+
+class OptionsFlow(config_entries.OptionsFlow):
+    """Handle options flow for Dell iDRAC."""
+
+    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+        """Initialize options flow."""
+        self.config_entry = config_entry
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Manage the options."""
+        if user_input is not None:
+            return self.async_create_entry(title="", data=user_input)
+
+        current_scan_interval = self.config_entry.options.get(
+            CONF_SCAN_INTERVAL, 
+            self.config_entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+        )
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(
+                        CONF_SCAN_INTERVAL,
+                        default=current_scan_interval
+                    ): vol.All(int, vol.Range(min=10, max=300)),
+                }
+            ),
+        )
