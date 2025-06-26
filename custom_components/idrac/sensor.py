@@ -24,17 +24,6 @@ from .const import CONF_DISCOVERED_CPUS, CONF_DISCOVERED_FANS, CONF_DISCOVERED_P
 from .coordinator import IdracDataUpdateCoordinator
 
 
-def _to_snake_case(text: str) -> str:
-    """Convert text to snake_case for entity ID compatibility."""
-    import re
-    # Replace spaces and special characters with underscores
-    snake = re.sub(r'[^a-zA-Z0-9]', '_', text.lower())
-    # Remove multiple underscores
-    snake = re.sub(r'_+', '_', snake)
-    # Remove leading/trailing underscores
-    return snake.strip('_')
-
-
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
@@ -97,10 +86,8 @@ class IdracSensor(CoordinatorEntity, SensorEntity):
         device_id = f"{host}:{port}"
         
         self._attr_name = sensor_name
-        # Use device name with host prefix for auto-rename compatibility
-        host_snake = _to_snake_case(host)
-        descriptive_key = sensor_key.replace("temp_", "temperature_")
-        self._attr_unique_id = f"dell_idrac_{host_snake}_{descriptive_key}"
+        # Use stable unique_id based on device_id and sensor key
+        self._attr_unique_id = f"{device_id}_{sensor_key}"
         self._attr_native_unit_of_measurement = unit
         self._attr_device_class = device_class
         self._attr_state_class = SensorStateClass.MEASUREMENT
@@ -187,10 +174,11 @@ class IdracCpuTemperatureSensor(IdracSensor):
             UnitOfTemperature.CELSIUS,
             SensorDeviceClass.TEMPERATURE,
         )
-        # Override the unique_id for auto-rename compatibility
+        # Override the unique_id with stable identifier
         host = config_entry.data[CONF_HOST]
-        host_snake = _to_snake_case(host)
-        self._attr_unique_id = f"dell_idrac_{host_snake}_cpu_{cpu_index - 2}_temperature"
+        port = config_entry.data[CONF_PORT]
+        device_id = f"{host}:{port}"
+        self._attr_unique_id = f"{device_id}_cpu_{cpu_index}_temperature"
 
     @property
     def native_value(self) -> float | None:
@@ -231,10 +219,11 @@ class IdracFanSensor(IdracSensor):
             sensor_name,
             REVOLUTIONS_PER_MINUTE,
         )
-        # Override the unique_id for auto-rename compatibility
+        # Override the unique_id with stable identifier
         host = config_entry.data[CONF_HOST]
-        host_snake = _to_snake_case(host)
-        self._attr_unique_id = f"dell_idrac_{host_snake}_fan_{fan_index}_speed"
+        port = config_entry.data[CONF_PORT]
+        device_id = f"{host}:{port}"
+        self._attr_unique_id = f"{device_id}_fan_{fan_index}_speed"
 
     @property
     def native_value(self) -> float | None:
@@ -279,10 +268,11 @@ class IdracPsuVoltageSensor(IdracSensor):
             UnitOfElectricPotential.VOLT,
             SensorDeviceClass.VOLTAGE,
         )
-        # Override the unique_id for auto-rename compatibility
+        # Override the unique_id with stable identifier
         host = config_entry.data[CONF_HOST]
-        host_snake = _to_snake_case(host)
-        self._attr_unique_id = f"dell_idrac_{host_snake}_psu_{display_number}_voltage"
+        port = config_entry.data[CONF_PORT]
+        device_id = f"{host}:{port}"
+        self._attr_unique_id = f"{device_id}_psu_voltage_{voltage_probe_index}"
 
     @property
     def native_value(self) -> float | None:
@@ -326,10 +316,11 @@ class IdracPsuAmperageSensor(IdracSensor):
             UnitOfElectricCurrent.AMPERE,
             SensorDeviceClass.CURRENT,
         )
-        # Override the unique_id for auto-rename compatibility
+        # Override the unique_id with stable identifier
         host = config_entry.data[CONF_HOST]
-        host_snake = _to_snake_case(host)
-        self._attr_unique_id = f"dell_idrac_{host_snake}_psu_{psu_index}_amperage"
+        port = config_entry.data[CONF_PORT]
+        device_id = f"{host}:{port}"
+        self._attr_unique_id = f"{device_id}_psu_amperage_{psu_index}"
 
     @property
     def native_value(self) -> float | None:
