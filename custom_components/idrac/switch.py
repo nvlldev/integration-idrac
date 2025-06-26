@@ -28,9 +28,13 @@ from .coordinator import IdracDataUpdateCoordinator
 _LOGGER = logging.getLogger(__name__)
 
 
-def _get_device_name_prefix(host: str) -> str:
+def _get_device_name_prefix(coordinator: IdracDataUpdateCoordinator) -> str:
     """Get device name prefix for entity naming."""
-    return f"Dell iDRAC ({host})"
+    device_info = coordinator.device_info
+    if device_info and "model" in device_info and device_info["model"] != "iDRAC":
+        return f"Dell {device_info['model']} ({coordinator.host})"
+    else:
+        return f"Dell iDRAC ({coordinator.host})"
 
 
 async def async_setup_entry(
@@ -67,7 +71,7 @@ class IdracSwitch(CoordinatorEntity, SwitchEntity):
         device_id = f"{host}:{port}"
         
         # Include device prefix in name for proper entity_id generation
-        device_prefix = _get_device_name_prefix(host)
+        device_prefix = _get_device_name_prefix(coordinator)
         self._attr_name = f"{device_prefix} {switch_name}"
         # Use stable unique_id based on device_id and switch key
         self._attr_unique_id = f"{device_id}_{switch_key}"
