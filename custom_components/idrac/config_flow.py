@@ -5,8 +5,6 @@ import logging
 from typing import Any
 
 import voluptuous as vol
-from pysnmp.error import PySnmpError
-import pysnmp.hlapi.asyncio as hlapi
 from pysnmp.hlapi.asyncio import (
     CommunityData,
     ContextData,
@@ -19,17 +17,18 @@ from pysnmp.hlapi.asyncio import (
 )
 
 from homeassistant import config_entries
-from homeassistant.const import CONF_HOST, CONF_PORT, CONF_COMMUNITY
+from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
 
 from .const import (
-    DOMAIN,
-    DEFAULT_PORT,
-    DEFAULT_COMMUNITY,
-    CONF_DISCOVERED_FANS,
+    CONF_COMMUNITY,
     CONF_DISCOVERED_CPUS,
+    CONF_DISCOVERED_FANS,
+    DEFAULT_COMMUNITY,
+    DEFAULT_PORT,
+    DOMAIN,
     SNMP_WALK_OIDS,
 )
 
@@ -74,8 +73,8 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
 
         _LOGGER.info("Successfully connected to iDRAC, discovering sensors...")
 
-        discovered_fans = await _discover_sensors(hass, engine, community_data, transport_target, context_data, SNMP_WALK_OIDS["fans"])
-        discovered_cpus = await _discover_cpu_sensors(hass, engine, community_data, transport_target, context_data, SNMP_WALK_OIDS["cpu_temps"])
+        discovered_fans = await _discover_sensors(engine, community_data, transport_target, context_data, SNMP_WALK_OIDS["fans"])
+        discovered_cpus = await _discover_cpu_sensors(engine, community_data, transport_target, context_data, SNMP_WALK_OIDS["cpu_temps"])
 
         _LOGGER.info("Discovered %d fans and %d CPU temperature sensors", len(discovered_fans), len(discovered_cpus))
 
@@ -90,7 +89,6 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
 
 
 async def _discover_sensors(
-    hass: HomeAssistant,
     engine: SnmpEngine,
     community_data: CommunityData,
     transport_target: UdpTransportTarget,
@@ -98,10 +96,9 @@ async def _discover_sensors(
     base_oid: str,
 ) -> list[int]:
     """Discover available sensors by walking the SNMP tree."""
-    discovered = []
+    results = []
     
     try:
-        results = []
         async for error_indication, error_status, error_index, var_binds in nextCmd(
             engine,
             community_data,
@@ -116,25 +113,23 @@ async def _discover_sensors(
             
             for var_bind in var_binds:
                 oid_str = str(var_bind[0])
-                if oid_str.startswith(base_oid + "."):
+                if oid_str.startswith(f"{base_oid}."):
                     try:
                         sensor_id = int(oid_str.split(".")[-1])
-                        if var_bind[1] is not None and str(var_bind[1]) != "No Such Object currently exists at this OID":
+                        if var_bind[1] is not None:
                             results.append(sensor_id)
                     except (ValueError, IndexError):
                         continue
 
-        discovered = results
-        discovered.sort()
+        results.sort()
         
     except Exception as exc:
         _LOGGER.warning("Error discovering sensors for OID %s: %s", base_oid, exc)
     
-    return discovered
+    return results
 
 
 async def _discover_cpu_sensors(
-    hass: HomeAssistant,
     engine: SnmpEngine,
     community_data: CommunityData,
     transport_target: UdpTransportTarget,
@@ -142,14 +137,11 @@ async def _discover_cpu_sensors(
     base_oid: str,
 ) -> list[int]:
     """Discover CPU temperature sensors, filtering out inlet/outlet temps."""
-    all_temp_sensors = await _discover_sensors(hass, engine, community_data, transport_target, context_data, base_oid)
+    all_temp_sensors = await _discover_sensors(
+        engine, community_data, transport_target, context_data, base_oid
+    )
     
-    cpu_sensors = []
-    for sensor_id in all_temp_sensors:
-        if sensor_id > 2:
-            cpu_sensors.append(sensor_id)
-    
-    return cpu_sensors
+    return [sensor_id for sensor_id in all_temp_sensors if sensor_id > 2]
 
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -173,7 +165,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
             else:
-                await self.async_set_unique_id(user_input[CONF_HOST])
+                unique_id = f"{user_input[CONF_HOST]}:{user_input[CONF_PORT]}"
+                await self.async_set_unique_id(unique_id)
                 self._abort_if_unique_id_configured()
                 
                 # Add discovered sensor info to the config data
