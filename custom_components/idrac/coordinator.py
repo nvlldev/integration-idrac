@@ -88,15 +88,24 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
                 "memory_health": {},
                 # System status with fallback OIDs
                 "system_health": await self._async_get_snmp_value(IDRAC_OIDS["system_health"]),
-                "system_power_state": await self._async_get_snmp_value(IDRAC_OIDS["system_power_state"]),
-                "system_intrusion": await self._async_get_snmp_value_with_fallback(
+                "system_power_state": await self._async_get_snmp_value_with_multiple_fallbacks([
+                    IDRAC_OIDS["system_power_state"],
+                    IDRAC_OIDS["system_power_state_alt"],
+                    "1.3.6.1.4.1.674.10892.5.4.200.10.1.6.1.1",  # Additional fallback
+                    "1.3.6.1.4.1.674.10892.5.4.300.70.1.6.1"     # Simplified OID
+                ]),
+                "system_intrusion": await self._async_get_snmp_value_with_multiple_fallbacks([
                     IDRAC_OIDS["system_intrusion"], 
-                    IDRAC_OIDS["system_intrusion_alt"]
-                ),
-                "psu_redundancy": await self._async_get_snmp_value_with_fallback(
+                    IDRAC_OIDS["system_intrusion_alt"],
+                    "1.3.6.1.4.1.674.10892.5.4.200.10.1.27.1.1", # Additional fallback
+                    "1.3.6.1.4.1.674.10892.5.4.200.10.1.26.1.1"  # Another fallback
+                ]),
+                "psu_redundancy": await self._async_get_snmp_value_with_multiple_fallbacks([
                     IDRAC_OIDS["psu_redundancy"],
-                    IDRAC_OIDS["psu_redundancy_alt"]
-                ),
+                    IDRAC_OIDS["psu_redundancy_alt"],
+                    "1.3.6.1.4.1.674.10892.5.4.200.10.1.42.1.1", # Additional fallback
+                    "1.3.6.1.4.1.674.10892.1.600.12.1.5.1.1"     # Legacy OID
+                ]),
             }
 
             # Get CPU temperature data - only include sensors with valid data
@@ -202,3 +211,19 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
             _LOGGER.debug("Successfully got value from fallback OID %s: %s", fallback_oid, value)
         
         return value
+
+    async def _async_get_snmp_value_with_multiple_fallbacks(self, oids: list[str], divide_by: int = 1) -> float | None:
+        """Get SNMP value with multiple fallback OIDs."""
+        for i, oid in enumerate(oids):
+            value = await self._async_get_snmp_value(oid, divide_by)
+            if value is not None:
+                if i == 0:
+                    _LOGGER.debug("Successfully got value from primary OID %s: %s", oid, value)
+                else:
+                    _LOGGER.debug("Successfully got value from fallback OID %s (attempt %d): %s", oid, i + 1, value)
+                return value
+            else:
+                _LOGGER.debug("OID %s failed (attempt %d)", oid, i + 1)
+        
+        _LOGGER.debug("All OIDs failed for fallback chain: %s", oids)
+        return None

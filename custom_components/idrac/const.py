@@ -29,13 +29,15 @@ IDRAC_OIDS: Final = {
     "psu_amperage_base": "1.3.6.1.4.1.674.10892.5.4.600.30.1.6.1",
     # System health and status
     "system_health": "1.3.6.1.4.1.674.10892.5.2.1.0",
+    # Power state OIDs - using Dell's chassis power state OIDs  
     "system_power_state": "1.3.6.1.4.1.674.10892.5.4.300.70.1.6.1.3",
-    # Try alternative chassis intrusion OIDs
-    "system_intrusion": "1.3.6.1.4.1.674.10892.5.4.200.10.1.26",
-    "system_intrusion_alt": "1.3.6.1.4.1.674.10892.5.4.300.50.1.6.1.1",
-    # PSU status (corrected OID)
-    "psu_redundancy": "1.3.6.1.4.1.674.10892.5.4.200.10.1.42",
-    "psu_redundancy_alt": "1.3.6.1.4.1.674.10892.5.4.600.12.1.8.1.1",
+    "system_power_state_alt": "1.3.6.1.4.1.674.10892.5.4.300.70.1.6.1.1",
+    # Chassis intrusion - using Dell's chassis security breach status
+    "system_intrusion": "1.3.6.1.4.1.674.10892.5.4.300.70.1.25.1.1",
+    "system_intrusion_alt": "1.3.6.1.4.1.674.10892.5.4.300.70.1.24.1.1",
+    # PSU redundancy - using Dell's power supply redundancy status
+    "psu_redundancy": "1.3.6.1.4.1.674.10892.5.4.600.10.1.9.1.1",
+    "psu_redundancy_alt": "1.3.6.1.4.1.674.10892.5.4.600.10.1.8.1.1",
     # Memory health (corrected OID)
     "memory_health_base": "1.3.6.1.4.1.674.10892.5.4.1100.50.1.5",
     # Control OIDs (for switches)

@@ -172,15 +172,23 @@ class IdracIdentifyLEDSwitch(IdracSwitch):
             "Identify LED",
             SwitchDeviceClass.SWITCH,
         )
-        # Store current LED state (we'll check this via SNMP)
-        self._led_state = None
+        # Initialize LED state as False
+        self._led_state = False
 
     @property
-    def is_on(self) -> bool | None:
+    def is_on(self) -> bool:
         """Return if the identify LED is on."""
-        # Check current LED state via SNMP GET
-        # We need to check this in real-time since LED state isn't part of coordinator data
         return self._led_state
+
+    @property
+    def assumed_state(self) -> bool:
+        """Return True if we're assuming the state (since we can't always read LED state)."""
+        return True
+    
+    @property
+    def icon(self) -> str:
+        """Return the icon for the switch."""
+        return "mdi:led-on" if self.is_on else "mdi:led-outline"
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn on the identify LED."""
@@ -188,6 +196,8 @@ class IdracIdentifyLEDSwitch(IdracSwitch):
         if success:
             self._led_state = True
             self.async_write_ha_state()
+        else:
+            _LOGGER.error("Failed to turn on identify LED for %s", self._host)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn off the identify LED."""
@@ -195,13 +205,20 @@ class IdracIdentifyLEDSwitch(IdracSwitch):
         if success:
             self._led_state = False
             self.async_write_ha_state()
+        else:
+            _LOGGER.error("Failed to turn off identify LED for %s", self._host)
+
+    async def async_added_to_hass(self) -> None:
+        """When entity is added to hass."""
+        await super().async_added_to_hass()
+        # Try to read initial LED state
+        await self.async_update()
 
     async def async_update(self) -> None:
         """Update the current LED state."""
-        # Periodically check LED state via SNMP GET
+        # Try to read LED state via SNMP GET - this may not work on all iDRAC versions
         led_state = await self._async_snmp_get(IDRAC_OIDS["identify_led"])
         if led_state is not None:
             self._led_state = led_state == 1
-        else:
-            # If we can't read the state, keep current assumption
-            self._led_state = None
+            _LOGGER.debug("Read LED state for %s: %s", self._host, self._led_state)
+        # If we can't read the state, we'll assume our last known state
