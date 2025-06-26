@@ -98,7 +98,11 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
                     IDRAC_OIDS["system_intrusion"], 
                     IDRAC_OIDS["system_intrusion_alt"],
                     "1.3.6.1.4.1.674.10892.5.4.200.10.1.27.1.1", # Additional fallback
-                    "1.3.6.1.4.1.674.10892.5.4.200.10.1.26.1.1"  # Another fallback
+                    "1.3.6.1.4.1.674.10892.5.4.200.10.1.26.1.1", # Another fallback
+                    "1.3.6.1.4.1.674.10892.5.4.300.70.1.25.1",   # Simplified version
+                    "1.3.6.1.4.1.674.10892.5.4.300.70.1.24.1",   # Another simplified
+                    "1.3.6.1.4.1.674.10892.5.4.200.10.1.27",     # Base OID
+                    "1.3.6.1.4.1.674.10892.5.4.200.10.1.26"      # Base OID alt
                 ]),
                 "psu_redundancy": await self._async_get_snmp_value_with_multiple_fallbacks([
                     IDRAC_OIDS["psu_redundancy"],

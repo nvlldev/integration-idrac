@@ -170,7 +170,7 @@ class IdracIdentifyLEDSwitch(IdracSwitch):
             config_entry,
             "identify_led",
             "Identify LED",
-            SwitchDeviceClass.SWITCH,
+            None,
         )
         # Initialize LED state as False
         self._led_state = False
@@ -180,11 +180,6 @@ class IdracIdentifyLEDSwitch(IdracSwitch):
         """Return if the identify LED is on."""
         return self._led_state
 
-    @property
-    def assumed_state(self) -> bool:
-        """Return True if we're assuming the state (since we can't always read LED state)."""
-        return True
-    
     @property
     def icon(self) -> str:
         """Return the icon for the switch."""
@@ -208,17 +203,14 @@ class IdracIdentifyLEDSwitch(IdracSwitch):
         else:
             _LOGGER.error("Failed to turn off identify LED for %s", self._host)
 
-    async def async_added_to_hass(self) -> None:
-        """When entity is added to hass."""
-        await super().async_added_to_hass()
-        # Try to read initial LED state
-        await self.async_update()
+    async def async_toggle(self, **kwargs: Any) -> None:
+        """Toggle the identify LED."""
+        if self.is_on:
+            await self.async_turn_off(**kwargs)
+        else:
+            await self.async_turn_on(**kwargs)
 
-    async def async_update(self) -> None:
-        """Update the current LED state."""
-        # Try to read LED state via SNMP GET - this may not work on all iDRAC versions
-        led_state = await self._async_snmp_get(IDRAC_OIDS["identify_led"])
-        if led_state is not None:
-            self._led_state = led_state == 1
-            _LOGGER.debug("Read LED state for %s: %s", self._host, self._led_state)
-        # If we can't read the state, we'll assume our last known state
+    @property  
+    def available(self) -> bool:
+        """Return if entity is available."""
+        return True  # Always available since it's a control switch
