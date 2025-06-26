@@ -26,6 +26,7 @@ from .const import (
     CONF_COMMUNITY,
     CONF_DISCOVERED_CPUS,
     CONF_DISCOVERED_FANS,
+    CONF_DISCOVERED_PSUS,
     CONF_SCAN_INTERVAL,
     DEFAULT_COMMUNITY,
     DEFAULT_PORT,
@@ -78,15 +79,18 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
 
         discovered_fans = await _discover_sensors(engine, community_data, transport_target, context_data, SNMP_WALK_OIDS["fans"])
         discovered_cpus = await _discover_cpu_sensors(engine, community_data, transport_target, context_data, SNMP_WALK_OIDS["cpu_temps"])
+        discovered_psus = await _discover_psu_sensors(engine, community_data, transport_target, context_data, SNMP_WALK_OIDS["psu_status"])
 
-        _LOGGER.info("Discovered %d fans and %d CPU temperature sensors", len(discovered_fans), len(discovered_cpus))
+        _LOGGER.info("Discovered %d fans, %d CPU temperature sensors, and %d PSU sensors", len(discovered_fans), len(discovered_cpus), len(discovered_psus))
         _LOGGER.debug("Fan sensor IDs: %s", discovered_fans)
         _LOGGER.debug("CPU sensor IDs: %s", discovered_cpus)
+        _LOGGER.debug("PSU sensor IDs: %s", discovered_psus)
 
         return {
             "title": f"Dell iDRAC ({host})",
             CONF_DISCOVERED_FANS: discovered_fans,
             CONF_DISCOVERED_CPUS: discovered_cpus,
+            CONF_DISCOVERED_PSUS: discovered_psus,
         }
 
     except Exception as exc:
@@ -120,9 +124,19 @@ async def _discover_sensors(
                 
                 if not error_indication and not error_status and var_binds:
                     value = var_binds[0][1]
-                    if value is not None and str(value) != "No Such Object currently exists at this OID":
-                        results.append(sensor_id)
-                        _LOGGER.debug("Found sensor ID %d at OID %s with value: %s", sensor_id, test_oid, value)
+                    if (value is not None 
+                        and str(value) != "No Such Object currently exists at this OID"
+                        and str(value) != "No Such Instance currently exists at this OID"):
+                        try:
+                            # Try to convert to a numeric value to ensure it's a valid sensor reading
+                            numeric_value = float(value)
+                            if numeric_value > 0:  # Only include sensors with positive values
+                                results.append(sensor_id)
+                                _LOGGER.debug("Found sensor ID %d at OID %s with value: %s", sensor_id, test_oid, value)
+                            else:
+                                _LOGGER.debug("Sensor ID %d at OID %s has invalid value: %s", sensor_id, test_oid, value)
+                        except (ValueError, TypeError):
+                            _LOGGER.debug("Sensor ID %d at OID %s has non-numeric value: %s", sensor_id, test_oid, value)
                 
             except Exception as exc:
                 _LOGGER.debug("Error testing OID %s: %s", test_oid, exc)
@@ -150,6 +164,60 @@ async def _discover_cpu_sensors(
     )
     
     return [sensor_id for sensor_id in all_temp_sensors if sensor_id > 2]
+
+
+async def _discover_psu_sensors(
+    engine: SnmpEngine,
+    community_data: CommunityData,
+    transport_target: UdpTransportTarget,
+    context_data: ContextData,
+    base_oid: str,
+) -> list[int]:
+    """Discover PSU sensors by testing status OIDs."""
+    results = []
+    
+    try:
+        _LOGGER.debug("Testing PSU status OIDs for base: %s", base_oid)
+        
+        # Test up to 8 PSU indices (typical server configurations have 1-4 PSUs)
+        for psu_id in range(1, 9):
+            test_oid = f"{base_oid}.{psu_id}"
+            try:
+                error_indication, error_status, error_index, var_binds = await getCmd(
+                    engine,
+                    community_data,
+                    transport_target,
+                    context_data,
+                    ObjectType(ObjectIdentity(test_oid)),
+                )
+                
+                if not error_indication and not error_status and var_binds:
+                    value = var_binds[0][1]
+                    if (value is not None 
+                        and str(value) != "No Such Object currently exists at this OID"
+                        and str(value) != "No Such Instance currently exists at this OID"):
+                        try:
+                            # PSU status should be a valid integer (1-6 range typically)
+                            status_value = int(value)
+                            if 1 <= status_value <= 6:  # Valid Dell iDRAC status range
+                                results.append(psu_id)
+                                _LOGGER.debug("Found PSU ID %d at OID %s with status: %s", psu_id, test_oid, value)
+                            else:
+                                _LOGGER.debug("PSU ID %d at OID %s has invalid status: %s", psu_id, test_oid, value)
+                        except (ValueError, TypeError):
+                            _LOGGER.debug("PSU ID %d at OID %s has non-integer status: %s", psu_id, test_oid, value)
+                
+            except Exception as exc:
+                _LOGGER.debug("Error testing PSU OID %s: %s", test_oid, exc)
+                continue
+
+        _LOGGER.info("PSU discovery for %s found %d PSU sensors: %s", base_oid, len(results), results)
+        results.sort()
+        
+    except Exception as exc:
+        _LOGGER.warning("Error discovering PSU sensors for OID %s: %s", base_oid, exc)
+    
+    return results
 
 
 
@@ -188,6 +256,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 config_data = user_input.copy()
                 config_data[CONF_DISCOVERED_FANS] = info[CONF_DISCOVERED_FANS]
                 config_data[CONF_DISCOVERED_CPUS] = info[CONF_DISCOVERED_CPUS]
+                config_data[CONF_DISCOVERED_PSUS] = info[CONF_DISCOVERED_PSUS]
                 
                 return self.async_create_entry(title=info["title"], data=config_data)
 

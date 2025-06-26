@@ -11,6 +11,8 @@ from homeassistant.const import (
     CONF_HOST,
     CONF_PORT,
     REVOLUTIONS_PER_MINUTE,
+    UnitOfElectricCurrent,
+    UnitOfElectricPotential,
     UnitOfPower,
     UnitOfTemperature,
 )
@@ -18,7 +20,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import CONF_DISCOVERED_CPUS, CONF_DISCOVERED_FANS, DOMAIN
+from .const import CONF_DISCOVERED_CPUS, CONF_DISCOVERED_FANS, CONF_DISCOVERED_PSUS, DOMAIN
 from .coordinator import IdracDataUpdateCoordinator
 
 
@@ -47,6 +49,14 @@ async def async_setup_entry(
         entities.append(
             IdracFanSensor(coordinator, config_entry, fan_index)
         )
+
+    # Add PSU sensors
+    for psu_index in config_entry.data.get(CONF_DISCOVERED_PSUS, []):
+        entities.extend([
+            IdracPsuVoltageSensor(coordinator, config_entry, psu_index),
+            IdracPsuStatusSensor(coordinator, config_entry, psu_index),
+            IdracPsuAmperageSensor(coordinator, config_entry, psu_index),
+        ])
 
     async_add_entities(entities)
 
@@ -173,6 +183,7 @@ class IdracCpuTemperatureSensor(IdracSensor):
             and self.coordinator.data is not None
             and "cpu_temps" in self.coordinator.data
             and self._sensor_key in self.coordinator.data["cpu_temps"]
+            and self.coordinator.data["cpu_temps"][self._sensor_key] is not None
         )
 
 
@@ -211,4 +222,144 @@ class IdracFanSensor(IdracSensor):
             and self.coordinator.data is not None
             and "fans" in self.coordinator.data
             and self._sensor_key in self.coordinator.data["fans"]
+            and self.coordinator.data["fans"][self._sensor_key] is not None
+        )
+
+
+class IdracPsuVoltageSensor(IdracSensor):
+    """Dell iDRAC PSU voltage sensor."""
+
+    def __init__(
+        self,
+        coordinator: IdracDataUpdateCoordinator,
+        config_entry: ConfigEntry,
+        psu_index: int,
+    ) -> None:
+        """Initialize the PSU voltage sensor."""
+        sensor_key = f"psu_voltage_{psu_index}"
+        sensor_name = f"PSU {psu_index} Voltage"
+        super().__init__(
+            coordinator,
+            config_entry,
+            sensor_key,
+            sensor_name,
+            UnitOfElectricPotential.VOLT,
+            SensorDeviceClass.VOLTAGE,
+        )
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the state of the sensor."""
+        if self.coordinator.data is None or "psu_voltages" not in self.coordinator.data:
+            return None
+        return self.coordinator.data["psu_voltages"].get(self._sensor_key)
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        return (
+            self.coordinator.last_update_success
+            and self.coordinator.data is not None
+            and "psu_voltages" in self.coordinator.data
+            and self._sensor_key in self.coordinator.data["psu_voltages"]
+            and self.coordinator.data["psu_voltages"][self._sensor_key] is not None
+        )
+
+
+class IdracPsuStatusSensor(IdracSensor):
+    """Dell iDRAC PSU status sensor."""
+
+    def __init__(
+        self,
+        coordinator: IdracDataUpdateCoordinator,
+        config_entry: ConfigEntry,
+        psu_index: int,
+    ) -> None:
+        """Initialize the PSU status sensor."""
+        sensor_key = f"psu_status_{psu_index}"
+        sensor_name = f"PSU {psu_index} Status"
+        super().__init__(
+            coordinator,
+            config_entry,
+            sensor_key,
+            sensor_name,
+            None,
+            SensorDeviceClass.ENUM,
+        )
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the state of the sensor."""
+        if self.coordinator.data is None or "psu_statuses" not in self.coordinator.data:
+            return None
+        
+        status_value = self.coordinator.data["psu_statuses"].get(self._sensor_key)
+        if status_value is None:
+            return None
+            
+        # Map Dell iDRAC status values to readable strings
+        status_map = {
+            1: "other",
+            2: "unknown", 
+            3: "ok",
+            4: "non_critical",
+            5: "critical",
+            6: "non_recoverable"
+        }
+        return status_map.get(int(status_value), "unknown")
+
+    @property
+    def options(self) -> list[str]:
+        """Return the list of available options."""
+        return ["other", "unknown", "ok", "non_critical", "critical", "non_recoverable"]
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        return (
+            self.coordinator.last_update_success
+            and self.coordinator.data is not None
+            and "psu_statuses" in self.coordinator.data
+            and self._sensor_key in self.coordinator.data["psu_statuses"]
+            and self.coordinator.data["psu_statuses"][self._sensor_key] is not None
+        )
+
+
+class IdracPsuAmperageSensor(IdracSensor):
+    """Dell iDRAC PSU amperage sensor."""
+
+    def __init__(
+        self,
+        coordinator: IdracDataUpdateCoordinator,
+        config_entry: ConfigEntry,
+        psu_index: int,
+    ) -> None:
+        """Initialize the PSU amperage sensor."""
+        sensor_key = f"psu_amperage_{psu_index}"
+        sensor_name = f"PSU {psu_index} Amperage"
+        super().__init__(
+            coordinator,
+            config_entry,
+            sensor_key,
+            sensor_name,
+            UnitOfElectricCurrent.AMPERE,
+            SensorDeviceClass.CURRENT,
+        )
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the state of the sensor."""
+        if self.coordinator.data is None or "psu_amperages" not in self.coordinator.data:
+            return None
+        return self.coordinator.data["psu_amperages"].get(self._sensor_key)
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        return (
+            self.coordinator.last_update_success
+            and self.coordinator.data is not None
+            and "psu_amperages" in self.coordinator.data
+            and self._sensor_key in self.coordinator.data["psu_amperages"]
+            and self.coordinator.data["psu_amperages"][self._sensor_key] is not None
         )

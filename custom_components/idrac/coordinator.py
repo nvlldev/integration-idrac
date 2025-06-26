@@ -24,6 +24,7 @@ from .const import (
     CONF_COMMUNITY,
     CONF_DISCOVERED_CPUS,
     CONF_DISCOVERED_FANS,
+    CONF_DISCOVERED_PSUS,
     CONF_SCAN_INTERVAL,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
@@ -44,6 +45,7 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
         self.community = entry.data[CONF_COMMUNITY]
         self.discovered_fans = entry.data.get(CONF_DISCOVERED_FANS, [])
         self.discovered_cpus = entry.data.get(CONF_DISCOVERED_CPUS, [])
+        self.discovered_psus = entry.data.get(CONF_DISCOVERED_PSUS, [])
 
         # Create isolated SNMP engine for this coordinator instance
         self.engine = SnmpEngine()
@@ -76,21 +78,55 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
                 "temp_outlet": await self._async_get_snmp_value(IDRAC_OIDS["temp_outlet"], divide_by=10),
                 "cpu_temps": {},
                 "fans": {},
+                "psu_voltages": {},
+                "psu_statuses": {},
+                "psu_amperages": {},
             }
 
-            # Get CPU temperature data
+            # Get CPU temperature data - only include sensors with valid data
             for cpu_index in self.discovered_cpus:
                 cpu_oid = f"{IDRAC_OIDS['temp_cpu_base']}.{cpu_index}"
                 cpu_value = await self._async_get_snmp_value(cpu_oid, divide_by=10)
-                if cpu_value is not None:
+                if cpu_value is not None and cpu_value > 0:  # Valid temperature should be > 0
                     data["cpu_temps"][f"cpu_{cpu_index}"] = cpu_value
+                else:
+                    _LOGGER.debug("CPU sensor %d returned invalid value: %s", cpu_index, cpu_value)
 
-            # Get fan speed data
+            # Get fan speed data - only include sensors with valid data
             for fan_index in self.discovered_fans:
                 fan_oid = f"{IDRAC_OIDS['fan_base']}.{fan_index}"
                 fan_value = await self._async_get_snmp_value(fan_oid)
-                if fan_value is not None:
+                if fan_value is not None and fan_value > 0:  # Valid fan speed should be > 0
                     data["fans"][f"fan_{fan_index}"] = fan_value
+                else:
+                    _LOGGER.debug("Fan sensor %d returned invalid value: %s", fan_index, fan_value)
+
+            # Get PSU voltage data - only include sensors with valid data
+            for psu_index in self.discovered_psus:
+                voltage_oid = f"{IDRAC_OIDS['psu_voltage_base']}.{psu_index}"
+                voltage_value = await self._async_get_snmp_value(voltage_oid, divide_by=1000)  # Convert mV to V
+                if voltage_value is not None and voltage_value > 0:  # Valid voltage should be > 0
+                    data["psu_voltages"][f"psu_voltage_{psu_index}"] = voltage_value
+                else:
+                    _LOGGER.debug("PSU voltage sensor %d returned invalid value: %s", psu_index, voltage_value)
+
+            # Get PSU status data - only include sensors with valid data
+            for psu_index in self.discovered_psus:
+                status_oid = f"{IDRAC_OIDS['psu_status_base']}.{psu_index}"
+                status_value = await self._async_get_snmp_value(status_oid)
+                if status_value is not None:  # Status can be 0 (but typically starts from 1)
+                    data["psu_statuses"][f"psu_status_{psu_index}"] = status_value
+                else:
+                    _LOGGER.debug("PSU status sensor %d returned invalid value: %s", psu_index, status_value)
+
+            # Get PSU amperage data - only include sensors with valid data
+            for psu_index in self.discovered_psus:
+                amperage_oid = f"{IDRAC_OIDS['psu_amperage_base']}.{psu_index}"
+                amperage_value = await self._async_get_snmp_value(amperage_oid, divide_by=10)  # Convert tenths of amps to amps
+                if amperage_value is not None and amperage_value >= 0:  # Valid amperage should be >= 0
+                    data["psu_amperages"][f"psu_amperage_{psu_index}"] = amperage_value
+                else:
+                    _LOGGER.debug("PSU amperage sensor %d returned invalid value: %s", psu_index, amperage_value)
 
             return data
 
