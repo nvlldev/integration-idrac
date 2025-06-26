@@ -64,10 +64,9 @@ class IdracBinarySensor(CoordinatorEntity, BinarySensorEntity):
         device_id = f"{host}:{port}"
         
         self._attr_name = sensor_name
-        # Use device name prefix for auto-rename compatibility
-        device_name = f"Dell iDRAC ({host}:{port})" if port != 161 else f"Dell iDRAC ({host})"
-        device_snake = _to_snake_case(device_name)
-        self._attr_unique_id = f"{device_snake}_{sensor_key}"
+        # Use device name with host prefix for auto-rename compatibility
+        host_snake = _to_snake_case(host)
+        self._attr_unique_id = f"dell_idrac_{host_snake}_{sensor_key}"
         self._attr_device_class = device_class
 
         self._attr_device_info = {
@@ -105,10 +104,8 @@ class IdracPsuStatusBinarySensor(IdracBinarySensor):
         )
         # Override the unique_id for auto-rename compatibility  
         host = config_entry.data[CONF_HOST]
-        port = config_entry.data[CONF_PORT]
-        device_name = f"Dell iDRAC ({host}:{port})" if port != 161 else f"Dell iDRAC ({host})"
-        device_snake = _to_snake_case(device_name)
-        self._attr_unique_id = f"{device_snake}_psu_{psu_index}_status"
+        host_snake = _to_snake_case(host)
+        self._attr_unique_id = f"dell_idrac_{host_snake}_psu_{psu_index}_status"
 
     @property
     def is_on(self) -> bool | None:

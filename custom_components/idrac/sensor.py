@@ -97,11 +97,10 @@ class IdracSensor(CoordinatorEntity, SensorEntity):
         device_id = f"{host}:{port}"
         
         self._attr_name = sensor_name
-        # Use device name prefix for auto-rename compatibility
-        device_name = f"Dell iDRAC ({host}:{port})" if port != 161 else f"Dell iDRAC ({host})"
-        device_snake = _to_snake_case(device_name)
+        # Use device name with host prefix for auto-rename compatibility
+        host_snake = _to_snake_case(host)
         descriptive_key = sensor_key.replace("temp_", "temperature_")
-        self._attr_unique_id = f"{device_snake}_{descriptive_key}"
+        self._attr_unique_id = f"dell_idrac_{host_snake}_{descriptive_key}"
         self._attr_native_unit_of_measurement = unit
         self._attr_device_class = device_class
         self._attr_state_class = SensorStateClass.MEASUREMENT
@@ -190,10 +189,8 @@ class IdracCpuTemperatureSensor(IdracSensor):
         )
         # Override the unique_id for auto-rename compatibility
         host = config_entry.data[CONF_HOST]
-        port = config_entry.data[CONF_PORT]
-        device_name = f"Dell iDRAC ({host}:{port})" if port != 161 else f"Dell iDRAC ({host})"
-        device_snake = _to_snake_case(device_name)
-        self._attr_unique_id = f"{device_snake}_cpu_{cpu_index - 2}_temperature"
+        host_snake = _to_snake_case(host)
+        self._attr_unique_id = f"dell_idrac_{host_snake}_cpu_{cpu_index - 2}_temperature"
 
     @property
     def native_value(self) -> float | None:
@@ -236,10 +233,8 @@ class IdracFanSensor(IdracSensor):
         )
         # Override the unique_id for auto-rename compatibility
         host = config_entry.data[CONF_HOST]
-        port = config_entry.data[CONF_PORT]
-        device_name = f"Dell iDRAC ({host}:{port})" if port != 161 else f"Dell iDRAC ({host})"
-        device_snake = _to_snake_case(device_name)
-        self._attr_unique_id = f"{device_snake}_fan_{fan_index}_speed"
+        host_snake = _to_snake_case(host)
+        self._attr_unique_id = f"dell_idrac_{host_snake}_fan_{fan_index}_speed"
 
     @property
     def native_value(self) -> float | None:
@@ -286,10 +281,8 @@ class IdracPsuVoltageSensor(IdracSensor):
         )
         # Override the unique_id for auto-rename compatibility
         host = config_entry.data[CONF_HOST]
-        port = config_entry.data[CONF_PORT]
-        device_name = f"Dell iDRAC ({host}:{port})" if port != 161 else f"Dell iDRAC ({host})"
-        device_snake = _to_snake_case(device_name)
-        self._attr_unique_id = f"{device_snake}_psu_{display_number}_voltage"
+        host_snake = _to_snake_case(host)
+        self._attr_unique_id = f"dell_idrac_{host_snake}_psu_{display_number}_voltage"
 
     @property
     def native_value(self) -> float | None:
@@ -335,10 +328,8 @@ class IdracPsuAmperageSensor(IdracSensor):
         )
         # Override the unique_id for auto-rename compatibility
         host = config_entry.data[CONF_HOST]
-        port = config_entry.data[CONF_PORT]
-        device_name = f"Dell iDRAC ({host}:{port})" if port != 161 else f"Dell iDRAC ({host})"
-        device_snake = _to_snake_case(device_name)
-        self._attr_unique_id = f"{device_snake}_psu_{psu_index}_amperage"
+        host_snake = _to_snake_case(host)
+        self._attr_unique_id = f"dell_idrac_{host_snake}_psu_{psu_index}_amperage"
 
     @property
     def native_value(self) -> float | None:
