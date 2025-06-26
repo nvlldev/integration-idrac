@@ -24,6 +24,11 @@ from .const import CONF_DISCOVERED_CPUS, CONF_DISCOVERED_FANS, CONF_DISCOVERED_P
 from .coordinator import IdracDataUpdateCoordinator
 
 
+def _get_device_name_prefix(host: str) -> str:
+    """Get device name prefix for entity naming."""
+    return f"Dell iDRAC ({host})"
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
@@ -85,7 +90,9 @@ class IdracSensor(CoordinatorEntity, SensorEntity):
         port = config_entry.data[CONF_PORT]
         device_id = f"{host}:{port}"
         
-        self._attr_name = sensor_name
+        # Include device prefix in name for proper entity_id generation
+        device_prefix = _get_device_name_prefix(host)
+        self._attr_name = f"{device_prefix} {sensor_name}"
         # Use stable unique_id based on device_id and sensor key
         self._attr_unique_id = f"{device_id}_{sensor_key}"
         self._attr_native_unit_of_measurement = unit
@@ -174,11 +181,6 @@ class IdracCpuTemperatureSensor(IdracSensor):
             UnitOfTemperature.CELSIUS,
             SensorDeviceClass.TEMPERATURE,
         )
-        # Override the unique_id with stable identifier
-        host = config_entry.data[CONF_HOST]
-        port = config_entry.data[CONF_PORT]
-        device_id = f"{host}:{port}"
-        self._attr_unique_id = f"{device_id}_cpu_{cpu_index}_temperature"
 
     @property
     def native_value(self) -> float | None:
@@ -219,11 +221,6 @@ class IdracFanSensor(IdracSensor):
             sensor_name,
             REVOLUTIONS_PER_MINUTE,
         )
-        # Override the unique_id with stable identifier
-        host = config_entry.data[CONF_HOST]
-        port = config_entry.data[CONF_PORT]
-        device_id = f"{host}:{port}"
-        self._attr_unique_id = f"{device_id}_fan_{fan_index}_speed"
 
     @property
     def native_value(self) -> float | None:
@@ -268,11 +265,6 @@ class IdracPsuVoltageSensor(IdracSensor):
             UnitOfElectricPotential.VOLT,
             SensorDeviceClass.VOLTAGE,
         )
-        # Override the unique_id with stable identifier
-        host = config_entry.data[CONF_HOST]
-        port = config_entry.data[CONF_PORT]
-        device_id = f"{host}:{port}"
-        self._attr_unique_id = f"{device_id}_psu_voltage_{voltage_probe_index}"
 
     @property
     def native_value(self) -> float | None:
@@ -316,11 +308,6 @@ class IdracPsuAmperageSensor(IdracSensor):
             UnitOfElectricCurrent.AMPERE,
             SensorDeviceClass.CURRENT,
         )
-        # Override the unique_id with stable identifier
-        host = config_entry.data[CONF_HOST]
-        port = config_entry.data[CONF_PORT]
-        device_id = f"{host}:{port}"
-        self._attr_unique_id = f"{device_id}_psu_amperage_{psu_index}"
 
     @property
     def native_value(self) -> float | None:

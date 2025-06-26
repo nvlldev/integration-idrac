@@ -15,6 +15,11 @@ from .const import CONF_DISCOVERED_PSUS, DOMAIN
 from .coordinator import IdracDataUpdateCoordinator
 
 
+def _get_device_name_prefix(host: str) -> str:
+    """Get device name prefix for entity naming."""
+    return f"Dell iDRAC ({host})"
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
@@ -52,7 +57,9 @@ class IdracBinarySensor(CoordinatorEntity, BinarySensorEntity):
         port = config_entry.data[CONF_PORT]
         device_id = f"{host}:{port}"
         
-        self._attr_name = sensor_name
+        # Include device prefix in name for proper entity_id generation
+        device_prefix = _get_device_name_prefix(host)
+        self._attr_name = f"{device_prefix} {sensor_name}"
         # Use stable unique_id based on device_id and sensor key
         self._attr_unique_id = f"{device_id}_{sensor_key}"
         self._attr_device_class = device_class
@@ -90,11 +97,6 @@ class IdracPsuStatusBinarySensor(IdracBinarySensor):
             sensor_name,
             BinarySensorDeviceClass.PROBLEM,  # "On" means problem detected, "Off" means OK
         )
-        # Override the unique_id with stable identifier
-        host = config_entry.data[CONF_HOST]
-        port = config_entry.data[CONF_PORT]
-        device_id = f"{host}:{port}"
-        self._attr_unique_id = f"{device_id}_psu_status_{psu_index}"
 
     @property
     def is_on(self) -> bool | None:
