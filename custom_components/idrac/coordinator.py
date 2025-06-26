@@ -95,14 +95,27 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
                     "1.3.6.1.4.1.674.10892.5.4.300.70.1.6.1"     # Simplified OID
                 ]),
                 "system_intrusion": await self._async_get_snmp_value_with_multiple_fallbacks([
-                    IDRAC_OIDS["system_intrusion"], 
-                    IDRAC_OIDS["system_intrusion_alt"],
-                    "1.3.6.1.4.1.674.10892.5.4.200.10.1.27.1.1", # Additional fallback
-                    "1.3.6.1.4.1.674.10892.5.4.200.10.1.26.1.1", # Another fallback
-                    "1.3.6.1.4.1.674.10892.5.4.300.70.1.25.1",   # Simplified version
-                    "1.3.6.1.4.1.674.10892.5.4.300.70.1.24.1",   # Another simplified
-                    "1.3.6.1.4.1.674.10892.5.4.200.10.1.27",     # Base OID
-                    "1.3.6.1.4.1.674.10892.5.4.200.10.1.26"      # Base OID alt
+                    # Dell chassis intrusion detection OIDs
+                    "1.3.6.1.4.1.674.10892.5.4.300.70.1.25.1.1", # Chassis security breach detection status
+                    "1.3.6.1.4.1.674.10892.5.4.300.70.1.24.1.1", # Chassis security breach sensor status
+                    "1.3.6.1.4.1.674.10892.5.4.200.10.1.27.1.1", # System chassis intrusion status
+                    "1.3.6.1.4.1.674.10892.5.4.200.10.1.26.1.1", # System chassis intrusion reading
+                    # Simplified versions without table indices
+                    "1.3.6.1.4.1.674.10892.5.4.300.70.1.25.1",   
+                    "1.3.6.1.4.1.674.10892.5.4.300.70.1.24.1",   
+                    "1.3.6.1.4.1.674.10892.5.4.200.10.1.27.1",   
+                    "1.3.6.1.4.1.674.10892.5.4.200.10.1.26.1",   
+                    # Even simpler base OIDs
+                    "1.3.6.1.4.1.674.10892.5.4.300.70.1.25",     
+                    "1.3.6.1.4.1.674.10892.5.4.300.70.1.24",     
+                    "1.3.6.1.4.1.674.10892.5.4.200.10.1.27",     
+                    "1.3.6.1.4.1.674.10892.5.4.200.10.1.26",
+                    # Dell older iDRAC versions
+                    "1.3.6.1.4.1.674.10892.1.300.70.1.25.1.1",  # Legacy chassis intrusion
+                    "1.3.6.1.4.1.674.10892.1.300.70.1.24.1.1",  # Legacy chassis security
+                    # Generic system status that might include intrusion
+                    "1.3.6.1.4.1.674.10892.5.2.2.0",            # System status
+                    "1.3.6.1.4.1.674.10892.5.2.3.0"             # System health rollup
                 ]),
                 "psu_redundancy": await self._async_get_snmp_value_with_multiple_fallbacks([
                     IDRAC_OIDS["psu_redundancy"],
@@ -157,14 +170,28 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
                 else:
                     _LOGGER.debug("PSU amperage sensor %d returned invalid value: %s", psu_index, amperage_value)
 
-            # Get memory health data - only include sensors with valid data
+            # Get memory health data - try multiple OID bases if discovery found modules
             for memory_index in self.discovered_memory:
-                memory_oid = f"{IDRAC_OIDS['memory_health_base']}.{memory_index}"
-                health_value = await self._async_get_snmp_value(memory_oid)
+                # Try multiple memory health OID bases to find working ones
+                memory_oid_bases = [
+                    IDRAC_OIDS['memory_health_base'],                 # Primary: 1.3.6.1.4.1.674.10892.5.4.1100.50.1.5
+                    "1.3.6.1.4.1.674.10892.5.4.1100.50.1.6",         # Alternative memory health status
+                    "1.3.6.1.4.1.674.10892.5.4.1100.50.1.20",        # Memory device status
+                    "1.3.6.1.4.1.674.10892.5.4.1100.50.1.7",         # Memory operational status
+                ]
+                
+                health_value = None
+                for oid_base in memory_oid_bases:
+                    memory_oid = f"{oid_base}.{memory_index}"
+                    health_value = await self._async_get_snmp_value(memory_oid)
+                    if health_value is not None:
+                        _LOGGER.debug("Found memory health for module %d using OID %s: %s", memory_index, memory_oid, health_value)
+                        break
+                
                 if health_value is not None:  # Health status can be various values
                     data["memory_health"][f"memory_{memory_index}"] = health_value
                 else:
-                    _LOGGER.debug("Memory health sensor %d returned invalid value: %s", memory_index, health_value)
+                    _LOGGER.debug("Memory health sensor %d returned invalid value from all OIDs", memory_index)
 
             return data
 

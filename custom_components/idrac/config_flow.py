@@ -83,7 +83,26 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
         discovered_cpus = await _discover_cpu_sensors(engine, community_data, transport_target, context_data, SNMP_WALK_OIDS["cpu_temps"])
         discovered_psus = await _discover_psu_sensors(engine, community_data, transport_target, context_data, SNMP_WALK_OIDS["psu_status"])
         discovered_voltage_probes = await _discover_voltage_probes(engine, community_data, transport_target, context_data, SNMP_WALK_OIDS["psu_voltage"])
-        discovered_memory = await _discover_memory_sensors(engine, community_data, transport_target, context_data, SNMP_WALK_OIDS["memory_health"])
+        # Try multiple memory health OID bases
+        discovered_memory = []
+        memory_oid_bases = [
+            SNMP_WALK_OIDS["memory_health"],  # Current: 1.3.6.1.4.1.674.10892.5.4.1100.50.1.5
+            "1.3.6.1.4.1.674.10892.5.4.1100.50.1.6",  # Alternative memory health status
+            "1.3.6.1.4.1.674.10892.5.4.1100.50.1.20", # Memory device status
+            "1.3.6.1.4.1.674.10892.5.4.1100.50.1.7",  # Memory operational status
+            "1.3.6.1.4.1.674.10892.5.4.1100.50.1.8",  # Memory error status
+        ]
+        
+        for oid_base in memory_oid_bases:
+            _LOGGER.debug("Trying memory discovery with OID base: %s", oid_base)
+            memory_results = await _discover_memory_sensors(engine, community_data, transport_target, context_data, oid_base)
+            if memory_results:
+                discovered_memory.extend(memory_results)
+                _LOGGER.info("Found %d memory modules with OID base %s", len(memory_results), oid_base)
+                break  # Use the first OID base that works
+        
+        # Remove duplicates and sort
+        discovered_memory = sorted(list(set(discovered_memory)))
 
         _LOGGER.info("Discovered %d fans, %d CPU temperature sensors, %d PSU sensors, %d voltage probes, and %d memory modules", len(discovered_fans), len(discovered_cpus), len(discovered_psus), len(discovered_voltage_probes), len(discovered_memory))
         _LOGGER.debug("Fan sensor IDs: %s", discovered_fans)
@@ -331,16 +350,17 @@ async def _discover_memory_sensors(
                         and str(value) != "No Such Instance currently exists at this OID"):
                         try:
                             # Memory health status should be a valid integer
-                            # Accept a wider range as some systems may use different values
+                            # Accept a very wide range as different iDRAC versions use different values
                             health_value = int(value)
-                            if 1 <= health_value <= 10:  # Expanded range for different iDRAC versions
+                            if 0 <= health_value <= 255:  # Very broad range to catch any valid responses
                                 results.append(memory_id)
                                 _LOGGER.debug("Found memory module ID %d at OID %s with health: %s", memory_id, test_oid, value)
                             else:
                                 _LOGGER.debug("Memory module ID %d at OID %s has out-of-range health: %s", memory_id, test_oid, value)
                         except (ValueError, TypeError):
                             # Some systems might return text values, so let's accept those too
-                            if str(value).strip() and len(str(value)) < 50:  # Basic sanity check
+                            value_str = str(value).strip()
+                            if value_str and len(value_str) < 100 and not value_str.lower().startswith('no such'):  # Basic sanity check
                                 results.append(memory_id)
                                 _LOGGER.debug("Found memory module ID %d at OID %s with text health: %s", memory_id, test_oid, value)
                             else:
