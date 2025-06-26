@@ -231,45 +231,60 @@ async def _discover_voltage_probes(
     context_data: ContextData,
     base_oid: str,
 ) -> list[int]:
-    """Discover voltage probe sensors by testing voltage OIDs."""
+    """Discover voltage probe sensors by testing voltage OIDs with focus on PSU voltage ranges."""
     results = []
     
     try:
         _LOGGER.debug("Testing voltage probe OIDs for base: %s", base_oid)
         
-        # Test up to 20 voltage probe indices (covers various system configurations)
-        for probe_id in range(1, 21):
-            test_oid = f"{base_oid}.{probe_id}"
-            try:
-                error_indication, error_status, error_index, var_binds = await getCmd(
-                    engine,
-                    community_data,
-                    transport_target,
-                    context_data,
-                    ObjectType(ObjectIdentity(test_oid)),
-                )
-                
-                if not error_indication and not error_status and var_binds:
-                    value = var_binds[0][1]
-                    if (value is not None 
-                        and str(value) != "No Such Object currently exists at this OID"
-                        and str(value) != "No Such Instance currently exists at this OID"):
-                        try:
-                            # Voltage probe reading should be a valid integer (millivolts)
-                            voltage_value = int(value)
-                            if voltage_value > 0:  # Valid voltage reading should be positive
-                                results.append(probe_id)
-                                _LOGGER.debug("Found voltage probe ID %d at OID %s with value: %s mV", probe_id, test_oid, value)
-                            else:
-                                _LOGGER.debug("Voltage probe ID %d at OID %s has invalid value: %s", probe_id, test_oid, value)
-                        except (ValueError, TypeError):
-                            _LOGGER.debug("Voltage probe ID %d at OID %s has non-integer value: %s", probe_id, test_oid, value)
-                
-            except Exception as exc:
-                _LOGGER.debug("Error testing voltage probe OID %s: %s", test_oid, exc)
-                continue
+        # Test known PSU voltage probe ranges based on test results
+        # Found working probes at indices 27, 28 on test system
+        test_ranges = [
+            range(25, 35),  # Primary PSU voltage range (includes working 27, 28)
+            range(20, 25),  # Secondary range for other PSU configurations
+            range(35, 45),  # Extended range for systems with more PSUs
+            range(1, 20),   # Lower range for other voltage probes (less likely PSU)
+        ]
+        
+        for test_range in test_ranges:
+            for probe_id in test_range:
+                test_oid = f"{base_oid}.{probe_id}"
+                try:
+                    error_indication, error_status, error_index, var_binds = await getCmd(
+                        engine,
+                        community_data,
+                        transport_target,
+                        context_data,
+                        ObjectType(ObjectIdentity(test_oid)),
+                    )
+                    
+                    if not error_indication and not error_status and var_binds:
+                        value = var_binds[0][1]
+                        if (value is not None 
+                            and str(value) != "No Such Object currently exists at this OID"
+                            and str(value) != "No Such Instance currently exists at this OID"
+                            and str(value).strip() != ""):  # Handle empty string values
+                            try:
+                                # Voltage probe reading should be a valid integer (millivolts)
+                                voltage_value = int(value)
+                                # PSU voltages can range from 3V to 240V (3000-240000 mV)
+                                # Expanded range based on test results showing 120V PSUs
+                                if 3000 <= voltage_value <= 240000:  # 3V to 240V range for PSU voltages
+                                    results.append(probe_id)
+                                    voltage_v = voltage_value / 1000.0
+                                    _LOGGER.debug("Found PSU voltage probe ID %d at OID %s with value: %s mV (%.3f V)", probe_id, test_oid, voltage_value, voltage_v)
+                                elif voltage_value > 0:
+                                    # Log other voltage probes for reference but don't include them
+                                    voltage_v = voltage_value / 1000.0
+                                    _LOGGER.debug("Found other voltage probe ID %d at OID %s with value: %s mV (%.3f V) - outside PSU voltage range", probe_id, test_oid, voltage_value, voltage_v)
+                            except (ValueError, TypeError):
+                                _LOGGER.debug("Voltage probe ID %d at OID %s has non-numeric value: %s", probe_id, test_oid, value)
+                    
+                except Exception as exc:
+                    _LOGGER.debug("Error testing voltage probe OID %s: %s", test_oid, exc)
+                    continue
 
-        _LOGGER.info("Voltage probe discovery for %s found %d voltage sensors: %s", base_oid, len(results), results)
+        _LOGGER.info("Voltage probe discovery for %s found %d PSU voltage sensors: %s", base_oid, len(results), results)
         results.sort()
         
     except Exception as exc:

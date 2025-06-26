@@ -107,7 +107,7 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
             for voltage_probe_index in self.discovered_voltage_probes:
                 voltage_oid = f"{IDRAC_OIDS['psu_voltage_base']}.{voltage_probe_index}"
                 voltage_value = await self._async_get_snmp_value(voltage_oid, divide_by=1000)  # Convert mV to V
-                if voltage_value is not None and voltage_value > 0:  # Valid voltage should be > 0
+                if voltage_value is not None and 3 <= voltage_value <= 240:  # Valid PSU voltage range 3V-240V
                     data["psu_voltages"][f"psu_voltage_{voltage_probe_index}"] = voltage_value
                 else:
                     _LOGGER.debug("Voltage probe sensor %d returned invalid value: %s", voltage_probe_index, voltage_value)

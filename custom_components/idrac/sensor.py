@@ -58,9 +58,10 @@ async def async_setup_entry(
         ])
 
     # Add PSU voltage sensors (discovered separately)
-    for voltage_probe_index in config_entry.data.get(CONF_DISCOVERED_VOLTAGE_PROBES, []):
+    voltage_probes = config_entry.data.get(CONF_DISCOVERED_VOLTAGE_PROBES, [])
+    for i, voltage_probe_index in enumerate(voltage_probes, 1):
         entities.append(
-            IdracPsuVoltageSensor(coordinator, config_entry, voltage_probe_index)
+            IdracPsuVoltageSensor(coordinator, config_entry, voltage_probe_index, i)
         )
 
     async_add_entities(entities)
@@ -86,7 +87,7 @@ class IdracSensor(CoordinatorEntity, SensorEntity):
         device_id = f"{host}:{port}"
         
         self._attr_name = sensor_name
-        self._attr_unique_id = f"{config_entry.entry_id}_{sensor_key}"
+        self._attr_unique_id = f"{device_id}_{sensor_key}"
         self._attr_native_unit_of_measurement = unit
         self._attr_device_class = device_class
         self._attr_state_class = SensorStateClass.MEASUREMENT
@@ -239,10 +240,13 @@ class IdracPsuVoltageSensor(IdracSensor):
         coordinator: IdracDataUpdateCoordinator,
         config_entry: ConfigEntry,
         voltage_probe_index: int,
+        psu_number: int = None,
     ) -> None:
         """Initialize the PSU voltage sensor."""
         sensor_key = f"psu_voltage_{voltage_probe_index}"
-        sensor_name = f"PSU {voltage_probe_index} Voltage"
+        # Use sequential PSU numbering if provided, otherwise use probe index
+        display_number = psu_number if psu_number is not None else voltage_probe_index
+        sensor_name = f"PSU {display_number} Voltage"
         super().__init__(
             coordinator,
             config_entry,
