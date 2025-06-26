@@ -64,6 +64,14 @@ IDRAC_OIDS: Final = {
     "physical_disk_serial": "1.3.6.1.4.1.674.10892.5.5.1.20.130.4.1.7",    # Physical disk serial number
     "controller_state": "1.3.6.1.4.1.674.10892.5.5.1.20.130.1.1.38",       # Storage controller state
     "controller_battery_state": "1.3.6.1.4.1.674.10892.5.5.1.20.130.15.1.4", # Controller battery state
+    
+    # System identification OIDs
+    "system_model_name": "1.3.6.1.4.1.674.10892.5.1.3.12.0",               # System model name
+    "system_service_tag": "1.3.6.1.4.1.674.10892.5.1.3.2.0",               # System service tag
+    "system_bios_version": "1.3.6.1.4.1.674.10892.5.1.3.6.0",              # System BIOS version
+    "cpu_brand": "1.3.6.1.4.1.674.10892.5.4.1100.30.1.23.1.1",             # CPU brand/model
+    "cpu_max_speed": "1.3.6.1.4.1.674.10892.5.4.1100.30.1.11.1.1",         # CPU max speed
+    "cpu_current_speed": "1.3.6.1.4.1.674.10892.5.4.1100.30.1.12.1.1",     # CPU current speed
     "controller_rollup_status": "1.3.6.1.4.1.674.10892.5.5.1.20.130.1.1.37", # Controller rollup status (combined health)
     "controller_name": "1.3.6.1.4.1.674.10892.5.5.1.20.130.1.1.2",           # Controller name/model
     "controller_firmware": "1.3.6.1.4.1.674.10892.5.5.1.20.130.1.1.8",       # Controller firmware version

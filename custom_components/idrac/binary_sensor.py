@@ -102,13 +102,7 @@ class IdracBinarySensor(CoordinatorEntity, BinarySensorEntity):
         self._attr_unique_id = f"{device_id}_{sensor_key}"
         self._attr_device_class = device_class
 
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, device_id)},
-            "name": f"Dell iDRAC ({host}:{port})" if port != 161 else f"Dell iDRAC ({host})",
-            "manufacturer": "Dell",
-            "model": "iDRAC",
-            "configuration_url": f"https://{host}",
-        }
+        self._attr_device_info = coordinator.device_info
 
     @property
     def available(self) -> bool:

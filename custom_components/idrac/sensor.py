@@ -15,6 +15,7 @@ from homeassistant.const import (
     REVOLUTIONS_PER_MINUTE,
     UnitOfElectricCurrent,
     UnitOfElectricPotential,
+    UnitOfFrequency,
     UnitOfPower,
     UnitOfTemperature,
 )
@@ -47,6 +48,7 @@ async def async_setup_entry(
         IdracTemperatureSensor(coordinator, config_entry, "temp_inlet", "Inlet Temperature"),
         IdracTemperatureSensor(coordinator, config_entry, "temp_outlet", "Outlet Temperature"),
         IdracTemperatureDeltaSensor(coordinator, config_entry, hass),
+        IdracCpuSpeedSensor(coordinator, config_entry),
     ]
 
     # Add CPU temperature sensors
@@ -120,13 +122,7 @@ class IdracSensor(CoordinatorEntity, SensorEntity):
         self._attr_device_class = device_class
         self._attr_state_class = SensorStateClass.MEASUREMENT
 
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, device_id)},
-            "name": f"Dell iDRAC ({host}:{port})" if port != 161 else f"Dell iDRAC ({host})",
-            "manufacturer": "Dell",
-            "model": "iDRAC",
-            "configuration_url": f"https://{host}",
-        }
+        self._attr_device_info = coordinator.device_info
 
     @property
     def native_value(self) -> float | None:
@@ -158,6 +154,52 @@ class IdracPowerSensor(IdracSensor):
             UnitOfPower.WATT,
             SensorDeviceClass.POWER,
         )
+
+
+class IdracCpuSpeedSensor(IdracSensor):
+    """Dell iDRAC CPU current speed sensor."""
+
+    def __init__(
+        self,
+        coordinator: IdracDataUpdateCoordinator,
+        config_entry: ConfigEntry,
+    ) -> None:
+        """Initialize the CPU speed sensor."""
+        super().__init__(
+            coordinator,
+            config_entry,
+            "cpu_current_speed",
+            "CPU Current Speed",
+            UnitOfFrequency.MEGAHERTZ,
+            SensorDeviceClass.FREQUENCY,
+        )
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the current CPU speed in MHz."""
+        if self.coordinator.data is None:
+            return None
+        
+        speed_mhz = self.coordinator.data.get("cpu_current_speed")
+        if speed_mhz is not None and speed_mhz > 0:
+            return speed_mhz
+        return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, str] | None:
+        """Return additional state attributes."""
+        if self.coordinator.data is None:
+            return None
+        
+        speed_mhz = self.coordinator.data.get("cpu_current_speed")
+        if speed_mhz is not None and speed_mhz > 0:
+            # Convert to GHz for display
+            speed_ghz = speed_mhz / 1000
+            return {
+                "speed_ghz": f"{speed_ghz:.2f} GHz",
+                "speed_mhz": f"{speed_mhz} MHz"
+            }
+        return None
 
 
 class IdracTemperatureSensor(IdracSensor):

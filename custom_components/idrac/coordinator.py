@@ -65,6 +65,9 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
         
         # Store server identification for logging
         self._server_id = f"{self.host}:{self.port}"
+        
+        # System identification data for device info
+        self._device_info = None
 
         # Get scan interval from options first, then config data, then default
         scan_interval = entry.options.get(
@@ -79,13 +82,83 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
             update_interval=timedelta(seconds=scan_interval),
         )
 
+    async def _async_fetch_device_info(self) -> dict[str, Any]:
+        """Fetch device information for device registry."""
+        if self._device_info is not None:
+            return self._device_info
+        
+        device_info = {
+            "identifiers": {(DOMAIN, self._server_id)},
+            "manufacturer": "Dell",
+            "configuration_url": f"https://{self.host}",
+        }
+        
+        # Get system model
+        model_name = await self._async_get_snmp_string(IDRAC_OIDS["system_model_name"])
+        if model_name:
+            device_info["model"] = model_name
+        else:
+            device_info["model"] = "iDRAC"
+        
+        # Get service tag for serial number
+        service_tag = await self._async_get_snmp_string(IDRAC_OIDS["system_service_tag"])
+        if service_tag:
+            device_info["serial_number"] = service_tag
+        
+        # Get BIOS version for sw_version
+        bios_version = await self._async_get_snmp_string(IDRAC_OIDS["system_bios_version"])
+        if bios_version:
+            device_info["sw_version"] = f"BIOS {bios_version}"
+        
+        # Create name with model if available
+        if model_name:
+            device_info["name"] = f"Dell {model_name} ({self.host}:{self.port})" if self.port != 161 else f"Dell {model_name} ({self.host})"
+        else:
+            device_info["name"] = f"Dell iDRAC ({self.host}:{self.port})" if self.port != 161 else f"Dell iDRAC ({self.host})"
+        
+        # Get CPU information for additional context
+        cpu_brand = await self._async_get_snmp_string(IDRAC_OIDS["cpu_brand"])
+        cpu_max_speed = await self._async_get_snmp_value(IDRAC_OIDS["cpu_max_speed"])
+        
+        # Add CPU info to device attributes if available
+        hw_version_parts = []
+        if cpu_brand:
+            hw_version_parts.append(f"CPU: {cpu_brand}")
+        if cpu_max_speed:
+            # Convert MHz to GHz for readability
+            cpu_ghz = cpu_max_speed / 1000 if cpu_max_speed >= 1000 else cpu_max_speed
+            unit = "GHz" if cpu_max_speed >= 1000 else "MHz"
+            hw_version_parts.append(f"{cpu_ghz:.1f} {unit}")
+        
+        if hw_version_parts:
+            device_info["hw_version"] = " @ ".join(hw_version_parts)
+        
+        self._device_info = device_info
+        _LOGGER.debug("Device info: %s", device_info)
+        return device_info
+
+    @property 
+    def device_info(self) -> dict[str, Any]:
+        """Return device information."""
+        return self._device_info or {
+            "identifiers": {(DOMAIN, self._server_id)},
+            "name": f"Dell iDRAC ({self.host}:{self.port})" if self.port != 161 else f"Dell iDRAC ({self.host})",
+            "manufacturer": "Dell",
+            "model": "iDRAC",
+            "configuration_url": f"https://{self.host}",
+        }
+
     async def _async_update_data(self) -> dict[str, Any]:
         """Update data via library."""
         try:
+            # Fetch device info on first run
+            if self._device_info is None:
+                await self._async_fetch_device_info()
             data = {
                 "power": await self._async_get_snmp_value(IDRAC_OIDS["power"]),
                 "temp_inlet": await self._async_get_snmp_value(IDRAC_OIDS["temp_inlet"], divide_by=10),
                 "temp_outlet": await self._async_get_snmp_value(IDRAC_OIDS["temp_outlet"], divide_by=10),
+                "cpu_current_speed": await self._async_get_snmp_value(IDRAC_OIDS["cpu_current_speed"]),
                 "cpu_temps": {},
                 "fans": {},
                 "psu_voltages": {},

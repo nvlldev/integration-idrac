@@ -80,13 +80,7 @@ class IdracButton(CoordinatorEntity, ButtonEntity):
         self._port = port
         self._community = config_entry.data[CONF_COMMUNITY]
 
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, device_id)},
-            "name": f"Dell iDRAC ({host}:{port})" if port != 161 else f"Dell iDRAC ({host})",
-            "manufacturer": "Dell",
-            "model": "iDRAC",
-            "configuration_url": f"https://{host}",
-        }
+        self._attr_device_info = coordinator.device_info
 
     async def _async_snmp_set(self, oid: str, value: int) -> bool:
         """Send SNMP SET command."""
