@@ -7,6 +7,6 @@
   "documentation": "https://github.com/scottpetersen/integration-idrac",
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/scottpetersen/integration-idrac/issues",
-  "requirements": ["pysnmp==4.4.12", "pyasn1==0.4.8"],
+  "requirements": ["easysnmp==0.2.6"],
   "version": "1.0.0"
 }
