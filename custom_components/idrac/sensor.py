@@ -582,17 +582,18 @@ class IdracVirtualDiskSensor(IdracSensor):
         if vdisk_data.get("size"):
             attributes["size_mb"] = str(vdisk_data["size"])
         if vdisk_data.get("layout"):
-            # Map RAID layout types
+            # Map RAID layout types based on Dell documentation
             layout_map = {
-                1: "Concatenated",
+                1: "Unknown",
                 2: "RAID-0", 
                 3: "RAID-1",
-                4: "RAID-4",
-                7: "RAID-5",
-                10: "RAID-6",
-                12: "RAID-10",
-                18: "RAID-50",
-                19: "RAID-60"
+                4: "RAID-5",
+                5: "RAID-6",
+                6: "RAID-10",
+                7: "RAID-50",
+                8: "RAID-60",
+                9: "Concatenated RAID-1",
+                10: "Concatenated RAID-5"
             }
             try:
                 layout_int = int(vdisk_data["layout"])
@@ -724,10 +725,15 @@ class IdracStorageControllerSensor(IdracSensor):
                 state_int = int(state_value)
                 mapped_state = state_map.get(state_int, f"unknown_{state_int}")
                 
-                # Debug logging to show state mapping
+                # Debug logging to show state mapping and diagnostic info
+                controller_data = self.coordinator.data["storage_controllers"].get(self._sensor_key)
+                rollup_status = controller_data.get("rollup_status") if controller_data else None
+                controller_name = controller_data.get("name") if controller_data else None
+                
                 _LOGGER.debug(
                     f"Storage Controller {self._controller_index} - State mapping: "
-                    f"raw value {state_value} -> integer {state_int} -> '{mapped_state}'"
+                    f"raw value {state_value} -> integer {state_int} -> '{mapped_state}', "
+                    f"Rollup status: {rollup_status}, Name: {controller_name}"
                 )
                 
                 return mapped_state
@@ -750,6 +756,8 @@ class IdracStorageControllerSensor(IdracSensor):
             return None
         
         attributes = {}
+        
+        # Battery status
         battery_state = controller_data.get("battery_state")
         if battery_state is not None:
             # Map battery states
@@ -767,6 +775,33 @@ class IdracStorageControllerSensor(IdracSensor):
                 attributes["battery_status"] = battery_map.get(battery_int, f"unknown_{battery_int}")
             except (ValueError, TypeError):
                 attributes["battery_status"] = str(battery_state)
+        
+        # Rollup status (overall health)
+        rollup_status = controller_data.get("rollup_status")
+        if rollup_status is not None:
+            rollup_map = {
+                1: "other",
+                2: "unknown",
+                3: "ok",
+                4: "non_critical",
+                5: "critical",
+                6: "non_recoverable"
+            }
+            try:
+                rollup_int = int(rollup_status)
+                attributes["overall_health"] = rollup_map.get(rollup_int, f"unknown_{rollup_int}")
+            except (ValueError, TypeError):
+                attributes["overall_health"] = str(rollup_status)
+        
+        # Controller information
+        if controller_data.get("name"):
+            attributes["controller_name"] = str(controller_data["name"])
+        if controller_data.get("firmware_version"):
+            attributes["firmware_version"] = str(controller_data["firmware_version"])
+        if controller_data.get("cache_size"):
+            attributes["cache_size_mb"] = str(controller_data["cache_size"])
+        if controller_data.get("rebuild_rate"):
+            attributes["rebuild_rate_percent"] = str(controller_data["rebuild_rate"])
         
         return attributes if attributes else None
 

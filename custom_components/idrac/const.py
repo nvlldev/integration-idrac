@@ -64,6 +64,11 @@ IDRAC_OIDS: Final = {
     "physical_disk_serial": "1.3.6.1.4.1.674.10892.5.5.1.20.130.4.1.7",    # Physical disk serial number
     "controller_state": "1.3.6.1.4.1.674.10892.5.5.1.20.130.1.1.38",       # Storage controller state
     "controller_battery_state": "1.3.6.1.4.1.674.10892.5.5.1.20.130.15.1.4", # Controller battery state
+    "controller_rollup_status": "1.3.6.1.4.1.674.10892.5.5.1.20.130.1.1.37", # Controller rollup status (combined health)
+    "controller_name": "1.3.6.1.4.1.674.10892.5.5.1.20.130.1.1.2",           # Controller name/model
+    "controller_firmware": "1.3.6.1.4.1.674.10892.5.5.1.20.130.1.1.8",       # Controller firmware version
+    "controller_cache_size": "1.3.6.1.4.1.674.10892.5.5.1.20.130.1.1.33",    # Controller cache memory size
+    "controller_rebuild_rate": "1.3.6.1.4.1.674.10892.5.5.1.20.130.1.1.43",  # Controller rebuild rate setting
 }
 
 # SNMP base OIDs for discovery

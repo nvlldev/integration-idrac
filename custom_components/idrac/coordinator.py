@@ -232,16 +232,30 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
                 controller_state = await self._async_get_snmp_value(controller_oid)
                 battery_state = await self._async_get_snmp_value(f"{IDRAC_OIDS['controller_battery_state']}.{controller_index}")
                 
-                # Debug logging to show actual numeric values
+                # Get additional diagnostic information
+                rollup_status = await self._async_get_snmp_value(f"{IDRAC_OIDS['controller_rollup_status']}.{controller_index}")
+                controller_name = await self._async_get_snmp_string(f"{IDRAC_OIDS['controller_name']}.{controller_index}")
+                firmware_version = await self._async_get_snmp_string(f"{IDRAC_OIDS['controller_firmware']}.{controller_index}")
+                cache_size = await self._async_get_snmp_value(f"{IDRAC_OIDS['controller_cache_size']}.{controller_index}")
+                rebuild_rate = await self._async_get_snmp_value(f"{IDRAC_OIDS['controller_rebuild_rate']}.{controller_index}")
+                
+                # Debug logging to show actual numeric values and diagnostic info
                 _LOGGER.debug(
                     f"Storage Controller {controller_index} - Raw state value: {controller_state} "
-                    f"(type: {type(controller_state)}), Battery state: {battery_state}"
+                    f"(type: {type(controller_state)}), Battery state: {battery_state}, "
+                    f"Rollup status: {rollup_status}, Name: {controller_name}, "
+                    f"Firmware: {firmware_version}, Cache size: {cache_size}, Rebuild rate: {rebuild_rate}"
                 )
                 
                 # Create entry even if state is None - it will be discovered so should exist
                 data["storage_controllers"][f"controller_{controller_index}"] = {
                     "state": controller_state if controller_state is not None else 0,  # Default to 0 if state unavailable
                     "battery_state": battery_state,
+                    "rollup_status": rollup_status,
+                    "name": controller_name,
+                    "firmware_version": firmware_version,
+                    "cache_size": cache_size,
+                    "rebuild_rate": rebuild_rate,
                 }
 
             return data
