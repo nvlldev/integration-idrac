@@ -19,6 +19,7 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util.unit_conversion import TemperatureConverter
 
 from .const import CONF_DISCOVERED_CPUS, CONF_DISCOVERED_FANS, CONF_DISCOVERED_PSUS, CONF_DISCOVERED_VOLTAGE_PROBES, DOMAIN
 from .coordinator import IdracDataUpdateCoordinator
@@ -41,7 +42,7 @@ async def async_setup_entry(
         IdracPowerSensor(coordinator, config_entry),
         IdracTemperatureSensor(coordinator, config_entry, "temp_inlet", "Inlet Temperature"),
         IdracTemperatureSensor(coordinator, config_entry, "temp_outlet", "Outlet Temperature"),
-        IdracTemperatureDeltaSensor(coordinator, config_entry),
+        IdracTemperatureDeltaSensor(coordinator, config_entry, hass),
     ]
 
     # Add CPU temperature sensors
@@ -350,15 +351,17 @@ class IdracTemperatureDeltaSensor(IdracSensor):
         self,
         coordinator: IdracDataUpdateCoordinator,
         config_entry: ConfigEntry,
+        hass: HomeAssistant,
     ) -> None:
         """Initialize the temperature delta sensor."""
+        self.hass = hass
         super().__init__(
             coordinator,
             config_entry,
             "temp_delta",
             "Airflow Temperature Rise",
             UnitOfTemperature.CELSIUS,
-            SensorDeviceClass.TEMPERATURE,
+            None,  # No device class to avoid automatic temperature conversion
         )
 
     @property
@@ -371,7 +374,21 @@ class IdracTemperatureDeltaSensor(IdracSensor):
         inlet_temp = self.coordinator.data.get("temp_inlet")
         
         if outlet_temp is not None and inlet_temp is not None:
-            return outlet_temp - inlet_temp
+            # Calculate delta in Celsius (raw data is in Celsius)
+            delta_celsius = outlet_temp - inlet_temp
+            
+            # Check if user prefers Fahrenheit and convert delta accordingly
+            # For temperature differences, we only apply the scaling factor (9/5), not the offset
+            user_unit = self.hass.config.units.temperature_unit
+            if user_unit == UnitOfTemperature.FAHRENHEIT:
+                # Convert delta: 1°C difference = 1.8°F difference (no offset for deltas)
+                delta = delta_celsius * 9/5
+                self._attr_native_unit_of_measurement = UnitOfTemperature.FAHRENHEIT
+            else:
+                delta = delta_celsius
+                self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+            
+            return round(delta, 1)
         return None
 
     @property

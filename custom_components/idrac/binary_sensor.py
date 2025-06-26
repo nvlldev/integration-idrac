@@ -11,7 +11,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import CONF_DISCOVERED_PSUS, DOMAIN
+from .const import CONF_DISCOVERED_MEMORY, CONF_DISCOVERED_PSUS, DOMAIN
 from .coordinator import IdracDataUpdateCoordinator
 
 
@@ -28,12 +28,23 @@ async def async_setup_entry(
     """Set up the Dell iDRAC binary sensors."""
     coordinator: IdracDataUpdateCoordinator = hass.data[DOMAIN][config_entry.entry_id]
     
-    entities: list[IdracBinarySensor] = []
+    entities: list[IdracBinarySensor] = [
+        # System health sensors
+        IdracSystemHealthBinarySensor(coordinator, config_entry),
+        IdracSystemIntrusionBinarySensor(coordinator, config_entry),
+        IdracPsuRedundancyBinarySensor(coordinator, config_entry),
+    ]
 
     # Add PSU status binary sensors
     for psu_index in config_entry.data.get(CONF_DISCOVERED_PSUS, []):
         entities.append(
             IdracPsuStatusBinarySensor(coordinator, config_entry, psu_index)
+        )
+
+    # Add memory health binary sensors
+    for memory_index in config_entry.data.get(CONF_DISCOVERED_MEMORY, []):
+        entities.append(
+            IdracMemoryHealthBinarySensor(coordinator, config_entry, memory_index)
         )
 
     async_add_entities(entities)
@@ -145,3 +156,226 @@ class IdracPsuStatusBinarySensor(IdracBinarySensor):
             }
         except (ValueError, TypeError):
             return {"raw_value": str(status_value)}
+
+
+class IdracSystemHealthBinarySensor(IdracBinarySensor):
+    """Dell iDRAC system health binary sensor."""
+
+    def __init__(
+        self,
+        coordinator: IdracDataUpdateCoordinator,
+        config_entry: ConfigEntry,
+    ) -> None:
+        """Initialize the system health binary sensor."""
+        super().__init__(
+            coordinator,
+            config_entry,
+            "system_health",
+            "System Health",
+            BinarySensorDeviceClass.PROBLEM,  # "On" means problem detected, "Off" means OK
+        )
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return True if system has a health problem."""
+        if self.coordinator.data is None:
+            return None
+        
+        health_value = self.coordinator.data.get("system_health")
+        if health_value is not None:
+            try:
+                health_int = int(health_value)
+                # Dell iDRAC health values: 3=ok, others indicate problems
+                return health_int != 3
+            except (ValueError, TypeError):
+                return None
+        return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, str] | None:
+        """Return additional state attributes."""
+        if self.coordinator.data is None:
+            return None
+        
+        health_value = self.coordinator.data.get("system_health")
+        if health_value is not None:
+            try:
+                health_int = int(health_value)
+                # Map Dell iDRAC health values to readable strings
+                health_map = {
+                    1: "other",
+                    2: "unknown", 
+                    3: "ok",
+                    4: "non_critical",
+                    5: "critical",
+                    6: "non_recoverable"
+                }
+                health_text = health_map.get(health_int, "unknown")
+                
+                return {
+                    "health_code": health_int,
+                    "health_text": health_text,
+                }
+            except (ValueError, TypeError):
+                return {"raw_value": str(health_value)}
+        return None
+
+
+class IdracSystemIntrusionBinarySensor(IdracBinarySensor):
+    """Dell iDRAC system intrusion binary sensor."""
+
+    def __init__(
+        self,
+        coordinator: IdracDataUpdateCoordinator,
+        config_entry: ConfigEntry,
+    ) -> None:
+        """Initialize the system intrusion binary sensor."""
+        super().__init__(
+            coordinator,
+            config_entry,
+            "system_intrusion",
+            "Chassis Intrusion",
+            BinarySensorDeviceClass.SAFETY,  # "On" means intrusion detected
+        )
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return True if chassis intrusion is detected."""
+        if self.coordinator.data is None:
+            return None
+        
+        intrusion_value = self.coordinator.data.get("system_intrusion")
+        if intrusion_value is not None:
+            try:
+                intrusion_int = int(intrusion_value)
+                # Dell iDRAC intrusion values: 1=secure, 2=breach_detected
+                return intrusion_int == 2
+            except (ValueError, TypeError):
+                return None
+        return None
+
+
+class IdracPsuRedundancyBinarySensor(IdracBinarySensor):
+    """Dell iDRAC PSU redundancy binary sensor."""
+
+    def __init__(
+        self,
+        coordinator: IdracDataUpdateCoordinator,
+        config_entry: ConfigEntry,
+    ) -> None:
+        """Initialize the PSU redundancy binary sensor."""
+        super().__init__(
+            coordinator,
+            config_entry,
+            "psu_redundancy",
+            "PSU Redundancy",
+            BinarySensorDeviceClass.PROBLEM,  # "On" means redundancy lost, "Off" means redundant
+        )
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return True if PSU redundancy is lost."""
+        if self.coordinator.data is None:
+            return None
+        
+        redundancy_value = self.coordinator.data.get("psu_redundancy")
+        if redundancy_value is not None:
+            try:
+                redundancy_int = int(redundancy_value)
+                # Dell iDRAC redundancy values: 1=redundant, 2=lost, 3=degraded
+                return redundancy_int != 1
+            except (ValueError, TypeError):
+                return None
+        return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, str] | None:
+        """Return additional state attributes."""
+        if self.coordinator.data is None:
+            return None
+        
+        redundancy_value = self.coordinator.data.get("psu_redundancy")
+        if redundancy_value is not None:
+            try:
+                redundancy_int = int(redundancy_value)
+                # Map Dell iDRAC redundancy values to readable strings
+                redundancy_map = {
+                    1: "redundant",
+                    2: "lost", 
+                    3: "degraded",
+                }
+                redundancy_text = redundancy_map.get(redundancy_int, "unknown")
+                
+                return {
+                    "redundancy_code": redundancy_int,
+                    "redundancy_text": redundancy_text,
+                }
+            except (ValueError, TypeError):
+                return {"raw_value": str(redundancy_value)}
+        return None
+
+
+class IdracMemoryHealthBinarySensor(IdracBinarySensor):
+    """Dell iDRAC memory health binary sensor."""
+
+    def __init__(
+        self,
+        coordinator: IdracDataUpdateCoordinator,
+        config_entry: ConfigEntry,
+        memory_index: int,
+    ) -> None:
+        """Initialize the memory health binary sensor."""
+        sensor_key = f"memory_health_{memory_index}"
+        sensor_name = f"Memory {memory_index} Health"
+        super().__init__(
+            coordinator,
+            config_entry,
+            sensor_key,
+            sensor_name,
+            BinarySensorDeviceClass.PROBLEM,  # "On" means problem detected, "Off" means OK
+        )
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return True if memory module has a problem."""
+        if self.coordinator.data is None or "memory_health" not in self.coordinator.data:
+            return None
+        
+        health_value = self.coordinator.data["memory_health"].get(self._sensor_key)
+        if health_value is not None:
+            try:
+                health_int = int(health_value)
+                # Dell iDRAC memory health values: 3=ok, others indicate problems
+                return health_int != 3
+            except (ValueError, TypeError):
+                return None
+        return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, str] | None:
+        """Return additional state attributes."""
+        if self.coordinator.data is None or "memory_health" not in self.coordinator.data:
+            return None
+        
+        health_value = self.coordinator.data["memory_health"].get(self._sensor_key)
+        if health_value is not None:
+            try:
+                health_int = int(health_value)
+                # Map Dell iDRAC health values to readable strings
+                health_map = {
+                    1: "other",
+                    2: "unknown", 
+                    3: "ok",
+                    4: "non_critical",
+                    5: "critical",
+                    6: "non_recoverable"
+                }
+                health_text = health_map.get(health_int, "unknown")
+                
+                return {
+                    "health_code": health_int,
+                    "health_text": health_text,
+                }
+            except (ValueError, TypeError):
+                return {"raw_value": str(health_value)}
+        return None

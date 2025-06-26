@@ -26,6 +26,7 @@ from .const import (
     CONF_COMMUNITY,
     CONF_DISCOVERED_CPUS,
     CONF_DISCOVERED_FANS,
+    CONF_DISCOVERED_MEMORY,
     CONF_DISCOVERED_PSUS,
     CONF_DISCOVERED_VOLTAGE_PROBES,
     CONF_SCAN_INTERVAL,
@@ -82,12 +83,14 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
         discovered_cpus = await _discover_cpu_sensors(engine, community_data, transport_target, context_data, SNMP_WALK_OIDS["cpu_temps"])
         discovered_psus = await _discover_psu_sensors(engine, community_data, transport_target, context_data, SNMP_WALK_OIDS["psu_status"])
         discovered_voltage_probes = await _discover_voltage_probes(engine, community_data, transport_target, context_data, SNMP_WALK_OIDS["psu_voltage"])
+        discovered_memory = await _discover_memory_sensors(engine, community_data, transport_target, context_data, SNMP_WALK_OIDS["memory_health"])
 
-        _LOGGER.info("Discovered %d fans, %d CPU temperature sensors, %d PSU sensors, and %d voltage probes", len(discovered_fans), len(discovered_cpus), len(discovered_psus), len(discovered_voltage_probes))
+        _LOGGER.info("Discovered %d fans, %d CPU temperature sensors, %d PSU sensors, %d voltage probes, and %d memory modules", len(discovered_fans), len(discovered_cpus), len(discovered_psus), len(discovered_voltage_probes), len(discovered_memory))
         _LOGGER.debug("Fan sensor IDs: %s", discovered_fans)
         _LOGGER.debug("CPU sensor IDs: %s", discovered_cpus)
         _LOGGER.debug("PSU sensor IDs: %s", discovered_psus)
         _LOGGER.debug("Voltage probe IDs: %s", discovered_voltage_probes)
+        _LOGGER.debug("Memory module IDs: %s", discovered_memory)
 
         return {
             "title": f"Dell iDRAC ({host})",
@@ -95,6 +98,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
             CONF_DISCOVERED_CPUS: discovered_cpus,
             CONF_DISCOVERED_PSUS: discovered_psus,
             CONF_DISCOVERED_VOLTAGE_PROBES: discovered_voltage_probes,
+            CONF_DISCOVERED_MEMORY: discovered_memory,
         }
 
     except Exception as exc:
@@ -293,6 +297,60 @@ async def _discover_voltage_probes(
     return results
 
 
+async def _discover_memory_sensors(
+    engine: SnmpEngine,
+    community_data: CommunityData,
+    transport_target: UdpTransportTarget,
+    context_data: ContextData,
+    base_oid: str,
+) -> list[int]:
+    """Discover memory module health sensors."""
+    results = []
+    
+    try:
+        _LOGGER.debug("Testing memory health OIDs for base: %s", base_oid)
+        
+        # Test up to 32 memory slots (typical server configurations)
+        for memory_id in range(1, 33):
+            test_oid = f"{base_oid}.{memory_id}"
+            try:
+                error_indication, error_status, error_index, var_binds = await getCmd(
+                    engine,
+                    community_data,
+                    transport_target,
+                    context_data,
+                    ObjectType(ObjectIdentity(test_oid)),
+                )
+                
+                if not error_indication and not error_status and var_binds:
+                    value = var_binds[0][1]
+                    if (value is not None 
+                        and str(value) != "No Such Object currently exists at this OID"
+                        and str(value) != "No Such Instance currently exists at this OID"):
+                        try:
+                            # Memory health status should be a valid integer (1-6 range typically)
+                            health_value = int(value)
+                            if 1 <= health_value <= 6:  # Valid Dell iDRAC health status range
+                                results.append(memory_id)
+                                _LOGGER.debug("Found memory module ID %d at OID %s with health: %s", memory_id, test_oid, value)
+                            else:
+                                _LOGGER.debug("Memory module ID %d at OID %s has invalid health: %s", memory_id, test_oid, value)
+                        except (ValueError, TypeError):
+                            _LOGGER.debug("Memory module ID %d at OID %s has non-integer health: %s", memory_id, test_oid, value)
+                
+            except Exception as exc:
+                _LOGGER.debug("Error testing memory OID %s: %s", test_oid, exc)
+                continue
+
+        _LOGGER.info("Memory discovery for %s found %d memory modules: %s", base_oid, len(results), results)
+        results.sort()
+        
+    except Exception as exc:
+        _LOGGER.warning("Error discovering memory modules for OID %s: %s", base_oid, exc)
+    
+    return results
+
+
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Dell iDRAC."""
 
@@ -329,6 +387,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 config_data[CONF_DISCOVERED_CPUS] = info[CONF_DISCOVERED_CPUS]
                 config_data[CONF_DISCOVERED_PSUS] = info[CONF_DISCOVERED_PSUS]
                 config_data[CONF_DISCOVERED_VOLTAGE_PROBES] = info[CONF_DISCOVERED_VOLTAGE_PROBES]
+                config_data[CONF_DISCOVERED_MEMORY] = info[CONF_DISCOVERED_MEMORY]
                 
                 return self.async_create_entry(title=info["title"], data=config_data)
 
@@ -397,6 +456,7 @@ class OptionsFlow(config_entries.OptionsFlow):
                 new_data[CONF_DISCOVERED_CPUS] = info[CONF_DISCOVERED_CPUS]
                 new_data[CONF_DISCOVERED_PSUS] = info[CONF_DISCOVERED_PSUS]
                 new_data[CONF_DISCOVERED_VOLTAGE_PROBES] = info[CONF_DISCOVERED_VOLTAGE_PROBES]
+                new_data[CONF_DISCOVERED_MEMORY] = info[CONF_DISCOVERED_MEMORY]
                 
                 self.hass.config_entries.async_update_entry(
                     self.config_entry, data=new_data
@@ -430,5 +490,6 @@ class OptionsFlow(config_entries.OptionsFlow):
                 "cpus": len(self.config_entry.data.get(CONF_DISCOVERED_CPUS, [])),
                 "psus": len(self.config_entry.data.get(CONF_DISCOVERED_PSUS, [])),
                 "voltages": len(self.config_entry.data.get(CONF_DISCOVERED_VOLTAGE_PROBES, [])),
+                "memory": len(self.config_entry.data.get(CONF_DISCOVERED_MEMORY, [])),
             },
         )

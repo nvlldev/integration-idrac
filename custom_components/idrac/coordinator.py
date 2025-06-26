@@ -24,6 +24,7 @@ from .const import (
     CONF_COMMUNITY,
     CONF_DISCOVERED_CPUS,
     CONF_DISCOVERED_FANS,
+    CONF_DISCOVERED_MEMORY,
     CONF_DISCOVERED_PSUS,
     CONF_DISCOVERED_VOLTAGE_PROBES,
     CONF_SCAN_INTERVAL,
@@ -48,6 +49,7 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
         self.discovered_cpus = entry.data.get(CONF_DISCOVERED_CPUS, [])
         self.discovered_psus = entry.data.get(CONF_DISCOVERED_PSUS, [])
         self.discovered_voltage_probes = entry.data.get(CONF_DISCOVERED_VOLTAGE_PROBES, [])
+        self.discovered_memory = entry.data.get(CONF_DISCOVERED_MEMORY, [])
 
         # Create isolated SNMP engine for this coordinator instance
         self.engine = SnmpEngine()
@@ -83,6 +85,12 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
                 "psu_voltages": {},
                 "psu_statuses": {},
                 "psu_amperages": {},
+                "memory_health": {},
+                # System status
+                "system_health": await self._async_get_snmp_value(IDRAC_OIDS["system_health"]),
+                "system_power_state": await self._async_get_snmp_value(IDRAC_OIDS["system_power_state"]),
+                "system_intrusion": await self._async_get_snmp_value(IDRAC_OIDS["system_intrusion"]),
+                "psu_redundancy": await self._async_get_snmp_value(IDRAC_OIDS["psu_redundancy"]),
             }
 
             # Get CPU temperature data - only include sensors with valid data
@@ -129,6 +137,15 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
                     data["psu_amperages"][f"psu_amperage_{psu_index}"] = amperage_value
                 else:
                     _LOGGER.debug("PSU amperage sensor %d returned invalid value: %s", psu_index, amperage_value)
+
+            # Get memory health data - only include sensors with valid data
+            for memory_index in self.discovered_memory:
+                memory_oid = f"{IDRAC_OIDS['memory_health_base']}.{memory_index}"
+                health_value = await self._async_get_snmp_value(memory_oid)
+                if health_value is not None:  # Health status can be various values
+                    data["memory_health"][f"memory_{memory_index}"] = health_value
+                else:
+                    _LOGGER.debug("Memory health sensor %d returned invalid value: %s", memory_index, health_value)
 
             return data
 

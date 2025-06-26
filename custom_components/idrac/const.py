@@ -9,6 +9,7 @@ CONF_DISCOVERED_FANS: Final = "discovered_fans"
 CONF_DISCOVERED_CPUS: Final = "discovered_cpus"
 CONF_DISCOVERED_PSUS: Final = "discovered_psus"
 CONF_DISCOVERED_VOLTAGE_PROBES: Final = "discovered_voltage_probes"
+CONF_DISCOVERED_MEMORY: Final = "discovered_memory"
 CONF_SCAN_INTERVAL: Final = "scan_interval"
 
 # Default values
@@ -26,6 +27,18 @@ IDRAC_OIDS: Final = {
     "psu_status_base": "1.3.6.1.4.1.674.10892.5.4.600.12.1.5.1",
     "psu_voltage_base": "1.3.6.1.4.1.674.10892.5.4.600.20.1.6.1",
     "psu_amperage_base": "1.3.6.1.4.1.674.10892.5.4.600.30.1.6.1",
+    # System health and status
+    "system_health": "1.3.6.1.4.1.674.10892.5.2.1.0",
+    "system_power_state": "1.3.6.1.4.1.674.10892.5.4.300.70.1.6.1.3",
+    "system_intrusion": "1.3.6.1.4.1.674.10892.5.4.300.50.1.6.1.1",
+    # PSU redundancy
+    "psu_redundancy": "1.3.6.1.4.1.674.10892.5.4.600.12.1.8.1.1",
+    # Memory health
+    "memory_health_base": "1.3.6.1.4.1.674.10892.5.4.1100.50.1.5.1",
+    # Control OIDs (for switches)
+    "power_control": "1.3.6.1.4.1.674.10892.5.4.300.70.1.5.1.3",
+    "identify_led": "1.3.6.1.4.1.674.10892.5.4.300.70.1.10.1.3",
+    "safe_mode": "1.3.6.1.4.1.674.10892.5.4.300.70.1.11.1.3",
 }
 
 # SNMP base OIDs for discovery
@@ -35,4 +48,5 @@ SNMP_WALK_OIDS: Final = {
     "psu_status": "1.3.6.1.4.1.674.10892.5.4.600.12.1.5.1",
     "psu_voltage": "1.3.6.1.4.1.674.10892.5.4.600.20.1.6.1",
     "psu_amperage": "1.3.6.1.4.1.674.10892.5.4.600.30.1.6.1",
+    "memory_health": "1.3.6.1.4.1.674.10892.5.4.1100.50.1.5.1",
 }
