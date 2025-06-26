@@ -1,0 +1,23 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Dell iDRAC Setup",
+        "description": "Configure your Dell iDRAC connection",
+        "data": {
+          "host": "Host",
+          "port": "Port",
+          "community": "SNMP Community"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to iDRAC",
+      "invalid_auth": "Invalid authentication",
+      "unknown": "Unexpected error occurred"
+    },
+    "abort": {
+      "already_configured": "Device is already configured"
+    }
+  }
+}
