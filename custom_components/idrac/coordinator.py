@@ -206,35 +206,35 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
             for vdisk_index in self.discovered_virtual_disks:
                 vdisk_oid = f"{IDRAC_OIDS['virtual_disk_state']}.{vdisk_index}"
                 vdisk_state = await self._async_get_snmp_value(vdisk_oid)
-                if vdisk_state is not None:
-                    data["virtual_disks"][f"vdisk_{vdisk_index}"] = {
-                        "state": vdisk_state,
-                        "name": await self._async_get_snmp_value(f"{IDRAC_OIDS['virtual_disk_name']}.{vdisk_index}"),
-                        "size": await self._async_get_snmp_value(f"{IDRAC_OIDS['virtual_disk_size']}.{vdisk_index}"),
-                        "layout": await self._async_get_snmp_value(f"{IDRAC_OIDS['virtual_disk_layout']}.{vdisk_index}"),
-                    }
+                # Create entry even if state is None - it will be discovered so should exist
+                data["virtual_disks"][f"vdisk_{vdisk_index}"] = {
+                    "state": vdisk_state if vdisk_state is not None else 0,  # Default to 0 if state unavailable
+                    "name": await self._async_get_snmp_string(f"{IDRAC_OIDS['virtual_disk_name']}.{vdisk_index}"),
+                    "size": await self._async_get_snmp_value(f"{IDRAC_OIDS['virtual_disk_size']}.{vdisk_index}"),
+                    "layout": await self._async_get_snmp_value(f"{IDRAC_OIDS['virtual_disk_layout']}.{vdisk_index}"),
+                }
 
             # Get physical disk data
             for pdisk_index in self.discovered_physical_disks:
                 pdisk_oid = f"{IDRAC_OIDS['physical_disk_state']}.{pdisk_index}"
                 pdisk_state = await self._async_get_snmp_value(pdisk_oid)
-                if pdisk_state is not None:
-                    data["physical_disks"][f"pdisk_{pdisk_index}"] = {
-                        "state": pdisk_state,
-                        "capacity": await self._async_get_snmp_value(f"{IDRAC_OIDS['physical_disk_capacity']}.{pdisk_index}"),
-                        "used_space": await self._async_get_snmp_value(f"{IDRAC_OIDS['physical_disk_used_space']}.{pdisk_index}"),
-                        "serial": await self._async_get_snmp_value(f"{IDRAC_OIDS['physical_disk_serial']}.{pdisk_index}"),
-                    }
+                # Create entry even if state is None - it will be discovered so should exist
+                data["physical_disks"][f"pdisk_{pdisk_index}"] = {
+                    "state": pdisk_state if pdisk_state is not None else 0,  # Default to 0 if state unavailable
+                    "capacity": await self._async_get_snmp_value(f"{IDRAC_OIDS['physical_disk_capacity']}.{pdisk_index}"),
+                    "used_space": await self._async_get_snmp_value(f"{IDRAC_OIDS['physical_disk_used_space']}.{pdisk_index}"),
+                    "serial": await self._async_get_snmp_string(f"{IDRAC_OIDS['physical_disk_serial']}.{pdisk_index}"),
+                }
 
             # Get storage controller data
             for controller_index in self.discovered_storage_controllers:
                 controller_oid = f"{IDRAC_OIDS['controller_state']}.{controller_index}"
                 controller_state = await self._async_get_snmp_value(controller_oid)
-                if controller_state is not None:
-                    data["storage_controllers"][f"controller_{controller_index}"] = {
-                        "state": controller_state,
-                        "battery_state": await self._async_get_snmp_value(f"{IDRAC_OIDS['controller_battery_state']}.{controller_index}"),
-                    }
+                # Create entry even if state is None - it will be discovered so should exist
+                data["storage_controllers"][f"controller_{controller_index}"] = {
+                    "state": controller_state if controller_state is not None else 0,  # Default to 0 if state unavailable
+                    "battery_state": await self._async_get_snmp_value(f"{IDRAC_OIDS['controller_battery_state']}.{controller_index}"),
+                }
 
             return data
 
@@ -268,6 +268,35 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
 
         except Exception as exc:
             _LOGGER.debug("Exception getting SNMP value for OID %s: %s", oid, exc)
+            return None
+
+    async def _async_get_snmp_string(self, oid: str) -> str | None:
+        """Get a single SNMP string value."""
+        try:
+            error_indication, error_status, error_index, var_binds = await getCmd(
+                self.engine,
+                self.community_data,
+                self.transport_target,
+                self.context_data,
+                ObjectType(ObjectIdentity(oid)),
+            )
+
+            if error_indication or error_status:
+                _LOGGER.debug("SNMP error for OID %s: %s", oid, error_indication or error_status)
+                return None
+
+            if var_binds:
+                value_str = str(var_binds[0][1]).strip()
+                if value_str and "No Such Object" not in value_str and "No Such Instance" not in value_str:
+                    return value_str
+                else:
+                    _LOGGER.debug("Invalid SNMP string value for OID %s: %s", oid, value_str)
+                    return None
+
+            return None
+
+        except Exception as exc:
+            _LOGGER.debug("Exception getting SNMP string for OID %s: %s", oid, exc)
             return None
 
     async def _async_get_snmp_value_with_fallback(self, primary_oid: str, fallback_oid: str, divide_by: int = 1) -> float | None:

@@ -27,12 +27,11 @@ IDRAC_OIDS: Final = {
     "temp_outlet": "1.3.6.1.4.1.674.10892.5.4.700.20.1.6.1.2",
     "temp_cpu_base": "1.3.6.1.4.1.674.10892.5.4.700.20.1.6.1",
     "fan_base": "1.3.6.1.4.1.674.10892.5.4.700.12.1.6.1",
-    "psu_status_base": "1.3.6.1.4.1.674.10892.5.4.600.12.1.4",
-    "psu_voltage_base": "1.3.6.1.4.1.674.10892.5.4.600.20.1.6",
+    "psu_status_base": "1.3.6.1.4.1.674.10892.5.4.600.12.1.5.1",
+    "psu_voltage_base": "1.3.6.1.4.1.674.10892.5.4.600.20.1.6.1",
     "psu_amperage_base": "1.3.6.1.4.1.674.10892.5.4.600.30.1.6.1",
-    # System health and status - official MIB global system status
-    "system_health": "1.3.6.1.4.1.674.10892.5.4.200.10.1.19",
-    "system_health_legacy": "1.3.6.1.4.1.674.10892.5.2.1.0",
+    # System health and status
+    "system_health": "1.3.6.1.4.1.674.10892.5.2.1.0",
     # Power state OIDs - using Dell's chassis power state OIDs  
     "system_power_state": "1.3.6.1.4.1.674.10892.5.4.300.70.1.6.1.3",
     "system_power_state_alt": "1.3.6.1.4.1.674.10892.5.4.300.70.1.6.1.1",
@@ -71,8 +70,8 @@ IDRAC_OIDS: Final = {
 SNMP_WALK_OIDS: Final = {
     "fans": "1.3.6.1.4.1.674.10892.5.4.700.12.1.6.1",
     "cpu_temps": "1.3.6.1.4.1.674.10892.5.4.700.20.1.6.1",
-    "psu_status": "1.3.6.1.4.1.674.10892.5.4.600.12.1.4",
-    "psu_voltage": "1.3.6.1.4.1.674.10892.5.4.600.20.1.4",
+    "psu_status": "1.3.6.1.4.1.674.10892.5.4.600.12.1.5.1",
+    "psu_voltage": "1.3.6.1.4.1.674.10892.5.4.600.20.1.6.1",
     "psu_amperage": "1.3.6.1.4.1.674.10892.5.4.600.30.1.6.1",
     "memory_health": "1.3.6.1.4.1.674.10892.5.4.1100.50.1.4",
     # Storage discovery OIDs

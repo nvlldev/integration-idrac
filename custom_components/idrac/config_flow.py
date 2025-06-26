@@ -475,7 +475,7 @@ class OptionsFlow(config_entries.OptionsFlow):
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         """Initialize options flow."""
-        super().__init__(config_entry)
+        self._config_entry = config_entry
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -488,9 +488,9 @@ class OptionsFlow(config_entries.OptionsFlow):
             
             return self.async_create_entry(title="", data=user_input)
 
-        current_scan_interval = self.config_entry.options.get(
+        current_scan_interval = self._config_entry.options.get(
             CONF_SCAN_INTERVAL, 
-            self.config_entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+            self._config_entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
         )
 
         return self.async_show_form(
@@ -514,10 +514,10 @@ class OptionsFlow(config_entries.OptionsFlow):
             # User confirmed re-discovery
             try:
                 # Re-run sensor discovery using existing connection info
-                info = await validate_input(self.hass, self.config_entry.data)
+                info = await validate_input(self.hass, self._config_entry.data)
                 
                 # Update the config entry with new discovery data
-                new_data = self.config_entry.data.copy()
+                new_data = self._config_entry.data.copy()
                 new_data[CONF_DISCOVERED_FANS] = info[CONF_DISCOVERED_FANS]
                 new_data[CONF_DISCOVERED_CPUS] = info[CONF_DISCOVERED_CPUS]
                 new_data[CONF_DISCOVERED_PSUS] = info[CONF_DISCOVERED_PSUS]
@@ -525,11 +525,11 @@ class OptionsFlow(config_entries.OptionsFlow):
                 new_data[CONF_DISCOVERED_MEMORY] = info[CONF_DISCOVERED_MEMORY]
                 
                 self.hass.config_entries.async_update_entry(
-                    self.config_entry, data=new_data
+                    self._config_entry, data=new_data
                 )
                 
                 # Get current options
-                current_options = self.config_entry.options.copy()
+                current_options = self._config_entry.options.copy()
                 
                 return self.async_create_entry(title="", data=current_options)
                 
@@ -551,11 +551,11 @@ class OptionsFlow(config_entries.OptionsFlow):
             step_id="rediscover",
             data_schema=vol.Schema({}),
             description_placeholders={
-                "host": self.config_entry.data[CONF_HOST],
-                "fans": len(self.config_entry.data.get(CONF_DISCOVERED_FANS, [])),
-                "cpus": len(self.config_entry.data.get(CONF_DISCOVERED_CPUS, [])),
-                "psus": len(self.config_entry.data.get(CONF_DISCOVERED_PSUS, [])),
-                "voltages": len(self.config_entry.data.get(CONF_DISCOVERED_VOLTAGE_PROBES, [])),
-                "memory": len(self.config_entry.data.get(CONF_DISCOVERED_MEMORY, [])),
+                "host": self._config_entry.data[CONF_HOST],
+                "fans": len(self._config_entry.data.get(CONF_DISCOVERED_FANS, [])),
+                "cpus": len(self._config_entry.data.get(CONF_DISCOVERED_CPUS, [])),
+                "psus": len(self._config_entry.data.get(CONF_DISCOVERED_PSUS, [])),
+                "voltages": len(self._config_entry.data.get(CONF_DISCOVERED_VOLTAGE_PROBES, [])),
+                "memory": len(self._config_entry.data.get(CONF_DISCOVERED_MEMORY, [])),
             },
         )
