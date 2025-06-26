@@ -41,18 +41,33 @@ async def async_setup_entry(
         IdracPowerSensor(coordinator, config_entry),
         IdracTemperatureSensor(coordinator, config_entry, "temp_inlet", "Inlet Temperature"),
         IdracTemperatureSensor(coordinator, config_entry, "temp_outlet", "Outlet Temperature"),
+        IdracTemperatureDeltaSensor(coordinator, config_entry),
     ]
 
     # Add CPU temperature sensors
-    for cpu_index in config_entry.data.get(CONF_DISCOVERED_CPUS, []):
+    cpu_indices = config_entry.data.get(CONF_DISCOVERED_CPUS, [])
+    for cpu_index in cpu_indices:
         entities.append(
             IdracCpuTemperatureSensor(coordinator, config_entry, cpu_index)
         )
+    
+    # Add average CPU temperature sensor if multiple CPUs
+    if len(cpu_indices) > 1:
+        entities.append(
+            IdracAverageCpuTemperatureSensor(coordinator, config_entry)
+        )
 
     # Add fan speed sensors
-    for fan_index in config_entry.data.get(CONF_DISCOVERED_FANS, []):
+    fan_indices = config_entry.data.get(CONF_DISCOVERED_FANS, [])
+    for fan_index in fan_indices:
         entities.append(
             IdracFanSensor(coordinator, config_entry, fan_index)
+        )
+    
+    # Add average fan speed sensor if multiple fans
+    if len(fan_indices) > 1:
+        entities.append(
+            IdracAverageFanSpeedSensor(coordinator, config_entry)
         )
 
     # Add PSU amperage sensors
@@ -325,4 +340,133 @@ class IdracPsuAmperageSensor(IdracSensor):
             and "psu_amperages" in self.coordinator.data
             and self._sensor_key in self.coordinator.data["psu_amperages"]
             and self.coordinator.data["psu_amperages"][self._sensor_key] is not None
+        )
+
+
+class IdracTemperatureDeltaSensor(IdracSensor):
+    """Dell iDRAC temperature delta sensor (inlet - outlet)."""
+
+    def __init__(
+        self,
+        coordinator: IdracDataUpdateCoordinator,
+        config_entry: ConfigEntry,
+    ) -> None:
+        """Initialize the temperature delta sensor."""
+        super().__init__(
+            coordinator,
+            config_entry,
+            "temp_delta",
+            "Airflow Temperature Rise",
+            UnitOfTemperature.CELSIUS,
+            SensorDeviceClass.TEMPERATURE,
+        )
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the temperature delta (outlet - inlet)."""
+        if self.coordinator.data is None:
+            return None
+        
+        outlet_temp = self.coordinator.data.get("temp_outlet")
+        inlet_temp = self.coordinator.data.get("temp_inlet")
+        
+        if outlet_temp is not None and inlet_temp is not None:
+            return outlet_temp - inlet_temp
+        return None
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        return (
+            self.coordinator.last_update_success
+            and self.coordinator.data is not None
+            and self.coordinator.data.get("temp_outlet") is not None
+            and self.coordinator.data.get("temp_inlet") is not None
+        )
+
+
+class IdracAverageCpuTemperatureSensor(IdracSensor):
+    """Dell iDRAC average CPU temperature sensor."""
+
+    def __init__(
+        self,
+        coordinator: IdracDataUpdateCoordinator,
+        config_entry: ConfigEntry,
+    ) -> None:
+        """Initialize the average CPU temperature sensor."""
+        super().__init__(
+            coordinator,
+            config_entry,
+            "cpu_temp_avg",
+            "Average CPU Temperature",
+            UnitOfTemperature.CELSIUS,
+            SensorDeviceClass.TEMPERATURE,
+        )
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the average CPU temperature."""
+        if self.coordinator.data is None or "cpu_temps" not in self.coordinator.data:
+            return None
+        
+        cpu_temps = [
+            temp for temp in self.coordinator.data["cpu_temps"].values()
+            if temp is not None and temp > 0
+        ]
+        
+        if cpu_temps:
+            return round(sum(cpu_temps) / len(cpu_temps), 1)
+        return None
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        return (
+            self.coordinator.last_update_success
+            and self.coordinator.data is not None
+            and "cpu_temps" in self.coordinator.data
+            and len([t for t in self.coordinator.data["cpu_temps"].values() if t is not None and t > 0]) > 0
+        )
+
+
+class IdracAverageFanSpeedSensor(IdracSensor):
+    """Dell iDRAC average fan speed sensor."""
+
+    def __init__(
+        self,
+        coordinator: IdracDataUpdateCoordinator,
+        config_entry: ConfigEntry,
+    ) -> None:
+        """Initialize the average fan speed sensor."""
+        super().__init__(
+            coordinator,
+            config_entry,
+            "fan_speed_avg",
+            "Average Fan Speed",
+            REVOLUTIONS_PER_MINUTE,
+        )
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the average fan speed."""
+        if self.coordinator.data is None or "fans" not in self.coordinator.data:
+            return None
+        
+        fan_speeds = [
+            speed for speed in self.coordinator.data["fans"].values()
+            if speed is not None and speed > 0
+        ]
+        
+        if fan_speeds:
+            return round(sum(fan_speeds) / len(fan_speeds))
+        return None
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        return (
+            self.coordinator.last_update_success
+            and self.coordinator.data is not None
+            and "fans" in self.coordinator.data
+            and len([s for s in self.coordinator.data["fans"].values() if s is not None and s > 0]) > 0
         )
