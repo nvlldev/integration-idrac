@@ -25,6 +25,7 @@ from .const import (
     CONF_DISCOVERED_CPUS,
     CONF_DISCOVERED_FANS,
     CONF_DISCOVERED_PSUS,
+    CONF_DISCOVERED_VOLTAGE_PROBES,
     CONF_SCAN_INTERVAL,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
@@ -46,6 +47,7 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
         self.discovered_fans = entry.data.get(CONF_DISCOVERED_FANS, [])
         self.discovered_cpus = entry.data.get(CONF_DISCOVERED_CPUS, [])
         self.discovered_psus = entry.data.get(CONF_DISCOVERED_PSUS, [])
+        self.discovered_voltage_probes = entry.data.get(CONF_DISCOVERED_VOLTAGE_PROBES, [])
 
         # Create isolated SNMP engine for this coordinator instance
         self.engine = SnmpEngine()
@@ -102,13 +104,13 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
                     _LOGGER.debug("Fan sensor %d returned invalid value: %s", fan_index, fan_value)
 
             # Get PSU voltage data - only include sensors with valid data
-            for psu_index in self.discovered_psus:
-                voltage_oid = f"{IDRAC_OIDS['psu_voltage_base']}.{psu_index}"
+            for voltage_probe_index in self.discovered_voltage_probes:
+                voltage_oid = f"{IDRAC_OIDS['psu_voltage_base']}.{voltage_probe_index}"
                 voltage_value = await self._async_get_snmp_value(voltage_oid, divide_by=1000)  # Convert mV to V
                 if voltage_value is not None and voltage_value > 0:  # Valid voltage should be > 0
-                    data["psu_voltages"][f"psu_voltage_{psu_index}"] = voltage_value
+                    data["psu_voltages"][f"psu_voltage_{voltage_probe_index}"] = voltage_value
                 else:
-                    _LOGGER.debug("PSU voltage sensor %d returned invalid value: %s", psu_index, voltage_value)
+                    _LOGGER.debug("Voltage probe sensor %d returned invalid value: %s", voltage_probe_index, voltage_value)
 
             # Get PSU status data - only include sensors with valid data
             for psu_index in self.discovered_psus:

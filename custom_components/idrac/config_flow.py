@@ -27,6 +27,7 @@ from .const import (
     CONF_DISCOVERED_CPUS,
     CONF_DISCOVERED_FANS,
     CONF_DISCOVERED_PSUS,
+    CONF_DISCOVERED_VOLTAGE_PROBES,
     CONF_SCAN_INTERVAL,
     DEFAULT_COMMUNITY,
     DEFAULT_PORT,
@@ -80,17 +81,20 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
         discovered_fans = await _discover_sensors(engine, community_data, transport_target, context_data, SNMP_WALK_OIDS["fans"])
         discovered_cpus = await _discover_cpu_sensors(engine, community_data, transport_target, context_data, SNMP_WALK_OIDS["cpu_temps"])
         discovered_psus = await _discover_psu_sensors(engine, community_data, transport_target, context_data, SNMP_WALK_OIDS["psu_status"])
+        discovered_voltage_probes = await _discover_voltage_probes(engine, community_data, transport_target, context_data, SNMP_WALK_OIDS["psu_voltage"])
 
-        _LOGGER.info("Discovered %d fans, %d CPU temperature sensors, and %d PSU sensors", len(discovered_fans), len(discovered_cpus), len(discovered_psus))
+        _LOGGER.info("Discovered %d fans, %d CPU temperature sensors, %d PSU sensors, and %d voltage probes", len(discovered_fans), len(discovered_cpus), len(discovered_psus), len(discovered_voltage_probes))
         _LOGGER.debug("Fan sensor IDs: %s", discovered_fans)
         _LOGGER.debug("CPU sensor IDs: %s", discovered_cpus)
         _LOGGER.debug("PSU sensor IDs: %s", discovered_psus)
+        _LOGGER.debug("Voltage probe IDs: %s", discovered_voltage_probes)
 
         return {
             "title": f"Dell iDRAC ({host})",
             CONF_DISCOVERED_FANS: discovered_fans,
             CONF_DISCOVERED_CPUS: discovered_cpus,
             CONF_DISCOVERED_PSUS: discovered_psus,
+            CONF_DISCOVERED_VOLTAGE_PROBES: discovered_voltage_probes,
         }
 
     except Exception as exc:
@@ -220,6 +224,58 @@ async def _discover_psu_sensors(
     return results
 
 
+async def _discover_voltage_probes(
+    engine: SnmpEngine,
+    community_data: CommunityData,
+    transport_target: UdpTransportTarget,
+    context_data: ContextData,
+    base_oid: str,
+) -> list[int]:
+    """Discover voltage probe sensors by testing voltage OIDs."""
+    results = []
+    
+    try:
+        _LOGGER.debug("Testing voltage probe OIDs for base: %s", base_oid)
+        
+        # Test up to 20 voltage probe indices (covers various system configurations)
+        for probe_id in range(1, 21):
+            test_oid = f"{base_oid}.{probe_id}"
+            try:
+                error_indication, error_status, error_index, var_binds = await getCmd(
+                    engine,
+                    community_data,
+                    transport_target,
+                    context_data,
+                    ObjectType(ObjectIdentity(test_oid)),
+                )
+                
+                if not error_indication and not error_status and var_binds:
+                    value = var_binds[0][1]
+                    if (value is not None 
+                        and str(value) != "No Such Object currently exists at this OID"
+                        and str(value) != "No Such Instance currently exists at this OID"):
+                        try:
+                            # Voltage probe reading should be a valid integer (millivolts)
+                            voltage_value = int(value)
+                            if voltage_value > 0:  # Valid voltage reading should be positive
+                                results.append(probe_id)
+                                _LOGGER.debug("Found voltage probe ID %d at OID %s with value: %s mV", probe_id, test_oid, value)
+                            else:
+                                _LOGGER.debug("Voltage probe ID %d at OID %s has invalid value: %s", probe_id, test_oid, value)
+                        except (ValueError, TypeError):
+                            _LOGGER.debug("Voltage probe ID %d at OID %s has non-integer value: %s", probe_id, test_oid, value)
+                
+            except Exception as exc:
+                _LOGGER.debug("Error testing voltage probe OID %s: %s", test_oid, exc)
+                continue
+
+        _LOGGER.info("Voltage probe discovery for %s found %d voltage sensors: %s", base_oid, len(results), results)
+        results.sort()
+        
+    except Exception as exc:
+        _LOGGER.warning("Error discovering voltage probes for OID %s: %s", base_oid, exc)
+    
+    return results
 
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -257,6 +313,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 config_data[CONF_DISCOVERED_FANS] = info[CONF_DISCOVERED_FANS]
                 config_data[CONF_DISCOVERED_CPUS] = info[CONF_DISCOVERED_CPUS]
                 config_data[CONF_DISCOVERED_PSUS] = info[CONF_DISCOVERED_PSUS]
+                config_data[CONF_DISCOVERED_VOLTAGE_PROBES] = info[CONF_DISCOVERED_VOLTAGE_PROBES]
                 
                 return self.async_create_entry(title=info["title"], data=config_data)
 

@@ -20,7 +20,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import CONF_DISCOVERED_CPUS, CONF_DISCOVERED_FANS, CONF_DISCOVERED_PSUS, DOMAIN
+from .const import CONF_DISCOVERED_CPUS, CONF_DISCOVERED_FANS, CONF_DISCOVERED_PSUS, CONF_DISCOVERED_VOLTAGE_PROBES, DOMAIN
 from .coordinator import IdracDataUpdateCoordinator
 
 
@@ -50,13 +50,18 @@ async def async_setup_entry(
             IdracFanSensor(coordinator, config_entry, fan_index)
         )
 
-    # Add PSU sensors
+    # Add PSU status and amperage sensors
     for psu_index in config_entry.data.get(CONF_DISCOVERED_PSUS, []):
         entities.extend([
-            IdracPsuVoltageSensor(coordinator, config_entry, psu_index),
             IdracPsuStatusSensor(coordinator, config_entry, psu_index),
             IdracPsuAmperageSensor(coordinator, config_entry, psu_index),
         ])
+
+    # Add PSU voltage sensors (discovered separately)
+    for voltage_probe_index in config_entry.data.get(CONF_DISCOVERED_VOLTAGE_PROBES, []):
+        entities.append(
+            IdracPsuVoltageSensor(coordinator, config_entry, voltage_probe_index)
+        )
 
     async_add_entities(entities)
 
@@ -80,7 +85,7 @@ class IdracSensor(CoordinatorEntity, SensorEntity):
         port = config_entry.data[CONF_PORT]
         device_id = f"{host}:{port}"
         
-        self._attr_name = f"{host} {sensor_name}"
+        self._attr_name = sensor_name
         self._attr_unique_id = f"{config_entry.entry_id}_{sensor_key}"
         self._attr_native_unit_of_measurement = unit
         self._attr_device_class = device_class
@@ -233,11 +238,11 @@ class IdracPsuVoltageSensor(IdracSensor):
         self,
         coordinator: IdracDataUpdateCoordinator,
         config_entry: ConfigEntry,
-        psu_index: int,
+        voltage_probe_index: int,
     ) -> None:
         """Initialize the PSU voltage sensor."""
-        sensor_key = f"psu_voltage_{psu_index}"
-        sensor_name = f"PSU {psu_index} Voltage"
+        sensor_key = f"psu_voltage_{voltage_probe_index}"
+        sensor_name = f"PSU {voltage_probe_index} Voltage"
         super().__init__(
             coordinator,
             config_entry,
