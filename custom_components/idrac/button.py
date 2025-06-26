@@ -44,7 +44,6 @@ async def async_setup_entry(
         IdracPowerOnButton(coordinator, config_entry),
         IdracPowerOffButton(coordinator, config_entry),
         IdracRebootButton(coordinator, config_entry),
-        IdracIdentifyLEDButton(coordinator, config_entry),
         IdracSafeModeButton(coordinator, config_entry),
     ]
 
@@ -125,6 +124,19 @@ class IdracButton(CoordinatorEntity, ButtonEntity):
         """Return if entity is available."""
         return self.coordinator.last_update_success
 
+    def _get_current_power_state(self) -> int | None:
+        """Get current power state from coordinator data."""
+        if self.coordinator.data is None:
+            return None
+        
+        power_state = self.coordinator.data.get("system_power_state")
+        if power_state is not None:
+            try:
+                return int(power_state)
+            except (ValueError, TypeError):
+                return None
+        return None
+
 
 class IdracPowerOnButton(IdracButton):
     """Dell iDRAC power on button."""
@@ -143,8 +155,27 @@ class IdracPowerOnButton(IdracButton):
             ButtonDeviceClass.RESTART,
         )
 
+    @property
+    def available(self) -> bool:
+        """Return if button is available (only when server is off)."""
+        if not super().available:
+            return False
+        
+        power_state = self._get_current_power_state()
+        if power_state is None:
+            return True  # Allow button if we can't determine state
+        
+        # Only available when server is off (state 2)
+        return power_state == 2
+
     async def async_press(self) -> None:
         """Power on the system."""
+        # Double-check power state before executing
+        power_state = self._get_current_power_state()
+        if power_state == 1:  # Already on
+            _LOGGER.warning("Cannot power on %s - server is already powered on", self._host)
+            return
+        
         success = await self._async_snmp_set(IDRAC_OIDS["power_control"], 1)
         if success:
             # Request coordinator update to reflect the change
@@ -168,8 +199,27 @@ class IdracPowerOffButton(IdracButton):
             ButtonDeviceClass.RESTART,
         )
 
+    @property
+    def available(self) -> bool:
+        """Return if button is available (only when server is on)."""
+        if not super().available:
+            return False
+        
+        power_state = self._get_current_power_state()
+        if power_state is None:
+            return True  # Allow button if we can't determine state
+        
+        # Only available when server is on (state 1)
+        return power_state == 1
+
     async def async_press(self) -> None:
         """Power off the system."""
+        # Double-check power state before executing
+        power_state = self._get_current_power_state()
+        if power_state == 2:  # Already off
+            _LOGGER.warning("Cannot power off %s - server is already powered off", self._host)
+            return
+        
         success = await self._async_snmp_set(IDRAC_OIDS["power_control"], 2)
         if success:
             # Request coordinator update to reflect the change
@@ -193,35 +243,31 @@ class IdracRebootButton(IdracButton):
             ButtonDeviceClass.RESTART,
         )
 
+    @property
+    def available(self) -> bool:
+        """Return if button is available (only when server is on)."""
+        if not super().available:
+            return False
+        
+        power_state = self._get_current_power_state()
+        if power_state is None:
+            return True  # Allow button if we can't determine state
+        
+        # Only available when server is on (state 1)
+        return power_state == 1
+
     async def async_press(self) -> None:
         """Reboot the system."""
+        # Double-check power state before executing
+        power_state = self._get_current_power_state()
+        if power_state == 2:  # Server is off
+            _LOGGER.warning("Cannot reboot %s - server is powered off", self._host)
+            return
+        
         success = await self._async_snmp_set(IDRAC_OIDS["power_control"], 3)
         if success:
             # Request coordinator update to reflect the change
             await self.coordinator.async_request_refresh()
-
-
-class IdracIdentifyLEDButton(IdracButton):
-    """Dell iDRAC identify LED button."""
-
-    def __init__(
-        self,
-        coordinator: IdracDataUpdateCoordinator,
-        config_entry: ConfigEntry,
-    ) -> None:
-        """Initialize the identify LED button."""
-        super().__init__(
-            coordinator,
-            config_entry,
-            "identify_led",
-            "Identify LED (Blink)",
-            ButtonDeviceClass.IDENTIFY,
-        )
-
-    async def async_press(self) -> None:
-        """Blink the identify LED for 15 seconds."""
-        # Send command to blink LED for a limited time (standard behavior)
-        await self._async_snmp_set(IDRAC_OIDS["identify_led"], 1)
 
 
 class IdracSafeModeButton(IdracButton):

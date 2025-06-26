@@ -33,6 +33,7 @@ async def async_setup_entry(
         IdracSystemHealthBinarySensor(coordinator, config_entry),
         IdracSystemIntrusionBinarySensor(coordinator, config_entry),
         IdracPsuRedundancyBinarySensor(coordinator, config_entry),
+        IdracPowerStateBinarySensor(coordinator, config_entry),
     ]
 
     # Add PSU status binary sensors
@@ -315,6 +316,67 @@ class IdracPsuRedundancyBinarySensor(IdracBinarySensor):
                 }
             except (ValueError, TypeError):
                 return {"raw_value": str(redundancy_value)}
+        return None
+
+
+class IdracPowerStateBinarySensor(IdracBinarySensor):
+    """Dell iDRAC power state binary sensor."""
+
+    def __init__(
+        self,
+        coordinator: IdracDataUpdateCoordinator,
+        config_entry: ConfigEntry,
+    ) -> None:
+        """Initialize the power state binary sensor."""
+        super().__init__(
+            coordinator,
+            config_entry,
+            "power_state",
+            "Power State",
+            BinarySensorDeviceClass.POWER,  # "On" means powered on, "Off" means powered off
+        )
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return True if server is powered on."""
+        if self.coordinator.data is None:
+            return None
+        
+        power_state = self.coordinator.data.get("system_power_state")
+        if power_state is not None:
+            try:
+                power_int = int(power_state)
+                # Dell iDRAC power states: 1=on, 2=off
+                return power_int == 1
+            except (ValueError, TypeError):
+                return None
+        return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, str] | None:
+        """Return additional state attributes."""
+        if self.coordinator.data is None:
+            return None
+        
+        power_state = self.coordinator.data.get("system_power_state")
+        if power_state is not None:
+            try:
+                power_int = int(power_state)
+                # Map Dell iDRAC power states to readable strings
+                power_map = {
+                    1: "on",
+                    2: "off",
+                    3: "powering_on",
+                    4: "powering_off",
+                }
+                power_text = power_map.get(power_int, "unknown")
+                
+                return {
+                    "power_code": power_int,
+                    "power_text": power_text,
+                }
+            except (ValueError, TypeError):
+                return {"raw_value": str(power_state)}
         return None
 
 
