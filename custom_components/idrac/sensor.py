@@ -21,7 +21,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util.unit_conversion import TemperatureConverter
 
-from .const import CONF_DISCOVERED_CPUS, CONF_DISCOVERED_FANS, CONF_DISCOVERED_PSUS, CONF_DISCOVERED_VOLTAGE_PROBES, DOMAIN
+from .const import CONF_DISCOVERED_CPUS, CONF_DISCOVERED_FANS, CONF_DISCOVERED_PSUS, CONF_DISCOVERED_VOLTAGE_PROBES, CONF_DISCOVERED_VIRTUAL_DISKS, CONF_DISCOVERED_PHYSICAL_DISKS, CONF_DISCOVERED_STORAGE_CONTROLLERS, DOMAIN
 from .coordinator import IdracDataUpdateCoordinator
 
 
@@ -82,6 +82,24 @@ async def async_setup_entry(
     for i, voltage_probe_index in enumerate(voltage_probes, 1):
         entities.append(
             IdracPsuVoltageSensor(coordinator, config_entry, voltage_probe_index, i)
+        )
+
+    # Add virtual disk sensors
+    for vdisk_index in config_entry.data.get(CONF_DISCOVERED_VIRTUAL_DISKS, []):
+        entities.append(
+            IdracVirtualDiskSensor(coordinator, config_entry, vdisk_index)
+        )
+
+    # Add physical disk sensors
+    for pdisk_index in config_entry.data.get(CONF_DISCOVERED_PHYSICAL_DISKS, []):
+        entities.append(
+            IdracPhysicalDiskSensor(coordinator, config_entry, pdisk_index)
+        )
+
+    # Add storage controller sensors
+    for controller_index in config_entry.data.get(CONF_DISCOVERED_STORAGE_CONTROLLERS, []):
+        entities.append(
+            IdracStorageControllerSensor(coordinator, config_entry, controller_index)
         )
 
     async_add_entities(entities)
@@ -487,3 +505,244 @@ class IdracAverageFanSpeedSensor(IdracSensor):
             and "fans" in self.coordinator.data
             and len([s for s in self.coordinator.data["fans"].values() if s is not None and s > 0]) > 0
         )
+
+
+class IdracVirtualDiskSensor(IdracSensor):
+    """Dell iDRAC virtual disk sensor."""
+
+    def __init__(
+        self,
+        coordinator: IdracDataUpdateCoordinator,
+        config_entry: ConfigEntry,
+        vdisk_index: int,
+    ) -> None:
+        """Initialize the virtual disk sensor."""
+        sensor_key = f"vdisk_{vdisk_index}"
+        sensor_name = f"Virtual Disk {vdisk_index}"
+        super().__init__(
+            coordinator,
+            config_entry,
+            sensor_key,
+            sensor_name,
+            None,
+            SensorDeviceClass.ENUM,
+        )
+        self._vdisk_index = vdisk_index
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the state of the virtual disk."""
+        if self.coordinator.data is None or "virtual_disks" not in self.coordinator.data:
+            return None
+        
+        vdisk_data = self.coordinator.data["virtual_disks"].get(self._sensor_key)
+        if vdisk_data is None:
+            return None
+        
+        state_value = vdisk_data.get("state")
+        if state_value is not None:
+            # Map Dell virtual disk states
+            state_map = {
+                1: "unknown",
+                2: "online", 
+                3: "degraded",
+                4: "failed",
+                6: "offline"
+            }
+            try:
+                state_int = int(state_value)
+                return state_map.get(state_int, f"unknown_{state_int}")
+            except (ValueError, TypeError):
+                return str(state_value)
+        return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, str] | None:
+        """Return additional state attributes."""
+        if self.coordinator.data is None or "virtual_disks" not in self.coordinator.data:
+            return None
+        
+        vdisk_data = self.coordinator.data["virtual_disks"].get(self._sensor_key)
+        if vdisk_data is None:
+            return None
+        
+        attributes = {}
+        if vdisk_data.get("name"):
+            attributes["name"] = str(vdisk_data["name"])
+        if vdisk_data.get("size"):
+            attributes["size_mb"] = str(vdisk_data["size"])
+        if vdisk_data.get("layout"):
+            # Map RAID layout types
+            layout_map = {
+                1: "Concatenated",
+                2: "RAID-0", 
+                3: "RAID-1",
+                7: "RAID-5",
+                10: "RAID-6",
+                12: "RAID-10",
+                18: "RAID-50",
+                19: "RAID-60"
+            }
+            try:
+                layout_int = int(vdisk_data["layout"])
+                attributes["raid_level"] = layout_map.get(layout_int, f"Unknown_{layout_int}")
+            except (ValueError, TypeError):
+                attributes["raid_level"] = str(vdisk_data["layout"])
+        
+        return attributes if attributes else None
+
+
+class IdracPhysicalDiskSensor(IdracSensor):
+    """Dell iDRAC physical disk sensor."""
+
+    def __init__(
+        self,
+        coordinator: IdracDataUpdateCoordinator,
+        config_entry: ConfigEntry,
+        pdisk_index: int,
+    ) -> None:
+        """Initialize the physical disk sensor."""
+        sensor_key = f"pdisk_{pdisk_index}"
+        sensor_name = f"Physical Disk {pdisk_index}"
+        super().__init__(
+            coordinator,
+            config_entry,
+            sensor_key,
+            sensor_name,
+            None,
+            SensorDeviceClass.ENUM,
+        )
+        self._pdisk_index = pdisk_index
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the state of the physical disk."""
+        if self.coordinator.data is None or "physical_disks" not in self.coordinator.data:
+            return None
+        
+        pdisk_data = self.coordinator.data["physical_disks"].get(self._sensor_key)
+        if pdisk_data is None:
+            return None
+        
+        state_value = pdisk_data.get("state")
+        if state_value is not None:
+            # Map Dell physical disk states
+            state_map = {
+                1: "unknown",
+                2: "ready",
+                3: "online",
+                4: "foreign",
+                5: "offline",
+                6: "blocked",
+                7: "failed",
+                8: "non_raid",
+                9: "removed"
+            }
+            try:
+                state_int = int(state_value)
+                return state_map.get(state_int, f"unknown_{state_int}")
+            except (ValueError, TypeError):
+                return str(state_value)
+        return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, str] | None:
+        """Return additional state attributes."""
+        if self.coordinator.data is None or "physical_disks" not in self.coordinator.data:
+            return None
+        
+        pdisk_data = self.coordinator.data["physical_disks"].get(self._sensor_key)
+        if pdisk_data is None:
+            return None
+        
+        attributes = {}
+        if pdisk_data.get("capacity"):
+            attributes["capacity_mb"] = str(pdisk_data["capacity"])
+        if pdisk_data.get("used_space"):
+            attributes["used_space_mb"] = str(pdisk_data["used_space"])
+        if pdisk_data.get("serial"):
+            attributes["serial_number"] = str(pdisk_data["serial"])
+        
+        return attributes if attributes else None
+
+
+class IdracStorageControllerSensor(IdracSensor):
+    """Dell iDRAC storage controller sensor."""
+
+    def __init__(
+        self,
+        coordinator: IdracDataUpdateCoordinator,
+        config_entry: ConfigEntry,
+        controller_index: int,
+    ) -> None:
+        """Initialize the storage controller sensor."""
+        sensor_key = f"controller_{controller_index}"
+        sensor_name = f"Storage Controller {controller_index}"
+        super().__init__(
+            coordinator,
+            config_entry,
+            sensor_key,
+            sensor_name,
+            None,
+            SensorDeviceClass.ENUM,
+        )
+        self._controller_index = controller_index
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the state of the storage controller."""
+        if self.coordinator.data is None or "storage_controllers" not in self.coordinator.data:
+            return None
+        
+        controller_data = self.coordinator.data["storage_controllers"].get(self._sensor_key)
+        if controller_data is None:
+            return None
+        
+        state_value = controller_data.get("state")
+        if state_value is not None:
+            # Map Dell controller states
+            state_map = {
+                1: "unknown",
+                2: "ready",
+                3: "failed",
+                4: "online",
+                5: "offline",
+                6: "degraded"
+            }
+            try:
+                state_int = int(state_value)
+                return state_map.get(state_int, f"unknown_{state_int}")
+            except (ValueError, TypeError):
+                return str(state_value)
+        return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, str] | None:
+        """Return additional state attributes."""
+        if self.coordinator.data is None or "storage_controllers" not in self.coordinator.data:
+            return None
+        
+        controller_data = self.coordinator.data["storage_controllers"].get(self._sensor_key)
+        if controller_data is None:
+            return None
+        
+        attributes = {}
+        battery_state = controller_data.get("battery_state")
+        if battery_state is not None:
+            # Map battery states
+            battery_map = {
+                1: "unknown",
+                2: "ready",
+                3: "failed",
+                4: "degraded",
+                5: "missing",
+                6: "charging",
+                7: "below_threshold"
+            }
+            try:
+                battery_int = int(battery_state)
+                attributes["battery_status"] = battery_map.get(battery_int, f"unknown_{battery_int}")
+            except (ValueError, TypeError):
+                attributes["battery_status"] = str(battery_state)
+        
+        return attributes if attributes else None
