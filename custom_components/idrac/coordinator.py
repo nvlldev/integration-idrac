@@ -5,8 +5,15 @@ import logging
 from datetime import timedelta
 from typing import Any
 
-from easysnmp import Session
-from easysnmp.exceptions import EasySNMPConnectionError, EasySNMPTimeoutError
+from pysnmp.hlapi import (
+    CommunityData,
+    ContextData,
+    ObjectIdentity,
+    ObjectType,
+    SnmpEngine,
+    UdpTransportTarget,
+    getCmd,
+)
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PORT, CONF_COMMUNITY
@@ -29,6 +36,11 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
         self.community = entry.data[CONF_COMMUNITY]
         self.discovered_fans = entry.data.get(CONF_DISCOVERED_FANS, [])
         self.discovered_cpus = entry.data.get(CONF_DISCOVERED_CPUS, [])
+
+        self.engine = SnmpEngine()
+        self.community_data = CommunityData(self.community)
+        self.transport_target = UdpTransportTarget((self.host, self.port), timeout=5, retries=1)
+        self.context_data = ContextData()
 
         super().__init__(
             hass,
@@ -75,26 +87,34 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
     async def _async_get_snmp_value(self, oid: str, divide_by: int = 1) -> float | None:
         """Get a single SNMP value."""
         try:
-            def get_snmp_value():
-                session = Session(hostname=self.host, community=self.community, version=2, timeout=5, retries=1)
-                result = session.get(oid)
-                return result.value
+            object_type = ObjectType(ObjectIdentity(oid))
 
-            value_str = await self.hass.async_add_executor_job(get_snmp_value)
-            
-            if value_str is not None:
+            error_indication, error_status, error_index, var_binds = await self.hass.async_add_executor_job(
+                lambda: next(
+                    getCmd(
+                        self.engine,
+                        self.community_data,
+                        self.transport_target,
+                        self.context_data,
+                        object_type,
+                    )
+                )
+            )
+
+            if error_indication or error_status:
+                _LOGGER.warning("SNMP error for OID %s: %s", oid, error_indication or error_status)
+                return None
+
+            if var_binds:
                 try:
-                    value = float(value_str)
+                    value = float(var_binds[0][1])
                     return value / divide_by
                 except (ValueError, TypeError):
-                    _LOGGER.warning("Could not convert SNMP value to float for OID %s: %s", oid, value_str)
+                    _LOGGER.warning("Could not convert SNMP value to float for OID %s: %s", oid, var_binds[0][1])
                     return None
 
             return None
 
-        except (EasySNMPConnectionError, EasySNMPTimeoutError) as exc:
-            _LOGGER.warning("SNMP connection error for OID %s: %s", oid, exc)
-            return None
         except Exception as exc:
             _LOGGER.warning("Exception getting SNMP value for OID %s: %s", oid, exc)
             return None
