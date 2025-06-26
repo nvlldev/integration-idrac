@@ -5,9 +5,9 @@
         "title": "Dell iDRAC Setup",
         "description": "Configure your Dell iDRAC connection",
         "data": {
-          "host": "Host",
-          "port": "Port",
-          "community": "SNMP Community"
+          "host": "Hostname or IP Address",
+          "port": "SNMP Port",
+          "community": "SNMP Community String"
         }
       }
     },

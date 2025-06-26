@@ -36,9 +36,9 @@ _LOGGER = logging.getLogger(__name__)
 
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
-        vol.Required(CONF_HOST): str,
-        vol.Optional(CONF_PORT, default=DEFAULT_PORT): int,
-        vol.Optional(CONF_COMMUNITY, default=DEFAULT_COMMUNITY): str,
+        vol.Required(CONF_HOST, description="Hostname or IP Address"): str,
+        vol.Optional(CONF_PORT, default=DEFAULT_PORT, description="SNMP Port"): int,
+        vol.Optional(CONF_COMMUNITY, default=DEFAULT_COMMUNITY, description="SNMP Community String"): str,
     }
 )
 
