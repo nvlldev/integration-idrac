@@ -310,8 +310,10 @@ async def _discover_memory_sensors(
     try:
         _LOGGER.debug("Testing memory health OIDs for base: %s", base_oid)
         
-        # Test up to 32 memory slots (typical server configurations)
-        for memory_id in range(1, 33):
+        # Test up to 24 memory slots and also try some common indices
+        # Some systems start at different indices
+        test_indices = list(range(1, 25)) + [26, 27, 28, 29, 30, 31, 32]
+        for memory_id in test_indices:
             test_oid = f"{base_oid}.{memory_id}"
             try:
                 error_indication, error_status, error_index, var_binds = await getCmd(
@@ -328,15 +330,21 @@ async def _discover_memory_sensors(
                         and str(value) != "No Such Object currently exists at this OID"
                         and str(value) != "No Such Instance currently exists at this OID"):
                         try:
-                            # Memory health status should be a valid integer (1-6 range typically)
+                            # Memory health status should be a valid integer
+                            # Accept a wider range as some systems may use different values
                             health_value = int(value)
-                            if 1 <= health_value <= 6:  # Valid Dell iDRAC health status range
+                            if 1 <= health_value <= 10:  # Expanded range for different iDRAC versions
                                 results.append(memory_id)
                                 _LOGGER.debug("Found memory module ID %d at OID %s with health: %s", memory_id, test_oid, value)
                             else:
-                                _LOGGER.debug("Memory module ID %d at OID %s has invalid health: %s", memory_id, test_oid, value)
+                                _LOGGER.debug("Memory module ID %d at OID %s has out-of-range health: %s", memory_id, test_oid, value)
                         except (ValueError, TypeError):
-                            _LOGGER.debug("Memory module ID %d at OID %s has non-integer health: %s", memory_id, test_oid, value)
+                            # Some systems might return text values, so let's accept those too
+                            if str(value).strip() and len(str(value)) < 50:  # Basic sanity check
+                                results.append(memory_id)
+                                _LOGGER.debug("Found memory module ID %d at OID %s with text health: %s", memory_id, test_oid, value)
+                            else:
+                                _LOGGER.debug("Memory module ID %d at OID %s has invalid health: %s", memory_id, test_oid, value)
                 
             except Exception as exc:
                 _LOGGER.debug("Error testing memory OID %s: %s", test_oid, exc)

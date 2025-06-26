@@ -268,13 +268,13 @@ class IdracPsuRedundancyBinarySensor(IdracBinarySensor):
             coordinator,
             config_entry,
             "psu_redundancy",
-            "PSU Redundancy",
-            BinarySensorDeviceClass.PROBLEM,  # "On" means redundancy lost, "Off" means redundant
+            "Power Supply Status",
+            BinarySensorDeviceClass.PROBLEM,  # "On" means problem detected, "Off" means OK
         )
 
     @property
     def is_on(self) -> bool | None:
-        """Return True if PSU redundancy is lost."""
+        """Return True if PSU has a problem."""
         if self.coordinator.data is None:
             return None
         
@@ -282,8 +282,8 @@ class IdracPsuRedundancyBinarySensor(IdracBinarySensor):
         if redundancy_value is not None:
             try:
                 redundancy_int = int(redundancy_value)
-                # Dell iDRAC redundancy values: 1=redundant, 2=lost, 3=degraded
-                return redundancy_int != 1
+                # Dell iDRAC PSU status values: 3=ok, others indicate problems
+                return redundancy_int != 3
             except (ValueError, TypeError):
                 return None
         return None
@@ -298,17 +298,20 @@ class IdracPsuRedundancyBinarySensor(IdracBinarySensor):
         if redundancy_value is not None:
             try:
                 redundancy_int = int(redundancy_value)
-                # Map Dell iDRAC redundancy values to readable strings
-                redundancy_map = {
-                    1: "redundant",
-                    2: "lost", 
-                    3: "degraded",
+                # Map Dell iDRAC PSU status values to readable strings
+                status_map = {
+                    1: "other",
+                    2: "unknown", 
+                    3: "ok",
+                    4: "non_critical",
+                    5: "critical",
+                    6: "non_recoverable"
                 }
-                redundancy_text = redundancy_map.get(redundancy_int, "unknown")
+                status_text = status_map.get(redundancy_int, "unknown")
                 
                 return {
-                    "redundancy_code": redundancy_int,
-                    "redundancy_text": redundancy_text,
+                    "status_code": redundancy_int,
+                    "status_text": status_text,
                 }
             except (ValueError, TypeError):
                 return {"raw_value": str(redundancy_value)}

@@ -86,11 +86,17 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
                 "psu_statuses": {},
                 "psu_amperages": {},
                 "memory_health": {},
-                # System status
+                # System status with fallback OIDs
                 "system_health": await self._async_get_snmp_value(IDRAC_OIDS["system_health"]),
                 "system_power_state": await self._async_get_snmp_value(IDRAC_OIDS["system_power_state"]),
-                "system_intrusion": await self._async_get_snmp_value(IDRAC_OIDS["system_intrusion"]),
-                "psu_redundancy": await self._async_get_snmp_value(IDRAC_OIDS["psu_redundancy"]),
+                "system_intrusion": await self._async_get_snmp_value_with_fallback(
+                    IDRAC_OIDS["system_intrusion"], 
+                    IDRAC_OIDS["system_intrusion_alt"]
+                ),
+                "psu_redundancy": await self._async_get_snmp_value_with_fallback(
+                    IDRAC_OIDS["psu_redundancy"],
+                    IDRAC_OIDS["psu_redundancy_alt"]
+                ),
             }
 
             # Get CPU temperature data - only include sensors with valid data
@@ -180,3 +186,19 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
         except Exception as exc:
             _LOGGER.debug("Exception getting SNMP value for OID %s: %s", oid, exc)
             return None
+
+    async def _async_get_snmp_value_with_fallback(self, primary_oid: str, fallback_oid: str, divide_by: int = 1) -> float | None:
+        """Get SNMP value with fallback to alternative OID."""
+        # Try primary OID first
+        value = await self._async_get_snmp_value(primary_oid, divide_by)
+        if value is not None:
+            _LOGGER.debug("Successfully got value from primary OID %s: %s", primary_oid, value)
+            return value
+        
+        # Fall back to alternative OID
+        _LOGGER.debug("Primary OID %s failed, trying fallback OID %s", primary_oid, fallback_oid)
+        value = await self._async_get_snmp_value(fallback_oid, divide_by)
+        if value is not None:
+            _LOGGER.debug("Successfully got value from fallback OID %s: %s", fallback_oid, value)
+        
+        return value

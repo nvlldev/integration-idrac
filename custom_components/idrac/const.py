@@ -30,11 +30,14 @@ IDRAC_OIDS: Final = {
     # System health and status
     "system_health": "1.3.6.1.4.1.674.10892.5.2.1.0",
     "system_power_state": "1.3.6.1.4.1.674.10892.5.4.300.70.1.6.1.3",
-    "system_intrusion": "1.3.6.1.4.1.674.10892.5.4.300.50.1.6.1.1",
-    # PSU redundancy
-    "psu_redundancy": "1.3.6.1.4.1.674.10892.5.4.600.12.1.8.1.1",
-    # Memory health
-    "memory_health_base": "1.3.6.1.4.1.674.10892.5.4.1100.50.1.5.1",
+    # Try alternative chassis intrusion OIDs
+    "system_intrusion": "1.3.6.1.4.1.674.10892.5.4.200.10.1.26",
+    "system_intrusion_alt": "1.3.6.1.4.1.674.10892.5.4.300.50.1.6.1.1",
+    # PSU status (corrected OID)
+    "psu_redundancy": "1.3.6.1.4.1.674.10892.5.4.200.10.1.42",
+    "psu_redundancy_alt": "1.3.6.1.4.1.674.10892.5.4.600.12.1.8.1.1",
+    # Memory health (corrected OID)
+    "memory_health_base": "1.3.6.1.4.1.674.10892.5.4.1100.50.1.5",
     # Control OIDs (for switches)
     "power_control": "1.3.6.1.4.1.674.10892.5.4.300.70.1.5.1.3",
     "identify_led": "1.3.6.1.4.1.674.10892.5.4.300.70.1.10.1.3",
@@ -48,5 +51,5 @@ SNMP_WALK_OIDS: Final = {
     "psu_status": "1.3.6.1.4.1.674.10892.5.4.600.12.1.5.1",
     "psu_voltage": "1.3.6.1.4.1.674.10892.5.4.600.20.1.6.1",
     "psu_amperage": "1.3.6.1.4.1.674.10892.5.4.600.30.1.6.1",
-    "memory_health": "1.3.6.1.4.1.674.10892.5.4.1100.50.1.5.1",
+    "memory_health": "1.3.6.1.4.1.674.10892.5.4.1100.50.1.5",
 }
