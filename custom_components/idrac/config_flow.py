@@ -92,24 +92,20 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
         # Try multiple memory health OID bases
         discovered_memory = []
         memory_oid_bases = [
-            SNMP_WALK_OIDS["memory_health"],  # Current: 1.3.6.1.4.1.674.10892.5.4.1100.50.1.5
-            "1.3.6.1.4.1.674.10892.5.4.1100.50.1.6",  # Alternative memory health status
-            "1.3.6.1.4.1.674.10892.5.4.1100.50.1.20", # Memory device status
-            "1.3.6.1.4.1.674.10892.5.4.1100.50.1.7",  # Memory operational status
+            SNMP_WALK_OIDS["memory_health"],  # Official MIB: 1.3.6.1.4.1.674.10892.5.4.1100.50.1.4 (status)
+            "1.3.6.1.4.1.674.10892.5.4.1100.50.1.5",  # memoryDeviceType (column 5)
+            "1.3.6.1.4.1.674.10892.5.4.1100.50.1.10", # memoryDeviceSize (column 10)
+            "1.3.6.1.4.1.674.10892.5.4.1100.50.1.14", # memoryDeviceSpeed (column 14)
+            "1.3.6.1.4.1.674.10892.5.4.1100.50.1.23", # memoryDeviceFQDD (column 23)
+            # Legacy fallback patterns
+            "1.3.6.1.4.1.674.10892.1.1100.50.1.4",    # Legacy memory status
+            "1.3.6.1.4.1.674.10892.1.1100.50.1.5",    # Legacy memory health
+            "1.3.6.1.4.1.674.10892.1.1100.50.1.6",    # Legacy memory status alt
+            # Alternative patterns for different iDRAC versions
+            "1.3.6.1.4.1.674.10892.5.4.1100.50.1.20", # Memory device status alt
+            "1.3.6.1.4.1.674.10892.5.4.1100.50.1.7",  # Memory location name
             "1.3.6.1.4.1.674.10892.5.4.1100.50.1.8",  # Memory error status
-            "1.3.6.1.4.1.674.10892.5.4.1100.50.1.3",  # Memory device type
-            "1.3.6.1.4.1.674.10892.5.4.1100.50.1.14", # Memory device status
-            "1.3.6.1.4.1.674.10892.5.4.1100.50.1.4",  # Memory device location
-            "1.3.6.1.4.1.674.10892.1.1100.50.1.5",    # Legacy iDRAC memory health
-            "1.3.6.1.4.1.674.10892.1.1100.50.1.6",    # Legacy memory status
             "1.3.6.1.4.1.674.10892.5.4.1100.50.1",    # Base memory table
-            # Try completely different memory OID approaches
-            "1.3.6.1.4.1.674.10892.5.4.1100.50.1.21", # Memory module status  
-            "1.3.6.1.4.1.674.10892.5.4.1100.50.1.23", # Memory device health status
-            "1.3.6.1.4.1.674.10892.5.4.1100.50.1.9",  # Memory operational status
-            # Legacy memory health patterns
-            "1.3.6.1.4.1.674.10892.1.1100.50.1.3",    # Legacy memory device status
-            "1.3.6.1.4.1.674.10892.1.1100.50.1.7",    # Legacy memory health
         ]
         
         for oid_base in memory_oid_bases:
@@ -377,8 +373,9 @@ async def _discover_memory_sensors(
                 
                 if not error_indication and not error_status and var_binds:
                     value = var_binds[0][1]
-                    value_str = str(value)
+                    value_str = str(value).strip()
                     if (value is not None 
+                        and value_str  # Must have some content
                         and "No Such Object" not in value_str
                         and "No Such Instance" not in value_str
                         and "noSuchObject" not in value_str
@@ -394,12 +391,13 @@ async def _discover_memory_sensors(
                                 _LOGGER.debug("Memory module ID %d at OID %s has out-of-range health: %s", memory_id, test_oid, value)
                         except (ValueError, TypeError):
                             # Some systems might return text values, so let's accept those too
-                            value_str = str(value).strip()
-                            if value_str and len(value_str) < 100 and not value_str.lower().startswith('no such'):  # Basic sanity check
+                            if len(value_str) < 100 and not value_str.lower().startswith('no such'):  # Basic sanity check
                                 results.append(memory_id)
                                 _LOGGER.debug("Found memory module ID %d at OID %s with text health: %s", memory_id, test_oid, value)
                             else:
                                 _LOGGER.debug("Memory module ID %d at OID %s has invalid health: %s", memory_id, test_oid, value)
+                    else:
+                        _LOGGER.debug("Memory module ID %d at OID %s has invalid health: %s", memory_id, test_oid, value)
                 
             except Exception as exc:
                 _LOGGER.debug("Error testing memory OID %s: %s", test_oid, exc)
@@ -477,7 +475,7 @@ class OptionsFlow(config_entries.OptionsFlow):
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         """Initialize options flow."""
-        self.config_entry = config_entry
+        super().__init__(config_entry)
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
