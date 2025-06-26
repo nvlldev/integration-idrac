@@ -27,6 +27,9 @@ from .const import (
     CONF_DISCOVERED_MEMORY,
     CONF_DISCOVERED_PSUS,
     CONF_DISCOVERED_VOLTAGE_PROBES,
+    CONF_DISCOVERED_VIRTUAL_DISKS,
+    CONF_DISCOVERED_PHYSICAL_DISKS,
+    CONF_DISCOVERED_STORAGE_CONTROLLERS,
     CONF_SCAN_INTERVAL,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
@@ -50,6 +53,9 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
         self.discovered_psus = entry.data.get(CONF_DISCOVERED_PSUS, [])
         self.discovered_voltage_probes = entry.data.get(CONF_DISCOVERED_VOLTAGE_PROBES, [])
         self.discovered_memory = entry.data.get(CONF_DISCOVERED_MEMORY, [])
+        self.discovered_virtual_disks = entry.data.get(CONF_DISCOVERED_VIRTUAL_DISKS, [])
+        self.discovered_physical_disks = entry.data.get(CONF_DISCOVERED_PHYSICAL_DISKS, [])
+        self.discovered_storage_controllers = entry.data.get(CONF_DISCOVERED_STORAGE_CONTROLLERS, [])
 
         # Create isolated SNMP engine for this coordinator instance
         self.engine = SnmpEngine()
@@ -86,6 +92,9 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
                 "psu_statuses": {},
                 "psu_amperages": {},
                 "memory_health": {},
+                "virtual_disks": {},
+                "physical_disks": {},
+                "storage_controllers": {},
                 # System status with fallback OIDs
                 "system_health": await self._async_get_snmp_value(IDRAC_OIDS["system_health"]),
                 "system_power_state": await self._async_get_snmp_value_with_multiple_fallbacks([
@@ -192,6 +201,40 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
                     data["memory_health"][f"memory_{memory_index}"] = health_value
                 else:
                     _LOGGER.debug("Memory health sensor %d returned invalid value from all OIDs", memory_index)
+
+            # Get virtual disk data
+            for vdisk_index in self.discovered_virtual_disks:
+                vdisk_oid = f"{IDRAC_OIDS['virtual_disk_state']}.{vdisk_index}"
+                vdisk_state = await self._async_get_snmp_value(vdisk_oid)
+                if vdisk_state is not None:
+                    data["virtual_disks"][f"vdisk_{vdisk_index}"] = {
+                        "state": vdisk_state,
+                        "name": await self._async_get_snmp_value(f"{IDRAC_OIDS['virtual_disk_name']}.{vdisk_index}"),
+                        "size": await self._async_get_snmp_value(f"{IDRAC_OIDS['virtual_disk_size']}.{vdisk_index}"),
+                        "layout": await self._async_get_snmp_value(f"{IDRAC_OIDS['virtual_disk_layout']}.{vdisk_index}"),
+                    }
+
+            # Get physical disk data
+            for pdisk_index in self.discovered_physical_disks:
+                pdisk_oid = f"{IDRAC_OIDS['physical_disk_state']}.{pdisk_index}"
+                pdisk_state = await self._async_get_snmp_value(pdisk_oid)
+                if pdisk_state is not None:
+                    data["physical_disks"][f"pdisk_{pdisk_index}"] = {
+                        "state": pdisk_state,
+                        "capacity": await self._async_get_snmp_value(f"{IDRAC_OIDS['physical_disk_capacity']}.{pdisk_index}"),
+                        "used_space": await self._async_get_snmp_value(f"{IDRAC_OIDS['physical_disk_used_space']}.{pdisk_index}"),
+                        "serial": await self._async_get_snmp_value(f"{IDRAC_OIDS['physical_disk_serial']}.{pdisk_index}"),
+                    }
+
+            # Get storage controller data
+            for controller_index in self.discovered_storage_controllers:
+                controller_oid = f"{IDRAC_OIDS['controller_state']}.{controller_index}"
+                controller_state = await self._async_get_snmp_value(controller_oid)
+                if controller_state is not None:
+                    data["storage_controllers"][f"controller_{controller_index}"] = {
+                        "state": controller_state,
+                        "battery_state": await self._async_get_snmp_value(f"{IDRAC_OIDS['controller_battery_state']}.{controller_index}"),
+                    }
 
             return data
 

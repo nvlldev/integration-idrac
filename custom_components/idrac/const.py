@@ -10,6 +10,9 @@ CONF_DISCOVERED_CPUS: Final = "discovered_cpus"
 CONF_DISCOVERED_PSUS: Final = "discovered_psus"
 CONF_DISCOVERED_VOLTAGE_PROBES: Final = "discovered_voltage_probes"
 CONF_DISCOVERED_MEMORY: Final = "discovered_memory"
+CONF_DISCOVERED_VIRTUAL_DISKS: Final = "discovered_virtual_disks"
+CONF_DISCOVERED_PHYSICAL_DISKS: Final = "discovered_physical_disks"
+CONF_DISCOVERED_STORAGE_CONTROLLERS: Final = "discovered_storage_controllers"
 CONF_SCAN_INTERVAL: Final = "scan_interval"
 
 # Default values
@@ -44,6 +47,18 @@ IDRAC_OIDS: Final = {
     "power_control": "1.3.6.1.4.1.674.10892.5.4.300.70.1.5.1.3",
     "identify_led": "1.3.6.1.4.1.674.10892.5.4.300.70.1.10.1.3",
     "safe_mode": "1.3.6.1.4.1.674.10892.5.4.300.70.1.11.1.3",
+    
+    # Storage and RAID monitoring OIDs
+    "virtual_disk_state": "1.3.6.1.4.1.674.10892.5.5.1.20.140.1.1.4",      # Virtual disk state
+    "virtual_disk_layout": "1.3.6.1.4.1.674.10892.5.5.1.20.140.1.1.13",    # Virtual disk layout type
+    "virtual_disk_size": "1.3.6.1.4.1.674.10892.5.5.1.20.140.1.1.6",       # Virtual disk size
+    "virtual_disk_name": "1.3.6.1.4.1.674.10892.5.5.1.20.140.1.1.2",       # Virtual disk name
+    "physical_disk_state": "1.3.6.1.4.1.674.10892.5.5.1.20.130.4.1.4",     # Physical disk state
+    "physical_disk_capacity": "1.3.6.1.4.1.674.10892.5.5.1.20.130.4.1.11", # Physical disk capacity
+    "physical_disk_used_space": "1.3.6.1.4.1.674.10892.5.5.1.20.130.4.1.17", # Physical disk used space
+    "physical_disk_serial": "1.3.6.1.4.1.674.10892.5.5.1.20.130.4.1.7",    # Physical disk serial number
+    "controller_state": "1.3.6.1.4.1.674.10892.5.5.1.20.130.1.1.38",       # Storage controller state
+    "controller_battery_state": "1.3.6.1.4.1.674.10892.5.5.1.20.130.15.1.4", # Controller battery state
 }
 
 # SNMP base OIDs for discovery
@@ -54,4 +69,8 @@ SNMP_WALK_OIDS: Final = {
     "psu_voltage": "1.3.6.1.4.1.674.10892.5.4.600.20.1.6.1",
     "psu_amperage": "1.3.6.1.4.1.674.10892.5.4.600.30.1.6.1",
     "memory_health": "1.3.6.1.4.1.674.10892.5.4.1100.50.1.5",
+    # Storage discovery OIDs
+    "virtual_disks": "1.3.6.1.4.1.674.10892.5.5.1.20.140.1.1.4",
+    "physical_disks": "1.3.6.1.4.1.674.10892.5.5.1.20.130.4.1.4",
+    "storage_controllers": "1.3.6.1.4.1.674.10892.5.5.1.20.130.1.1.38",
 }

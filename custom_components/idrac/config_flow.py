@@ -91,6 +91,12 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
             "1.3.6.1.4.1.674.10892.5.4.1100.50.1.20", # Memory device status
             "1.3.6.1.4.1.674.10892.5.4.1100.50.1.7",  # Memory operational status
             "1.3.6.1.4.1.674.10892.5.4.1100.50.1.8",  # Memory error status
+            "1.3.6.1.4.1.674.10892.5.4.1100.50.1.3",  # Memory device type
+            "1.3.6.1.4.1.674.10892.5.4.1100.50.1.14", # Memory device status
+            "1.3.6.1.4.1.674.10892.5.4.1100.50.1.4",  # Memory device location
+            "1.3.6.1.4.1.674.10892.1.1100.50.1.5",    # Legacy iDRAC memory health
+            "1.3.6.1.4.1.674.10892.1.1100.50.1.6",    # Legacy memory status
+            "1.3.6.1.4.1.674.10892.5.4.1100.50.1",    # Base memory table
         ]
         
         for oid_base in memory_oid_bases:
@@ -103,13 +109,23 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
         
         # Remove duplicates and sort
         discovered_memory = sorted(list(set(discovered_memory)))
+        
+        # Discover storage components
+        discovered_virtual_disks = await _discover_sensors(engine, community_data, transport_target, context_data, SNMP_WALK_OIDS["virtual_disks"])
+        discovered_physical_disks = await _discover_sensors(engine, community_data, transport_target, context_data, SNMP_WALK_OIDS["physical_disks"])
+        discovered_storage_controllers = await _discover_sensors(engine, community_data, transport_target, context_data, SNMP_WALK_OIDS["storage_controllers"])
 
-        _LOGGER.info("Discovered %d fans, %d CPU temperature sensors, %d PSU sensors, %d voltage probes, and %d memory modules", len(discovered_fans), len(discovered_cpus), len(discovered_psus), len(discovered_voltage_probes), len(discovered_memory))
+        _LOGGER.info("Discovered %d fans, %d CPU temperature sensors, %d PSU sensors, %d voltage probes, %d memory modules, %d virtual disks, %d physical disks, %d storage controllers", 
+                     len(discovered_fans), len(discovered_cpus), len(discovered_psus), len(discovered_voltage_probes), len(discovered_memory),
+                     len(discovered_virtual_disks), len(discovered_physical_disks), len(discovered_storage_controllers))
         _LOGGER.debug("Fan sensor IDs: %s", discovered_fans)
         _LOGGER.debug("CPU sensor IDs: %s", discovered_cpus)
         _LOGGER.debug("PSU sensor IDs: %s", discovered_psus)
         _LOGGER.debug("Voltage probe IDs: %s", discovered_voltage_probes)
         _LOGGER.debug("Memory module IDs: %s", discovered_memory)
+        _LOGGER.debug("Virtual disk IDs: %s", discovered_virtual_disks)
+        _LOGGER.debug("Physical disk IDs: %s", discovered_physical_disks)
+        _LOGGER.debug("Storage controller IDs: %s", discovered_storage_controllers)
 
         return {
             "title": f"Dell iDRAC ({host})",
@@ -118,6 +134,9 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
             CONF_DISCOVERED_PSUS: discovered_psus,
             CONF_DISCOVERED_VOLTAGE_PROBES: discovered_voltage_probes,
             CONF_DISCOVERED_MEMORY: discovered_memory,
+            CONF_DISCOVERED_VIRTUAL_DISKS: discovered_virtual_disks,
+            CONF_DISCOVERED_PHYSICAL_DISKS: discovered_physical_disks,
+            CONF_DISCOVERED_STORAGE_CONTROLLERS: discovered_storage_controllers,
         }
 
     except Exception as exc:
@@ -345,9 +364,12 @@ async def _discover_memory_sensors(
                 
                 if not error_indication and not error_status and var_binds:
                     value = var_binds[0][1]
+                    value_str = str(value)
                     if (value is not None 
-                        and str(value) != "No Such Object currently exists at this OID"
-                        and str(value) != "No Such Instance currently exists at this OID"):
+                        and "No Such Object" not in value_str
+                        and "No Such Instance" not in value_str
+                        and "noSuchObject" not in value_str
+                        and "noSuchInstance" not in value_str):
                         try:
                             # Memory health status should be a valid integer
                             # Accept a very wide range as different iDRAC versions use different values
