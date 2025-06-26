@@ -41,17 +41,17 @@ IDRAC_OIDS: Final = {
     # PSU redundancy - using Dell's power supply redundancy status
     "psu_redundancy": "1.3.6.1.4.1.674.10892.5.4.600.10.1.9.1.1",
     "psu_redundancy_alt": "1.3.6.1.4.1.674.10892.5.4.600.10.1.8.1.1",
-    # Memory health - official MIB column 4 is status
-    "memory_health_base": "1.3.6.1.4.1.674.10892.5.4.1100.50.1.4",
+    # Memory health - memoryDeviceStatus from official MIB
+    "memory_health_base": "1.3.6.1.4.1.674.10892.5.4.1100.50.1.5",
     # Control OIDs (for switches)
     "power_control": "1.3.6.1.4.1.674.10892.5.4.300.70.1.5.1.3",
     "identify_led": "1.3.6.1.4.1.674.10892.5.4.300.70.1.10.1.3",
     "safe_mode": "1.3.6.1.4.1.674.10892.5.4.300.70.1.11.1.3",
     
-    # Official MIB cooling and temperature monitoring  
-    "cooling_device_status": "1.3.6.1.4.1.674.10892.5.4.200.10.1.20",  # systemStateCoolingDeviceStatusCombined
-    "cooling_device_details": "1.3.6.1.4.1.674.10892.5.4.200.10.1.21", # systemStateCoolingDeviceStatusDetails
-    "temperature_status": "1.3.6.1.4.1.674.10892.5.4.200.10.1",         # systemStateTemperatureTable base
+    # Temperature probe monitoring (verified against official MIB)
+    "temperature_probe_status": "1.3.6.1.4.1.674.10892.5.4.700.20.1.5.1",   # temperatureProbeStatus
+    "temperature_probe_reading": "1.3.6.1.4.1.674.10892.5.4.700.20.1.6.1",  # temperatureProbeReading
+    "cooling_device_status": "1.3.6.1.4.1.674.10892.5.4.700.12.1.5.1",      # coolingDeviceStatus
     
     # Storage and RAID monitoring OIDs
     "virtual_disk_state": "1.3.6.1.4.1.674.10892.5.5.1.20.140.1.1.4",      # Virtual disk state
@@ -65,13 +65,15 @@ IDRAC_OIDS: Final = {
     "controller_state": "1.3.6.1.4.1.674.10892.5.5.1.20.130.1.1.38",       # Storage controller state
     "controller_battery_state": "1.3.6.1.4.1.674.10892.5.5.1.20.130.15.1.4", # Controller battery state
     
-    # System identification OIDs
-    "system_model_name": "1.3.6.1.4.1.674.10892.5.1.3.12.0",               # System model name
-    "system_service_tag": "1.3.6.1.4.1.674.10892.5.1.3.2.0",               # System service tag
-    "system_bios_version": "1.3.6.1.4.1.674.10892.5.1.3.6.0",              # System BIOS version
-    "cpu_brand": "1.3.6.1.4.1.674.10892.5.4.1100.30.1.23.1.1",             # CPU brand/model
-    "cpu_max_speed": "1.3.6.1.4.1.674.10892.5.4.1100.30.1.11.1.1",         # CPU max speed
-    "cpu_current_speed": "1.3.6.1.4.1.674.10892.5.4.1100.30.1.12.1.1",     # CPU current speed
+    # System identification OIDs (verified against official Dell MIB)
+    "system_model_name": "1.3.6.1.4.1.674.10892.5.1.3.12.0",               # systemModelName - verified correct
+    "system_model_name_alt": "1.3.6.1.4.1.674.10892.5.4.300.10.1.9.1.1",   # chassisModelName - verified correct
+    "system_model_name_alt2": "1.3.6.1.4.1.674.10892.5.4.300.10.1.7.1.1",  # chassisSystemName - verified correct
+    "system_service_tag": "1.3.6.1.4.1.674.10892.5.1.3.2.0",               # systemServiceTag - verified correct
+    "system_bios_version": "1.3.6.1.4.1.674.10892.5.1.3.6.0",              # systemBIOSVersionName - verified correct
+    "cpu_brand": "1.3.6.1.4.1.674.10892.5.4.1100.30.1.23.1.1",             # processorDeviceBrandName - verified correct
+    "cpu_max_speed": "1.3.6.1.4.1.674.10892.5.4.1100.30.1.11.1.1",         # processorDeviceMaximumSpeed - verified correct
+    "cpu_current_speed": "1.3.6.1.4.1.674.10892.5.4.1100.30.1.12.1.1",     # processorDeviceCurrentSpeed - verified correct
     "controller_rollup_status": "1.3.6.1.4.1.674.10892.5.5.1.20.130.1.1.37", # Controller rollup status (combined health)
     "controller_name": "1.3.6.1.4.1.674.10892.5.5.1.20.130.1.1.2",           # Controller name/model
     "controller_firmware": "1.3.6.1.4.1.674.10892.5.5.1.20.130.1.1.8",       # Controller firmware version
@@ -86,7 +88,7 @@ SNMP_WALK_OIDS: Final = {
     "psu_status": "1.3.6.1.4.1.674.10892.5.4.600.12.1.5.1",
     "psu_voltage": "1.3.6.1.4.1.674.10892.5.4.600.20.1.6.1",
     "psu_amperage": "1.3.6.1.4.1.674.10892.5.4.600.30.1.6.1",
-    "memory_health": "1.3.6.1.4.1.674.10892.5.4.1100.50.1.4",
+    "memory_health": "1.3.6.1.4.1.674.10892.5.4.1100.50.1.5",
     # Storage discovery OIDs
     "virtual_disks": "1.3.6.1.4.1.674.10892.5.5.1.20.140.1.1.4",
     "physical_disks": "1.3.6.1.4.1.674.10892.5.5.1.20.130.4.1.4",

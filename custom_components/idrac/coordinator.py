@@ -87,26 +87,43 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
         if self._device_info is not None:
             return self._device_info
         
+        _LOGGER.debug("Fetching device info for %s", self._server_id)
+        
         device_info = {
             "identifiers": {(DOMAIN, self._server_id)},
             "manufacturer": "Dell",
             "configuration_url": f"https://{self.host}",
         }
         
-        # Get system model
-        model_name = await self._async_get_snmp_string(IDRAC_OIDS["system_model_name"])
+        # Get system model - try multiple OIDs
+        model_name = None
+        model_oids = [
+            ("primary", IDRAC_OIDS["system_model_name"]),
+            ("alternative_1", IDRAC_OIDS["system_model_name_alt"]),
+            ("alternative_2", IDRAC_OIDS["system_model_name_alt2"]),
+        ]
+        
+        for oid_name, oid in model_oids:
+            model_name = await self._async_get_snmp_string(oid)
+            _LOGGER.debug("System model name from %s OID (%s): %s", oid_name, oid, model_name)
+            if model_name:
+                break
+        
         if model_name:
             device_info["model"] = model_name
         else:
             device_info["model"] = "iDRAC"
+            _LOGGER.debug("No system model name found from any OID, using default 'iDRAC'")
         
         # Get service tag for serial number
         service_tag = await self._async_get_snmp_string(IDRAC_OIDS["system_service_tag"])
+        _LOGGER.debug("Service tag from SNMP: %s", service_tag)
         if service_tag:
             device_info["serial_number"] = service_tag
         
         # Get BIOS version for sw_version
         bios_version = await self._async_get_snmp_string(IDRAC_OIDS["system_bios_version"])
+        _LOGGER.debug("BIOS version from SNMP: %s", bios_version)
         if bios_version:
             device_info["sw_version"] = f"BIOS {bios_version}"
         
@@ -119,19 +136,14 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
         # Get CPU information for additional context
         cpu_brand = await self._async_get_snmp_string(IDRAC_OIDS["cpu_brand"])
         cpu_max_speed = await self._async_get_snmp_value(IDRAC_OIDS["cpu_max_speed"])
+        _LOGGER.debug("CPU brand from SNMP: %s", cpu_brand)
+        _LOGGER.debug("CPU max speed from SNMP: %s", cpu_max_speed)
         
         # Add CPU info to device attributes if available
-        hw_version_parts = []
         if cpu_brand:
-            hw_version_parts.append(f"CPU: {cpu_brand}")
-        if cpu_max_speed:
-            # Convert MHz to GHz for readability
-            cpu_ghz = cpu_max_speed / 1000 if cpu_max_speed >= 1000 else cpu_max_speed
-            unit = "GHz" if cpu_max_speed >= 1000 else "MHz"
-            hw_version_parts.append(f"{cpu_ghz:.1f} {unit}")
-        
-        if hw_version_parts:
-            device_info["hw_version"] = " @ ".join(hw_version_parts)
+            # CPU brand already contains comprehensive info including base speed
+            # Use it as-is to avoid confusion with additional speed values
+            device_info["hw_version"] = cpu_brand
         
         self._device_info = device_info
         _LOGGER.debug("Device info: %s", device_info)
