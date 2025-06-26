@@ -21,7 +21,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util.unit_conversion import TemperatureConverter
 
-from .const import CONF_DISCOVERED_CPUS, CONF_DISCOVERED_FANS, CONF_DISCOVERED_PSUS, CONF_DISCOVERED_VOLTAGE_PROBES, CONF_DISCOVERED_VIRTUAL_DISKS, CONF_DISCOVERED_PHYSICAL_DISKS, CONF_DISCOVERED_STORAGE_CONTROLLERS, DOMAIN
+from .const import CONF_DISCOVERED_CPUS, CONF_DISCOVERED_FANS, CONF_DISCOVERED_MEMORY, CONF_DISCOVERED_PSUS, CONF_DISCOVERED_VOLTAGE_PROBES, CONF_DISCOVERED_VIRTUAL_DISKS, CONF_DISCOVERED_PHYSICAL_DISKS, CONF_DISCOVERED_STORAGE_CONTROLLERS, DOMAIN
 from .coordinator import IdracDataUpdateCoordinator
 
 
@@ -82,6 +82,12 @@ async def async_setup_entry(
     for i, voltage_probe_index in enumerate(voltage_probes, 1):
         entities.append(
             IdracPsuVoltageSensor(coordinator, config_entry, voltage_probe_index, i)
+        )
+
+    # Add memory health sensors
+    for memory_index in config_entry.data.get(CONF_DISCOVERED_MEMORY, []):
+        entities.append(
+            IdracMemoryHealthSensor(coordinator, config_entry, memory_index)
         )
 
     # Add virtual disk sensors
@@ -746,3 +752,61 @@ class IdracStorageControllerSensor(IdracSensor):
                 attributes["battery_status"] = str(battery_state)
         
         return attributes if attributes else None
+
+
+class IdracMemoryHealthSensor(IdracSensor):
+    """Dell iDRAC memory health sensor."""
+
+    def __init__(
+        self,
+        coordinator: IdracDataUpdateCoordinator,
+        config_entry: ConfigEntry,
+        memory_index: int,
+    ) -> None:
+        """Initialize the memory health sensor."""
+        sensor_key = f"memory_{memory_index}"
+        sensor_name = f"Memory Module {memory_index} Health"
+        super().__init__(
+            coordinator,
+            config_entry,
+            sensor_key,
+            sensor_name,
+            None,
+            SensorDeviceClass.ENUM,
+        )
+        self._memory_index = memory_index
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the state of the memory module."""
+        if self.coordinator.data is None or "memory_health" not in self.coordinator.data:
+            return None
+        
+        health_value = self.coordinator.data["memory_health"].get(self._sensor_key)
+        if health_value is not None:
+            # Map Dell memory health states
+            state_map = {
+                1: "other",
+                2: "unknown", 
+                3: "ok",
+                4: "non_critical",
+                5: "critical",
+                6: "non_recoverable"
+            }
+            try:
+                health_int = int(health_value)
+                return state_map.get(health_int, f"unknown_{health_int}")
+            except (ValueError, TypeError):
+                return str(health_value)
+        return None
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        return (
+            self.coordinator.last_update_success
+            and self.coordinator.data is not None
+            and "memory_health" in self.coordinator.data
+            and self._sensor_key in self.coordinator.data["memory_health"]
+            and self.coordinator.data["memory_health"][self._sensor_key] is not None
+        )

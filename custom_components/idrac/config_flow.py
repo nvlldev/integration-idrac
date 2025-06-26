@@ -454,6 +454,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 config_data[CONF_DISCOVERED_PSUS] = info[CONF_DISCOVERED_PSUS]
                 config_data[CONF_DISCOVERED_VOLTAGE_PROBES] = info[CONF_DISCOVERED_VOLTAGE_PROBES]
                 config_data[CONF_DISCOVERED_MEMORY] = info[CONF_DISCOVERED_MEMORY]
+                config_data[CONF_DISCOVERED_VIRTUAL_DISKS] = info[CONF_DISCOVERED_VIRTUAL_DISKS]
+                config_data[CONF_DISCOVERED_PHYSICAL_DISKS] = info[CONF_DISCOVERED_PHYSICAL_DISKS]
+                config_data[CONF_DISCOVERED_STORAGE_CONTROLLERS] = info[CONF_DISCOVERED_STORAGE_CONTROLLERS]
                 
                 return self.async_create_entry(title=info["title"], data=config_data)
 
@@ -523,6 +526,9 @@ class OptionsFlow(config_entries.OptionsFlow):
                 new_data[CONF_DISCOVERED_PSUS] = info[CONF_DISCOVERED_PSUS]
                 new_data[CONF_DISCOVERED_VOLTAGE_PROBES] = info[CONF_DISCOVERED_VOLTAGE_PROBES]
                 new_data[CONF_DISCOVERED_MEMORY] = info[CONF_DISCOVERED_MEMORY]
+                new_data[CONF_DISCOVERED_VIRTUAL_DISKS] = info[CONF_DISCOVERED_VIRTUAL_DISKS]
+                new_data[CONF_DISCOVERED_PHYSICAL_DISKS] = info[CONF_DISCOVERED_PHYSICAL_DISKS]
+                new_data[CONF_DISCOVERED_STORAGE_CONTROLLERS] = info[CONF_DISCOVERED_STORAGE_CONTROLLERS]
                 
                 self.hass.config_entries.async_update_entry(
                     self._config_entry, data=new_data
