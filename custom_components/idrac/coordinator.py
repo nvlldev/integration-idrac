@@ -5,7 +5,9 @@ import logging
 from datetime import timedelta
 from typing import Any
 
-from pysnmp.hlapi import (
+from pysnmp.error import PySnmpError
+import pysnmp.hlapi.asyncio as hlapi
+from pysnmp.hlapi.asyncio import (
     CommunityData,
     ContextData,
     ObjectIdentity,
@@ -89,16 +91,12 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
         try:
             object_type = ObjectType(ObjectIdentity(oid))
 
-            error_indication, error_status, error_index, var_binds = await self.hass.async_add_executor_job(
-                lambda: next(
-                    getCmd(
-                        self.engine,
-                        self.community_data,
-                        self.transport_target,
-                        self.context_data,
-                        object_type,
-                    )
-                )
+            error_indication, error_status, error_index, var_binds = await getCmd(
+                self.engine,
+                self.community_data,
+                self.transport_target,
+                self.context_data,
+                object_type,
             )
 
             if error_indication or error_status:

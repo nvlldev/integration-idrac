@@ -5,7 +5,9 @@ import logging
 from typing import Any
 
 import voluptuous as vol
-from pysnmp.hlapi import (
+from pysnmp.error import PySnmpError
+import pysnmp.hlapi.asyncio as hlapi
+from pysnmp.hlapi.asyncio import (
     CommunityData,
     ContextData,
     ObjectIdentity,
@@ -56,16 +58,12 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
 
         test_oid = ObjectType(ObjectIdentity("1.3.6.1.4.1.674.10892.5.4.600.30.1.6.1.3"))
 
-        error_indication, error_status, error_index, var_binds = await hass.async_add_executor_job(
-            lambda: next(
-                getCmd(
-                    engine,
-                    community_data,
-                    transport_target,
-                    context_data,
-                    test_oid,
-                )
-            )
+        error_indication, error_status, error_index, var_binds = await getCmd(
+            engine,
+            community_data,
+            transport_target,
+            context_data,
+            test_oid,
         )
 
         if error_indication:
@@ -103,32 +101,30 @@ async def _discover_sensors(
     discovered = []
     
     try:
-        def snmp_walk():
-            results = []
-            for error_indication, error_status, error_index, var_binds in nextCmd(
-                engine,
-                community_data,
-                transport_target,
-                context_data,
-                ObjectType(ObjectIdentity(base_oid)),
-                lexicographicMode=False,
-                maxRows=20,
-            ):
-                if error_indication or error_status:
-                    break
-                
-                for var_bind in var_binds:
-                    oid_str = str(var_bind[0])
-                    if oid_str.startswith(base_oid + "."):
-                        try:
-                            sensor_id = int(oid_str.split(".")[-1])
-                            if var_bind[1] is not None and str(var_bind[1]) != "No Such Object currently exists at this OID":
-                                results.append(sensor_id)
-                        except (ValueError, IndexError):
-                            continue
-            return results
+        results = []
+        async for error_indication, error_status, error_index, var_binds in nextCmd(
+            engine,
+            community_data,
+            transport_target,
+            context_data,
+            ObjectType(ObjectIdentity(base_oid)),
+            lexicographicMode=False,
+            maxRows=20,
+        ):
+            if error_indication or error_status:
+                break
+            
+            for var_bind in var_binds:
+                oid_str = str(var_bind[0])
+                if oid_str.startswith(base_oid + "."):
+                    try:
+                        sensor_id = int(oid_str.split(".")[-1])
+                        if var_bind[1] is not None and str(var_bind[1]) != "No Such Object currently exists at this OID":
+                            results.append(sensor_id)
+                    except (ValueError, IndexError):
+                        continue
 
-        discovered = await hass.async_add_executor_job(snmp_walk)
+        discovered = results
         discovered.sort()
         
     except Exception as exc:
