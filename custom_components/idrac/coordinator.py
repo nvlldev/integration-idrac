@@ -230,10 +230,18 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
             for controller_index in self.discovered_storage_controllers:
                 controller_oid = f"{IDRAC_OIDS['controller_state']}.{controller_index}"
                 controller_state = await self._async_get_snmp_value(controller_oid)
+                battery_state = await self._async_get_snmp_value(f"{IDRAC_OIDS['controller_battery_state']}.{controller_index}")
+                
+                # Debug logging to show actual numeric values
+                _LOGGER.debug(
+                    f"Storage Controller {controller_index} - Raw state value: {controller_state} "
+                    f"(type: {type(controller_state)}), Battery state: {battery_state}"
+                )
+                
                 # Create entry even if state is None - it will be discovered so should exist
                 data["storage_controllers"][f"controller_{controller_index}"] = {
                     "state": controller_state if controller_state is not None else 0,  # Default to 0 if state unavailable
-                    "battery_state": await self._async_get_snmp_value(f"{IDRAC_OIDS['controller_battery_state']}.{controller_index}"),
+                    "battery_state": battery_state,
                 }
 
             return data

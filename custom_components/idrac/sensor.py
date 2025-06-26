@@ -1,6 +1,8 @@
 """Sensor platform for Dell iDRAC integration."""
 from __future__ import annotations
 
+import logging
+
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
@@ -23,6 +25,8 @@ from homeassistant.util.unit_conversion import TemperatureConverter
 
 from .const import CONF_DISCOVERED_CPUS, CONF_DISCOVERED_FANS, CONF_DISCOVERED_MEMORY, CONF_DISCOVERED_PSUS, CONF_DISCOVERED_VOLTAGE_PROBES, CONF_DISCOVERED_VIRTUAL_DISKS, CONF_DISCOVERED_PHYSICAL_DISKS, CONF_DISCOVERED_STORAGE_CONTROLLERS, DOMAIN
 from .coordinator import IdracDataUpdateCoordinator
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def _get_device_name_prefix(host: str) -> str:
@@ -583,6 +587,7 @@ class IdracVirtualDiskSensor(IdracSensor):
                 1: "Concatenated",
                 2: "RAID-0", 
                 3: "RAID-1",
+                4: "RAID-4",
                 7: "RAID-5",
                 10: "RAID-6",
                 12: "RAID-10",
@@ -717,8 +722,20 @@ class IdracStorageControllerSensor(IdracSensor):
             }
             try:
                 state_int = int(state_value)
-                return state_map.get(state_int, f"unknown_{state_int}")
+                mapped_state = state_map.get(state_int, f"unknown_{state_int}")
+                
+                # Debug logging to show state mapping
+                _LOGGER.debug(
+                    f"Storage Controller {self._controller_index} - State mapping: "
+                    f"raw value {state_value} -> integer {state_int} -> '{mapped_state}'"
+                )
+                
+                return mapped_state
             except (ValueError, TypeError):
+                _LOGGER.debug(
+                    f"Storage Controller {self._controller_index} - Failed to convert state value "
+                    f"'{state_value}' (type: {type(state_value)}) to integer, returning as string"
+                )
                 return str(state_value)
         return None
 
