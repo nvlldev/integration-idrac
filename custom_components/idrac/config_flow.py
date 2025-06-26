@@ -51,11 +51,13 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
 
 async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
     """Validate the user input allows us to connect and discover sensors."""
+    _LOGGER.info("Starting iDRAC validation for host: %s", data.get(CONF_HOST))
     host = data[CONF_HOST]
     port = data[CONF_PORT]
     community = data[CONF_COMMUNITY]
 
     try:
+        _LOGGER.info("Creating SNMP engine and connection objects")
         engine = SnmpEngine()
         community_data = CommunityData(community)
         transport_target = UdpTransportTarget((host, port), timeout=10, retries=2)
@@ -63,6 +65,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
 
         test_oid = ObjectType(ObjectIdentity("1.3.6.1.4.1.674.10892.5.4.600.30.1.6.1.3"))
 
+        _LOGGER.info("Testing SNMP connection to %s:%s with community '%s'", host, port, "***")
         error_indication, error_status, error_index, var_binds = await getCmd(
             engine,
             community_data,
@@ -415,16 +418,21 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Handle the initial step."""
+        _LOGGER.info("iDRAC config flow step_user called with input: %s", user_input is not None)
         errors: dict[str, str] = {}
         if user_input is not None:
             try:
+                _LOGGER.info("Calling validate_input with data: %s", {k: v for k, v in user_input.items() if k != CONF_COMMUNITY})
                 info = await validate_input(self.hass, user_input)
-            except CannotConnect:
+                _LOGGER.info("validate_input completed successfully")
+            except CannotConnect as exc:
+                _LOGGER.error("Cannot connect to iDRAC: %s", exc)
                 errors["base"] = "cannot_connect"
-            except InvalidAuth:
+            except InvalidAuth as exc:
+                _LOGGER.error("Invalid authentication for iDRAC: %s", exc)
                 errors["base"] = "invalid_auth"
-            except Exception:  # pylint: disable=broad-except
-                _LOGGER.exception("Unexpected exception")
+            except Exception as exc:  # pylint: disable=broad-except
+                _LOGGER.exception("Unexpected exception during validation: %s", exc)
                 errors["base"] = "unknown"
             else:
                 unique_id = f"{user_input[CONF_HOST]}:{user_input[CONF_PORT]}"
