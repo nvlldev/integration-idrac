@@ -15,6 +15,17 @@ from .const import CONF_DISCOVERED_PSUS, DOMAIN
 from .coordinator import IdracDataUpdateCoordinator
 
 
+def _to_snake_case(text: str) -> str:
+    """Convert text to snake_case for entity ID compatibility."""
+    import re
+    # Replace spaces and special characters with underscores
+    snake = re.sub(r'[^a-zA-Z0-9]', '_', text.lower())
+    # Remove multiple underscores
+    snake = re.sub(r'_+', '_', snake)
+    # Remove leading/trailing underscores
+    return snake.strip('_')
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
@@ -53,7 +64,10 @@ class IdracBinarySensor(CoordinatorEntity, BinarySensorEntity):
         device_id = f"{host}:{port}"
         
         self._attr_name = sensor_name
-        self._attr_unique_id = f"{device_id}_{sensor_key}"
+        # Use device name prefix for auto-rename compatibility
+        device_name = f"Dell iDRAC ({host}:{port})" if port != 161 else f"Dell iDRAC ({host})"
+        device_snake = _to_snake_case(device_name)
+        self._attr_unique_id = f"{device_snake}_{sensor_key}"
         self._attr_device_class = device_class
 
         self._attr_device_info = {
@@ -89,6 +103,12 @@ class IdracPsuStatusBinarySensor(IdracBinarySensor):
             sensor_name,
             BinarySensorDeviceClass.PROBLEM,  # "On" means problem detected, "Off" means OK
         )
+        # Override the unique_id for auto-rename compatibility  
+        host = config_entry.data[CONF_HOST]
+        port = config_entry.data[CONF_PORT]
+        device_name = f"Dell iDRAC ({host}:{port})" if port != 161 else f"Dell iDRAC ({host})"
+        device_snake = _to_snake_case(device_name)
+        self._attr_unique_id = f"{device_snake}_psu_{psu_index}_status"
 
     @property
     def is_on(self) -> bool | None:

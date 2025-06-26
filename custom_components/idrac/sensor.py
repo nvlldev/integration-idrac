@@ -24,6 +24,17 @@ from .const import CONF_DISCOVERED_CPUS, CONF_DISCOVERED_FANS, CONF_DISCOVERED_P
 from .coordinator import IdracDataUpdateCoordinator
 
 
+def _to_snake_case(text: str) -> str:
+    """Convert text to snake_case for entity ID compatibility."""
+    import re
+    # Replace spaces and special characters with underscores
+    snake = re.sub(r'[^a-zA-Z0-9]', '_', text.lower())
+    # Remove multiple underscores
+    snake = re.sub(r'_+', '_', snake)
+    # Remove leading/trailing underscores
+    return snake.strip('_')
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
@@ -86,7 +97,11 @@ class IdracSensor(CoordinatorEntity, SensorEntity):
         device_id = f"{host}:{port}"
         
         self._attr_name = sensor_name
-        self._attr_unique_id = f"{device_id}_{sensor_key}"
+        # Use device name prefix for auto-rename compatibility
+        device_name = f"Dell iDRAC ({host}:{port})" if port != 161 else f"Dell iDRAC ({host})"
+        device_snake = _to_snake_case(device_name)
+        descriptive_key = sensor_key.replace("temp_", "temperature_")
+        self._attr_unique_id = f"{device_snake}_{descriptive_key}"
         self._attr_native_unit_of_measurement = unit
         self._attr_device_class = device_class
         self._attr_state_class = SensorStateClass.MEASUREMENT
@@ -164,6 +179,7 @@ class IdracCpuTemperatureSensor(IdracSensor):
         """Initialize the CPU temperature sensor."""
         sensor_key = f"cpu_{cpu_index}"
         sensor_name = f"CPU {cpu_index - 2} Temperature"
+    
         super().__init__(
             coordinator,
             config_entry,
@@ -172,6 +188,12 @@ class IdracCpuTemperatureSensor(IdracSensor):
             UnitOfTemperature.CELSIUS,
             SensorDeviceClass.TEMPERATURE,
         )
+        # Override the unique_id for auto-rename compatibility
+        host = config_entry.data[CONF_HOST]
+        port = config_entry.data[CONF_PORT]
+        device_name = f"Dell iDRAC ({host}:{port})" if port != 161 else f"Dell iDRAC ({host})"
+        device_snake = _to_snake_case(device_name)
+        self._attr_unique_id = f"{device_snake}_cpu_{cpu_index - 2}_temperature"
 
     @property
     def native_value(self) -> float | None:
@@ -204,6 +226,7 @@ class IdracFanSensor(IdracSensor):
         """Initialize the fan sensor."""
         sensor_key = f"fan_{fan_index}"
         sensor_name = f"Fan {fan_index} Speed"
+        
         super().__init__(
             coordinator,
             config_entry,
@@ -211,6 +234,12 @@ class IdracFanSensor(IdracSensor):
             sensor_name,
             REVOLUTIONS_PER_MINUTE,
         )
+        # Override the unique_id for auto-rename compatibility
+        host = config_entry.data[CONF_HOST]
+        port = config_entry.data[CONF_PORT]
+        device_name = f"Dell iDRAC ({host}:{port})" if port != 161 else f"Dell iDRAC ({host})"
+        device_snake = _to_snake_case(device_name)
+        self._attr_unique_id = f"{device_snake}_fan_{fan_index}_speed"
 
     @property
     def native_value(self) -> float | None:
@@ -246,6 +275,7 @@ class IdracPsuVoltageSensor(IdracSensor):
         # Use sequential PSU numbering if provided, otherwise use probe index
         display_number = psu_number if psu_number is not None else voltage_probe_index
         sensor_name = f"PSU {display_number} Voltage"
+        
         super().__init__(
             coordinator,
             config_entry,
@@ -254,6 +284,12 @@ class IdracPsuVoltageSensor(IdracSensor):
             UnitOfElectricPotential.VOLT,
             SensorDeviceClass.VOLTAGE,
         )
+        # Override the unique_id for auto-rename compatibility
+        host = config_entry.data[CONF_HOST]
+        port = config_entry.data[CONF_PORT]
+        device_name = f"Dell iDRAC ({host}:{port})" if port != 161 else f"Dell iDRAC ({host})"
+        device_snake = _to_snake_case(device_name)
+        self._attr_unique_id = f"{device_snake}_psu_{display_number}_voltage"
 
     @property
     def native_value(self) -> float | None:
@@ -288,6 +324,7 @@ class IdracPsuAmperageSensor(IdracSensor):
         """Initialize the PSU amperage sensor."""
         sensor_key = f"psu_amperage_{psu_index}"
         sensor_name = f"PSU {psu_index} Amperage"
+        
         super().__init__(
             coordinator,
             config_entry,
@@ -296,6 +333,12 @@ class IdracPsuAmperageSensor(IdracSensor):
             UnitOfElectricCurrent.AMPERE,
             SensorDeviceClass.CURRENT,
         )
+        # Override the unique_id for auto-rename compatibility
+        host = config_entry.data[CONF_HOST]
+        port = config_entry.data[CONF_PORT]
+        device_name = f"Dell iDRAC ({host}:{port})" if port != 161 else f"Dell iDRAC ({host})"
+        device_snake = _to_snake_case(device_name)
+        self._attr_unique_id = f"{device_snake}_psu_{psu_index}_amperage"
 
     @property
     def native_value(self) -> float | None:
