@@ -103,6 +103,13 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
             "1.3.6.1.4.1.674.10892.1.1100.50.1.5",    # Legacy iDRAC memory health
             "1.3.6.1.4.1.674.10892.1.1100.50.1.6",    # Legacy memory status
             "1.3.6.1.4.1.674.10892.5.4.1100.50.1",    # Base memory table
+            # Try completely different memory OID approaches
+            "1.3.6.1.4.1.674.10892.5.4.1100.50.1.21", # Memory module status  
+            "1.3.6.1.4.1.674.10892.5.4.1100.50.1.23", # Memory device health status
+            "1.3.6.1.4.1.674.10892.5.4.1100.50.1.9",  # Memory operational status
+            # Legacy memory health patterns
+            "1.3.6.1.4.1.674.10892.1.1100.50.1.3",    # Legacy memory device status
+            "1.3.6.1.4.1.674.10892.1.1100.50.1.7",    # Legacy memory health
         ]
         
         for oid_base in memory_oid_bases:
