@@ -11,7 +11,14 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import CONF_DISCOVERED_MEMORY, CONF_DISCOVERED_PSUS, DOMAIN
+from .const import (
+    CONF_DISCOVERED_MEMORY,
+    CONF_DISCOVERED_PHYSICAL_DISKS,
+    CONF_DISCOVERED_PSUS,
+    CONF_DISCOVERED_STORAGE_CONTROLLERS,
+    CONF_DISCOVERED_VIRTUAL_DISKS,
+    DOMAIN,
+)
 from .coordinator import IdracDataUpdateCoordinator
 
 
@@ -47,6 +54,25 @@ async def async_setup_entry(
         entities.append(
             IdracMemoryHealthBinarySensor(coordinator, config_entry, memory_index)
         )
+
+    # Add virtual disk binary sensors
+    for vdisk_index in config_entry.data.get(CONF_DISCOVERED_VIRTUAL_DISKS, []):
+        entities.append(
+            IdracVirtualDiskBinarySensor(coordinator, config_entry, vdisk_index)
+        )
+
+    # Add physical disk binary sensors
+    for pdisk_index in config_entry.data.get(CONF_DISCOVERED_PHYSICAL_DISKS, []):
+        entities.append(
+            IdracPhysicalDiskBinarySensor(coordinator, config_entry, pdisk_index)
+        )
+
+    # Add storage controller binary sensors
+    for controller_index in config_entry.data.get(CONF_DISCOVERED_STORAGE_CONTROLLERS, []):
+        entities.extend([
+            IdracStorageControllerBinarySensor(coordinator, config_entry, controller_index),
+            IdracControllerBatteryBinarySensor(coordinator, config_entry, controller_index),
+        ])
 
     async_add_entities(entities)
 
@@ -220,6 +246,220 @@ class IdracSystemHealthBinarySensor(IdracBinarySensor):
             except (ValueError, TypeError):
                 return {"raw_value": str(health_value)}
         return None
+
+
+class IdracVirtualDiskBinarySensor(IdracBinarySensor):
+    """Dell iDRAC virtual disk binary sensor."""
+
+    def __init__(
+        self,
+        coordinator: IdracDataUpdateCoordinator,
+        config_entry: ConfigEntry,
+        vdisk_index: int,
+    ) -> None:
+        """Initialize the virtual disk binary sensor."""
+        sensor_key = f"vdisk_{vdisk_index}"
+        sensor_name = f"Virtual Disk {vdisk_index} Status"
+        super().__init__(
+            coordinator,
+            config_entry,
+            sensor_key,
+            sensor_name,
+            BinarySensorDeviceClass.PROBLEM,
+        )
+        self._vdisk_index = vdisk_index
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return true if the virtual disk has a problem."""
+        if self.coordinator.data is None or "virtual_disks" not in self.coordinator.data:
+            return None
+        
+        vdisk_data = self.coordinator.data["virtual_disks"].get(self._sensor_key)
+        if vdisk_data is None:
+            return None
+        
+        state_value = vdisk_data.get("state")
+        if state_value is not None:
+            try:
+                state_int = int(state_value)
+                # True (problem) for: 1, 3, 4, 6 (unknown, degraded, failed, offline)
+                # False (OK) for: 2 (online)
+                return state_int != 2
+            except (ValueError, TypeError):
+                return True  # Unknown state treated as problem
+        return None
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        return (
+            self.coordinator.last_update_success
+            and self.coordinator.data is not None
+            and "virtual_disks" in self.coordinator.data
+            and self._sensor_key in self.coordinator.data["virtual_disks"]
+        )
+
+
+class IdracPhysicalDiskBinarySensor(IdracBinarySensor):
+    """Dell iDRAC physical disk binary sensor."""
+
+    def __init__(
+        self,
+        coordinator: IdracDataUpdateCoordinator,
+        config_entry: ConfigEntry,
+        pdisk_index: int,
+    ) -> None:
+        """Initialize the physical disk binary sensor."""
+        sensor_key = f"pdisk_{pdisk_index}"
+        sensor_name = f"Physical Disk {pdisk_index} Status"
+        super().__init__(
+            coordinator,
+            config_entry,
+            sensor_key,
+            sensor_name,
+            BinarySensorDeviceClass.PROBLEM,
+        )
+        self._pdisk_index = pdisk_index
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return true if the physical disk has a problem."""
+        if self.coordinator.data is None or "physical_disks" not in self.coordinator.data:
+            return None
+        
+        pdisk_data = self.coordinator.data["physical_disks"].get(self._sensor_key)
+        if pdisk_data is None:
+            return None
+        
+        state_value = pdisk_data.get("state")
+        if state_value is not None:
+            try:
+                state_int = int(state_value)
+                # True (problem) for: 1, 4, 5, 6, 7, 8, 9 (unknown, foreign, offline, blocked, failed, non_raid, removed)
+                # False (OK) for: 2, 3 (ready, online)
+                return state_int not in [2, 3]
+            except (ValueError, TypeError):
+                return True  # Unknown state treated as problem
+        return None
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        return (
+            self.coordinator.last_update_success
+            and self.coordinator.data is not None
+            and "physical_disks" in self.coordinator.data
+            and self._sensor_key in self.coordinator.data["physical_disks"]
+        )
+
+
+class IdracStorageControllerBinarySensor(IdracBinarySensor):
+    """Dell iDRAC storage controller binary sensor."""
+
+    def __init__(
+        self,
+        coordinator: IdracDataUpdateCoordinator,
+        config_entry: ConfigEntry,
+        controller_index: int,
+    ) -> None:
+        """Initialize the storage controller binary sensor."""
+        sensor_key = f"controller_{controller_index}"
+        sensor_name = f"Storage Controller {controller_index} Status"
+        super().__init__(
+            coordinator,
+            config_entry,
+            sensor_key,
+            sensor_name,
+            BinarySensorDeviceClass.PROBLEM,
+        )
+        self._controller_index = controller_index
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return true if the storage controller has a problem."""
+        if self.coordinator.data is None or "storage_controllers" not in self.coordinator.data:
+            return None
+        
+        controller_data = self.coordinator.data["storage_controllers"].get(self._sensor_key)
+        if controller_data is None:
+            return None
+        
+        state_value = controller_data.get("state")
+        if state_value is not None:
+            try:
+                state_int = int(state_value)
+                # True (problem) for: 1, 3, 5, 6 (unknown, failed, offline, degraded)
+                # False (OK) for: 2, 4 (ready, online)
+                return state_int not in [2, 4]
+            except (ValueError, TypeError):
+                return True  # Unknown state treated as problem
+        return None
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        return (
+            self.coordinator.last_update_success
+            and self.coordinator.data is not None
+            and "storage_controllers" in self.coordinator.data
+            and self._sensor_key in self.coordinator.data["storage_controllers"]
+        )
+
+
+class IdracControllerBatteryBinarySensor(IdracBinarySensor):
+    """Dell iDRAC storage controller battery binary sensor."""
+
+    def __init__(
+        self,
+        coordinator: IdracDataUpdateCoordinator,
+        config_entry: ConfigEntry,
+        controller_index: int,
+    ) -> None:
+        """Initialize the controller battery binary sensor."""
+        sensor_key = f"controller_{controller_index}_battery"
+        sensor_name = f"Storage Controller {controller_index} Battery"
+        super().__init__(
+            coordinator,
+            config_entry,
+            sensor_key,
+            sensor_name,
+            BinarySensorDeviceClass.BATTERY,
+        )
+        self._controller_index = controller_index
+        self._controller_key = f"controller_{controller_index}"
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return true if the controller battery has a problem."""
+        if self.coordinator.data is None or "storage_controllers" not in self.coordinator.data:
+            return None
+        
+        controller_data = self.coordinator.data["storage_controllers"].get(self._controller_key)
+        if controller_data is None:
+            return None
+        
+        battery_state = controller_data.get("battery_state")
+        if battery_state is not None:
+            try:
+                battery_int = int(battery_state)
+                # True (problem) for: 1, 3, 4, 5, 7 (unknown, failed, degraded, missing, below_threshold)
+                # False (OK) for: 2, 6 (ready, charging)
+                return battery_int not in [2, 6]
+            except (ValueError, TypeError):
+                return True  # Unknown state treated as problem
+        return None
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        return (
+            self.coordinator.last_update_success
+            and self.coordinator.data is not None
+            and "storage_controllers" in self.coordinator.data
+            and self._controller_key in self.coordinator.data["storage_controllers"]
+            and self.coordinator.data["storage_controllers"][self._controller_key].get("battery_state") is not None
+        )
 
 
 class IdracSystemIntrusionBinarySensor(IdracBinarySensor):
@@ -444,3 +684,217 @@ class IdracMemoryHealthBinarySensor(IdracBinarySensor):
             except (ValueError, TypeError):
                 return {"raw_value": str(health_value)}
         return None
+
+
+class IdracVirtualDiskBinarySensor(IdracBinarySensor):
+    """Dell iDRAC virtual disk binary sensor."""
+
+    def __init__(
+        self,
+        coordinator: IdracDataUpdateCoordinator,
+        config_entry: ConfigEntry,
+        vdisk_index: int,
+    ) -> None:
+        """Initialize the virtual disk binary sensor."""
+        sensor_key = f"vdisk_{vdisk_index}"
+        sensor_name = f"Virtual Disk {vdisk_index} Status"
+        super().__init__(
+            coordinator,
+            config_entry,
+            sensor_key,
+            sensor_name,
+            BinarySensorDeviceClass.PROBLEM,
+        )
+        self._vdisk_index = vdisk_index
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return true if the virtual disk has a problem."""
+        if self.coordinator.data is None or "virtual_disks" not in self.coordinator.data:
+            return None
+        
+        vdisk_data = self.coordinator.data["virtual_disks"].get(self._sensor_key)
+        if vdisk_data is None:
+            return None
+        
+        state_value = vdisk_data.get("state")
+        if state_value is not None:
+            try:
+                state_int = int(state_value)
+                # True (problem) for: 1, 3, 4, 6 (unknown, degraded, failed, offline)
+                # False (OK) for: 2 (online)
+                return state_int != 2
+            except (ValueError, TypeError):
+                return True  # Unknown state treated as problem
+        return None
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        return (
+            self.coordinator.last_update_success
+            and self.coordinator.data is not None
+            and "virtual_disks" in self.coordinator.data
+            and self._sensor_key in self.coordinator.data["virtual_disks"]
+        )
+
+
+class IdracPhysicalDiskBinarySensor(IdracBinarySensor):
+    """Dell iDRAC physical disk binary sensor."""
+
+    def __init__(
+        self,
+        coordinator: IdracDataUpdateCoordinator,
+        config_entry: ConfigEntry,
+        pdisk_index: int,
+    ) -> None:
+        """Initialize the physical disk binary sensor."""
+        sensor_key = f"pdisk_{pdisk_index}"
+        sensor_name = f"Physical Disk {pdisk_index} Status"
+        super().__init__(
+            coordinator,
+            config_entry,
+            sensor_key,
+            sensor_name,
+            BinarySensorDeviceClass.PROBLEM,
+        )
+        self._pdisk_index = pdisk_index
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return true if the physical disk has a problem."""
+        if self.coordinator.data is None or "physical_disks" not in self.coordinator.data:
+            return None
+        
+        pdisk_data = self.coordinator.data["physical_disks"].get(self._sensor_key)
+        if pdisk_data is None:
+            return None
+        
+        state_value = pdisk_data.get("state")
+        if state_value is not None:
+            try:
+                state_int = int(state_value)
+                # True (problem) for: 1, 4, 5, 6, 7, 8, 9 (unknown, foreign, offline, blocked, failed, non_raid, removed)
+                # False (OK) for: 2, 3 (ready, online)
+                return state_int not in [2, 3]
+            except (ValueError, TypeError):
+                return True  # Unknown state treated as problem
+        return None
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        return (
+            self.coordinator.last_update_success
+            and self.coordinator.data is not None
+            and "physical_disks" in self.coordinator.data
+            and self._sensor_key in self.coordinator.data["physical_disks"]
+        )
+
+
+class IdracStorageControllerBinarySensor(IdracBinarySensor):
+    """Dell iDRAC storage controller binary sensor."""
+
+    def __init__(
+        self,
+        coordinator: IdracDataUpdateCoordinator,
+        config_entry: ConfigEntry,
+        controller_index: int,
+    ) -> None:
+        """Initialize the storage controller binary sensor."""
+        sensor_key = f"controller_{controller_index}"
+        sensor_name = f"Storage Controller {controller_index} Status"
+        super().__init__(
+            coordinator,
+            config_entry,
+            sensor_key,
+            sensor_name,
+            BinarySensorDeviceClass.PROBLEM,
+        )
+        self._controller_index = controller_index
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return true if the storage controller has a problem."""
+        if self.coordinator.data is None or "storage_controllers" not in self.coordinator.data:
+            return None
+        
+        controller_data = self.coordinator.data["storage_controllers"].get(self._sensor_key)
+        if controller_data is None:
+            return None
+        
+        state_value = controller_data.get("state")
+        if state_value is not None:
+            try:
+                state_int = int(state_value)
+                # True (problem) for: 1, 3, 5, 6 (unknown, failed, offline, degraded)
+                # False (OK) for: 2, 4 (ready, online)
+                return state_int not in [2, 4]
+            except (ValueError, TypeError):
+                return True  # Unknown state treated as problem
+        return None
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        return (
+            self.coordinator.last_update_success
+            and self.coordinator.data is not None
+            and "storage_controllers" in self.coordinator.data
+            and self._sensor_key in self.coordinator.data["storage_controllers"]
+        )
+
+
+class IdracControllerBatteryBinarySensor(IdracBinarySensor):
+    """Dell iDRAC storage controller battery binary sensor."""
+
+    def __init__(
+        self,
+        coordinator: IdracDataUpdateCoordinator,
+        config_entry: ConfigEntry,
+        controller_index: int,
+    ) -> None:
+        """Initialize the controller battery binary sensor."""
+        sensor_key = f"controller_{controller_index}_battery"
+        sensor_name = f"Storage Controller {controller_index} Battery"
+        super().__init__(
+            coordinator,
+            config_entry,
+            sensor_key,
+            sensor_name,
+            BinarySensorDeviceClass.BATTERY,
+        )
+        self._controller_index = controller_index
+        self._controller_key = f"controller_{controller_index}"
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return true if the controller battery has a problem."""
+        if self.coordinator.data is None or "storage_controllers" not in self.coordinator.data:
+            return None
+        
+        controller_data = self.coordinator.data["storage_controllers"].get(self._controller_key)
+        if controller_data is None:
+            return None
+        
+        battery_state = controller_data.get("battery_state")
+        if battery_state is not None:
+            try:
+                battery_int = int(battery_state)
+                # True (problem) for: 1, 3, 4, 5, 7 (unknown, failed, degraded, missing, below_threshold)
+                # False (OK) for: 2, 6 (ready, charging)
+                return battery_int not in [2, 6]
+            except (ValueError, TypeError):
+                return True  # Unknown state treated as problem
+        return None
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        return (
+            self.coordinator.last_update_success
+            and self.coordinator.data is not None
+            and "storage_controllers" in self.coordinator.data
+            and self._controller_key in self.coordinator.data["storage_controllers"]
+            and self.coordinator.data["storage_controllers"][self._controller_key].get("battery_state") is not None
+        )

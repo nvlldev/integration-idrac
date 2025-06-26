@@ -23,7 +23,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util.unit_conversion import TemperatureConverter
 
-from .const import CONF_DISCOVERED_CPUS, CONF_DISCOVERED_FANS, CONF_DISCOVERED_MEMORY, CONF_DISCOVERED_PSUS, CONF_DISCOVERED_VOLTAGE_PROBES, CONF_DISCOVERED_VIRTUAL_DISKS, CONF_DISCOVERED_PHYSICAL_DISKS, CONF_DISCOVERED_STORAGE_CONTROLLERS, DOMAIN
+from .const import CONF_DISCOVERED_CPUS, CONF_DISCOVERED_FANS, CONF_DISCOVERED_PSUS, CONF_DISCOVERED_VOLTAGE_PROBES, DOMAIN
 from .coordinator import IdracDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -88,29 +88,6 @@ async def async_setup_entry(
             IdracPsuVoltageSensor(coordinator, config_entry, voltage_probe_index, i)
         )
 
-    # Add memory health sensors
-    for memory_index in config_entry.data.get(CONF_DISCOVERED_MEMORY, []):
-        entities.append(
-            IdracMemoryHealthSensor(coordinator, config_entry, memory_index)
-        )
-
-    # Add virtual disk sensors
-    for vdisk_index in config_entry.data.get(CONF_DISCOVERED_VIRTUAL_DISKS, []):
-        entities.append(
-            IdracVirtualDiskSensor(coordinator, config_entry, vdisk_index)
-        )
-
-    # Add physical disk sensors
-    for pdisk_index in config_entry.data.get(CONF_DISCOVERED_PHYSICAL_DISKS, []):
-        entities.append(
-            IdracPhysicalDiskSensor(coordinator, config_entry, pdisk_index)
-        )
-
-    # Add storage controller sensors
-    for controller_index in config_entry.data.get(CONF_DISCOVERED_STORAGE_CONTROLLERS, []):
-        entities.append(
-            IdracStorageControllerSensor(coordinator, config_entry, controller_index)
-        )
 
     async_add_entities(entities)
 
