@@ -27,8 +27,14 @@
         "title": "Dell iDRAC Options",
         "description": "Configure Dell iDRAC options",
         "data": {
-          "scan_interval": "Update Interval (seconds)"
+          "scan_interval": "Update Interval (seconds)",
+          "rediscover_sensors": "Re-discover sensors"
         }
+      },
+      "rediscover": {
+        "title": "Re-discover Sensors",
+        "description": "Re-scan for available sensors on {host}.\n\nCurrent sensors:\n• {fans} fans\n• {cpus} CPUs\n• {psus} PSUs\n• {voltages} voltage probes\n\nThis will update the sensor list without removing the integration.",
+        "data": {}
       }
     }
   }

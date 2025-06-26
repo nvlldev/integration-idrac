@@ -357,6 +357,10 @@ class OptionsFlow(config_entries.OptionsFlow):
     ) -> FlowResult:
         """Manage the options."""
         if user_input is not None:
+            if user_input.get("rediscover_sensors", False):
+                # User wants to re-discover sensors
+                return await self.async_step_rediscover()
+            
             return self.async_create_entry(title="", data=user_input)
 
         current_scan_interval = self.config_entry.options.get(
@@ -372,6 +376,59 @@ class OptionsFlow(config_entries.OptionsFlow):
                         CONF_SCAN_INTERVAL,
                         default=current_scan_interval
                     ): vol.All(int, vol.Range(min=10, max=300)),
+                    vol.Optional("rediscover_sensors", default=False): bool,
                 }
             ),
+        )
+
+    async def async_step_rediscover(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Re-discover sensors."""
+        if user_input is not None:
+            # User confirmed re-discovery
+            try:
+                # Re-run sensor discovery using existing connection info
+                info = await validate_input(self.hass, self.config_entry.data)
+                
+                # Update the config entry with new discovery data
+                new_data = self.config_entry.data.copy()
+                new_data[CONF_DISCOVERED_FANS] = info[CONF_DISCOVERED_FANS]
+                new_data[CONF_DISCOVERED_CPUS] = info[CONF_DISCOVERED_CPUS]
+                new_data[CONF_DISCOVERED_PSUS] = info[CONF_DISCOVERED_PSUS]
+                new_data[CONF_DISCOVERED_VOLTAGE_PROBES] = info[CONF_DISCOVERED_VOLTAGE_PROBES]
+                
+                self.hass.config_entries.async_update_entry(
+                    self.config_entry, data=new_data
+                )
+                
+                # Get current options
+                current_options = self.config_entry.options.copy()
+                
+                return self.async_create_entry(title="", data=current_options)
+                
+            except CannotConnect:
+                return self.async_show_form(
+                    step_id="rediscover",
+                    errors={"base": "cannot_connect"},
+                    description_placeholders={"error": "Failed to connect to iDRAC"},
+                )
+            except Exception as exc:
+                _LOGGER.exception("Failed to re-discover sensors")
+                return self.async_show_form(
+                    step_id="rediscover",
+                    errors={"base": "unknown"},
+                    description_placeholders={"error": str(exc)},
+                )
+
+        return self.async_show_form(
+            step_id="rediscover",
+            data_schema=vol.Schema({}),
+            description_placeholders={
+                "host": self.config_entry.data[CONF_HOST],
+                "fans": len(self.config_entry.data.get(CONF_DISCOVERED_FANS, [])),
+                "cpus": len(self.config_entry.data.get(CONF_DISCOVERED_CPUS, [])),
+                "psus": len(self.config_entry.data.get(CONF_DISCOVERED_PSUS, [])),
+                "voltages": len(self.config_entry.data.get(CONF_DISCOVERED_VOLTAGE_PROBES, [])),
+            },
         )

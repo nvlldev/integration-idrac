@@ -50,12 +50,11 @@ async def async_setup_entry(
             IdracFanSensor(coordinator, config_entry, fan_index)
         )
 
-    # Add PSU status and amperage sensors
+    # Add PSU amperage sensors
     for psu_index in config_entry.data.get(CONF_DISCOVERED_PSUS, []):
-        entities.extend([
-            IdracPsuStatusSensor(coordinator, config_entry, psu_index),
-            IdracPsuAmperageSensor(coordinator, config_entry, psu_index),
-        ])
+        entities.append(
+            IdracPsuAmperageSensor(coordinator, config_entry, psu_index)
+        )
 
     # Add PSU voltage sensors (discovered separately)
     voltage_probes = config_entry.data.get(CONF_DISCOVERED_VOLTAGE_PROBES, [])
@@ -275,63 +274,6 @@ class IdracPsuVoltageSensor(IdracSensor):
         )
 
 
-class IdracPsuStatusSensor(IdracSensor):
-    """Dell iDRAC PSU status sensor."""
-
-    def __init__(
-        self,
-        coordinator: IdracDataUpdateCoordinator,
-        config_entry: ConfigEntry,
-        psu_index: int,
-    ) -> None:
-        """Initialize the PSU status sensor."""
-        sensor_key = f"psu_status_{psu_index}"
-        sensor_name = f"PSU {psu_index} Status"
-        super().__init__(
-            coordinator,
-            config_entry,
-            sensor_key,
-            sensor_name,
-            None,
-            SensorDeviceClass.ENUM,
-        )
-
-    @property
-    def native_value(self) -> str | None:
-        """Return the state of the sensor."""
-        if self.coordinator.data is None or "psu_statuses" not in self.coordinator.data:
-            return None
-        
-        status_value = self.coordinator.data["psu_statuses"].get(self._sensor_key)
-        if status_value is None:
-            return None
-            
-        # Map Dell iDRAC status values to readable strings
-        status_map = {
-            1: "other",
-            2: "unknown", 
-            3: "ok",
-            4: "non_critical",
-            5: "critical",
-            6: "non_recoverable"
-        }
-        return status_map.get(int(status_value), "unknown")
-
-    @property
-    def options(self) -> list[str]:
-        """Return the list of available options."""
-        return ["other", "unknown", "ok", "non_critical", "critical", "non_recoverable"]
-
-    @property
-    def available(self) -> bool:
-        """Return if entity is available."""
-        return (
-            self.coordinator.last_update_success
-            and self.coordinator.data is not None
-            and "psu_statuses" in self.coordinator.data
-            and self._sensor_key in self.coordinator.data["psu_statuses"]
-            and self.coordinator.data["psu_statuses"][self._sensor_key] is not None
-        )
 
 
 class IdracPsuAmperageSensor(IdracSensor):

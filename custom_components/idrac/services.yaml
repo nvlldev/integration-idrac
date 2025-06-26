@@ -1,0 +1,6 @@
+refresh_sensors:
+  name: Refresh Sensors
+  description: >
+    Refresh discovered sensors for all Dell iDRAC integrations without removing and re-adding them.
+    This will re-discover fans, CPUs, PSUs, and voltage probes.
+  fields: {}
