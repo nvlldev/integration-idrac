@@ -389,12 +389,45 @@ class IdracStorageControllerBinarySensor(IdracBinarySensor):
         if state_value is not None:
             try:
                 state_int = int(state_value)
-                # True (problem) for: 1, 3, 5, 6 (unknown, failed, offline, degraded)
-                # False (OK) for: 2, 4 (ready, online)
-                return state_int not in [2, 4]
+                # True (problem) for: 1, 2, 4, 5, 6 (other, unknown, non_critical, critical, non_recoverable)
+                # False (OK) for: 3 (ok)
+                return state_int != 3
             except (ValueError, TypeError):
                 return True  # Unknown state treated as problem
         return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, str] | None:
+        """Return additional state attributes."""
+        if self.coordinator.data is None or "storage_controllers" not in self.coordinator.data:
+            return None
+        
+        controller_data = self.coordinator.data["storage_controllers"].get(self._sensor_key)
+        if controller_data is None:
+            return None
+        
+        attributes = {}
+        
+        # Add state information
+        state_value = controller_data.get("state")
+        if state_value is not None:
+            try:
+                state_int = int(state_value)
+                state_map = {
+                    1: "other",
+                    2: "unknown",
+                    3: "ok",
+                    4: "non_critical",
+                    5: "critical",
+                    6: "non_recoverable"
+                }
+                attributes["status_text"] = state_map.get(state_int, f"unknown_{state_int}")
+                attributes["status_code"] = state_int
+            except (ValueError, TypeError):
+                attributes["status_text"] = str(state_value)
+                attributes["raw_value"] = str(state_value)
+        
+        return attributes if attributes else None
 
     @property
     def available(self) -> bool:
@@ -792,57 +825,6 @@ class IdracPhysicalDiskBinarySensor(IdracBinarySensor):
         )
 
 
-class IdracStorageControllerBinarySensor(IdracBinarySensor):
-    """Dell iDRAC storage controller binary sensor."""
-
-    def __init__(
-        self,
-        coordinator: IdracDataUpdateCoordinator,
-        config_entry: ConfigEntry,
-        controller_index: int,
-    ) -> None:
-        """Initialize the storage controller binary sensor."""
-        sensor_key = f"controller_{controller_index}"
-        sensor_name = f"Storage Controller {controller_index} Status"
-        super().__init__(
-            coordinator,
-            config_entry,
-            sensor_key,
-            sensor_name,
-            BinarySensorDeviceClass.PROBLEM,
-        )
-        self._controller_index = controller_index
-
-    @property
-    def is_on(self) -> bool | None:
-        """Return true if the storage controller has a problem."""
-        if self.coordinator.data is None or "storage_controllers" not in self.coordinator.data:
-            return None
-        
-        controller_data = self.coordinator.data["storage_controllers"].get(self._sensor_key)
-        if controller_data is None:
-            return None
-        
-        state_value = controller_data.get("state")
-        if state_value is not None:
-            try:
-                state_int = int(state_value)
-                # True (problem) for: 1, 3, 5, 6 (unknown, failed, offline, degraded)
-                # False (OK) for: 2, 4 (ready, online)
-                return state_int not in [2, 4]
-            except (ValueError, TypeError):
-                return True  # Unknown state treated as problem
-        return None
-
-    @property
-    def available(self) -> bool:
-        """Return if entity is available."""
-        return (
-            self.coordinator.last_update_success
-            and self.coordinator.data is not None
-            and "storage_controllers" in self.coordinator.data
-            and self._sensor_key in self.coordinator.data["storage_controllers"]
-        )
 
 
 class IdracControllerBatteryBinarySensor(IdracBinarySensor):
