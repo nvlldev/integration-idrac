@@ -5,6 +5,12 @@ DOMAIN: Final = "idrac"
 
 # Configuration constants
 CONF_COMMUNITY: Final = "community"
+CONF_SNMP_VERSION: Final = "snmp_version"
+CONF_USERNAME: Final = "username"
+CONF_AUTH_PROTOCOL: Final = "auth_protocol"
+CONF_AUTH_PASSWORD: Final = "auth_password"
+CONF_PRIV_PROTOCOL: Final = "priv_protocol"
+CONF_PRIV_PASSWORD: Final = "priv_password"
 CONF_DISCOVERED_FANS: Final = "discovered_fans"
 CONF_DISCOVERED_CPUS: Final = "discovered_cpus"
 CONF_DISCOVERED_PSUS: Final = "discovered_psus"
@@ -22,6 +28,31 @@ CONF_SCAN_INTERVAL: Final = "scan_interval"
 DEFAULT_PORT: Final = 161
 DEFAULT_COMMUNITY: Final = "public"
 DEFAULT_SCAN_INTERVAL: Final = 30
+DEFAULT_SNMP_VERSION: Final = "v2c"
+
+# SNMP version options
+SNMP_VERSIONS: Final = ["v2c", "v3"]
+
+# SNMP v3 authentication protocols
+SNMP_AUTH_PROTOCOLS: Final = {
+    "none": "usmNoAuthProtocol",
+    "md5": "usmHMACMD5AuthProtocol", 
+    "sha": "usmHMACSHAAuthProtocol",
+    "sha224": "usmHMAC128SHA224AuthProtocol",
+    "sha256": "usmHMAC192SHA256AuthProtocol",
+    "sha384": "usmHMAC256SHA384AuthProtocol",
+    "sha512": "usmHMAC384SHA512AuthProtocol"
+}
+
+# SNMP v3 privacy protocols  
+SNMP_PRIV_PROTOCOLS: Final = {
+    "none": "usmNoPrivProtocol",
+    "des": "usmDESPrivProtocol",
+    "3des": "usm3DESEDEPrivProtocol", 
+    "aes128": "usmAesCfb128Protocol",
+    "aes192": "usmAesCfb192Protocol",
+    "aes256": "usmAesCfb256Protocol"
+}
 
 # Dell iDRAC SNMP OIDs - Updated with verified working OIDs from comprehensive discovery
 IDRAC_OIDS: Final = {

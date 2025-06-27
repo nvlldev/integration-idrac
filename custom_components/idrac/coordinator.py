@@ -12,8 +12,10 @@ from pysnmp.hlapi.asyncio import (
     ObjectType,
     SnmpEngine,
     UdpTransportTarget,
+    UsmUserData,
     getCmd,
 )
+from pysnmp.proto import rfc1902
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PORT
@@ -22,6 +24,12 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .const import (
     CONF_COMMUNITY,
+    CONF_SNMP_VERSION,
+    CONF_USERNAME,
+    CONF_AUTH_PROTOCOL,
+    CONF_AUTH_PASSWORD,
+    CONF_PRIV_PROTOCOL,
+    CONF_PRIV_PASSWORD,
     CONF_DISCOVERED_CPUS,
     CONF_DISCOVERED_FANS,
     CONF_DISCOVERED_MEMORY,
@@ -35,12 +43,48 @@ from .const import (
     CONF_DISCOVERED_SYSTEM_VOLTAGES,
     CONF_SCAN_INTERVAL,
     DEFAULT_SCAN_INTERVAL,
+    DEFAULT_SNMP_VERSION,
+    SNMP_AUTH_PROTOCOLS,
+    SNMP_PRIV_PROTOCOLS,
     DOMAIN,
     IDRAC_OIDS,
     MEMORY_HEALTH_STATUS,
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _create_auth_data(entry: ConfigEntry) -> CommunityData | UsmUserData:
+    """Create the appropriate authentication data for SNMP."""
+    snmp_version = entry.data.get(CONF_SNMP_VERSION, DEFAULT_SNMP_VERSION)
+    
+    if snmp_version == "v3":
+        username = entry.data.get(CONF_USERNAME, "")
+        auth_protocol = entry.data.get(CONF_AUTH_PROTOCOL, "none")
+        auth_password = entry.data.get(CONF_AUTH_PASSWORD, "")
+        priv_protocol = entry.data.get(CONF_PRIV_PROTOCOL, "none")
+        priv_password = entry.data.get(CONF_PRIV_PASSWORD, "")
+        
+        # Map protocol names to pysnmp protocol objects
+        auth_proto = None
+        if auth_protocol != "none":
+            auth_proto = getattr(rfc1902, SNMP_AUTH_PROTOCOLS[auth_protocol], None)
+        
+        priv_proto = None
+        if priv_protocol != "none":
+            priv_proto = getattr(rfc1902, SNMP_PRIV_PROTOCOLS[priv_protocol], None)
+        
+        return UsmUserData(
+            userName=username,
+            authKey=auth_password if auth_proto else None,
+            privKey=priv_password if priv_proto else None,
+            authProtocol=auth_proto,
+            privProtocol=priv_proto,
+        )
+    else:
+        # SNMP v2c
+        community = entry.data.get(CONF_COMMUNITY, "public")
+        return CommunityData(community)
 
 
 class IdracDataUpdateCoordinator(DataUpdateCoordinator):
@@ -51,7 +95,9 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
         self.entry = entry
         self.host = entry.data[CONF_HOST]
         self.port = entry.data[CONF_PORT]
-        self.community = entry.data[CONF_COMMUNITY]
+        self.snmp_version = entry.data.get(CONF_SNMP_VERSION, DEFAULT_SNMP_VERSION)
+        # Keep community for backward compatibility with v2c
+        self.community = entry.data.get(CONF_COMMUNITY, "public")
         self.discovered_fans = entry.data.get(CONF_DISCOVERED_FANS, [])
         self.discovered_cpus = entry.data.get(CONF_DISCOVERED_CPUS, [])
         self.discovered_psus = entry.data.get(CONF_DISCOVERED_PSUS, [])
@@ -66,7 +112,7 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
 
         # Create isolated SNMP engine for this coordinator instance
         self.engine = SnmpEngine()
-        self.community_data = CommunityData(self.community)
+        self.auth_data = _create_auth_data(entry)
         self.transport_target = UdpTransportTarget((self.host, self.port), timeout=5, retries=1)
         self.context_data = ContextData()
         
@@ -436,7 +482,7 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
         try:
             error_indication, error_status, error_index, var_binds = await getCmd(
                 self.engine,
-                self.community_data,
+                self.auth_data,
                 self.transport_target,
                 self.context_data,
                 ObjectType(ObjectIdentity(oid)),
@@ -465,7 +511,7 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
         try:
             error_indication, error_status, error_index, var_binds = await getCmd(
                 self.engine,
-                self.community_data,
+                self.auth_data,
                 self.transport_target,
                 self.context_data,
                 ObjectType(ObjectIdentity(oid)),

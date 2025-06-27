@@ -80,26 +80,20 @@ class IdracButton(CoordinatorEntity, ButtonEntity):
         self._attr_unique_id = f"{device_id}_{button_key}"
         self._attr_device_class = device_class
 
-        # Store SNMP connection details
+        # Store reference details for logging
         self._host = host
         self._port = port
-        self._community = config_entry.data[CONF_COMMUNITY]
 
         self._attr_device_info = coordinator.device_info
 
     async def _async_snmp_set(self, oid: str, value: int) -> bool:
-        """Send SNMP SET command."""
+        """Send SNMP SET command using coordinator's SNMP connection."""
         try:
-            engine = SnmpEngine()
-            community_data = CommunityData(self._community)
-            transport_target = UdpTransportTarget((self._host, self._port), timeout=10, retries=2)
-            context_data = ContextData()
-
             error_indication, error_status, error_index, var_binds = await setCmd(
-                engine,
-                community_data,
-                transport_target,
-                context_data,
+                self.coordinator.engine,
+                self.coordinator.auth_data,
+                self.coordinator.transport_target,
+                self.coordinator.context_data,
                 ObjectType(ObjectIdentity(oid), SnmpInteger(value)),
             )
 

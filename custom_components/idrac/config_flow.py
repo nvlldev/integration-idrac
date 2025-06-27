@@ -12,9 +12,11 @@ from pysnmp.hlapi.asyncio import (
     ObjectType,
     SnmpEngine,
     UdpTransportTarget,
+    UsmUserData,
     getCmd,
     nextCmd,
 )
+from pysnmp.proto import rfc1902
 
 from homeassistant import config_entries
 from homeassistant.const import CONF_HOST, CONF_PORT
@@ -24,6 +26,12 @@ from homeassistant.exceptions import HomeAssistantError
 
 from .const import (
     CONF_COMMUNITY,
+    CONF_SNMP_VERSION,
+    CONF_USERNAME,
+    CONF_AUTH_PROTOCOL,
+    CONF_AUTH_PASSWORD,
+    CONF_PRIV_PROTOCOL,
+    CONF_PRIV_PASSWORD,
     CONF_DISCOVERED_CPUS,
     CONF_DISCOVERED_FANS,
     CONF_DISCOVERED_MEMORY,
@@ -39,17 +47,61 @@ from .const import (
     DEFAULT_COMMUNITY,
     DEFAULT_PORT,
     DEFAULT_SCAN_INTERVAL,
+    DEFAULT_SNMP_VERSION,
+    SNMP_VERSIONS,
+    SNMP_AUTH_PROTOCOLS,
+    SNMP_PRIV_PROTOCOLS,
     DOMAIN,
     SNMP_WALK_OIDS,
 )
 
 _LOGGER = logging.getLogger(__name__)
 
+
+def _create_auth_data(data: dict[str, Any]) -> CommunityData | UsmUserData:
+    """Create the appropriate authentication data for SNMP."""
+    snmp_version = data.get(CONF_SNMP_VERSION, DEFAULT_SNMP_VERSION)
+    
+    if snmp_version == "v3":
+        username = data.get(CONF_USERNAME, "")
+        auth_protocol = data.get(CONF_AUTH_PROTOCOL, "none")
+        auth_password = data.get(CONF_AUTH_PASSWORD, "")
+        priv_protocol = data.get(CONF_PRIV_PROTOCOL, "none")
+        priv_password = data.get(CONF_PRIV_PASSWORD, "")
+        
+        # Map protocol names to pysnmp protocol objects
+        auth_proto = None
+        if auth_protocol != "none":
+            auth_proto = getattr(rfc1902, SNMP_AUTH_PROTOCOLS[auth_protocol], None)
+        
+        priv_proto = None
+        if priv_protocol != "none":
+            priv_proto = getattr(rfc1902, SNMP_PRIV_PROTOCOLS[priv_protocol], None)
+        
+        return UsmUserData(
+            userName=username,
+            authKey=auth_password if auth_proto else None,
+            privKey=priv_password if priv_proto else None,
+            authProtocol=auth_proto,
+            privProtocol=priv_proto,
+        )
+    else:
+        # SNMP v2c
+        community = data.get(CONF_COMMUNITY, DEFAULT_COMMUNITY)
+        return CommunityData(community)
+
+
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_HOST): str,
         vol.Optional(CONF_PORT, default=DEFAULT_PORT): int,
+        vol.Optional(CONF_SNMP_VERSION, default=DEFAULT_SNMP_VERSION): vol.In(SNMP_VERSIONS),
         vol.Optional(CONF_COMMUNITY, default=DEFAULT_COMMUNITY): str,
+        vol.Optional(CONF_USERNAME): str,
+        vol.Optional(CONF_AUTH_PROTOCOL, default="none"): vol.In(list(SNMP_AUTH_PROTOCOLS.keys())),
+        vol.Optional(CONF_AUTH_PASSWORD): str,
+        vol.Optional(CONF_PRIV_PROTOCOL, default="none"): vol.In(list(SNMP_PRIV_PROTOCOLS.keys())),
+        vol.Optional(CONF_PRIV_PASSWORD): str,
         vol.Optional(CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL): vol.All(int, vol.Range(min=10, max=300)),
     }
 )
@@ -60,21 +112,21 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     _LOGGER.info("Starting iDRAC validation for host: %s", data.get(CONF_HOST))
     host = data[CONF_HOST]
     port = data[CONF_PORT]
-    community = data[CONF_COMMUNITY]
+    snmp_version = data.get(CONF_SNMP_VERSION, DEFAULT_SNMP_VERSION)
 
     try:
         _LOGGER.info("Creating SNMP engine and connection objects")
         engine = SnmpEngine()
-        community_data = CommunityData(community)
+        auth_data = _create_auth_data(data)
         transport_target = UdpTransportTarget((host, port), timeout=10, retries=2)
         context_data = ContextData()
 
         test_oid = ObjectType(ObjectIdentity("1.3.6.1.4.1.674.10892.5.4.600.30.1.6.1.3"))
 
-        _LOGGER.info("Testing SNMP connection to %s:%s with community '%s'", host, port, "***")
+        _LOGGER.info("Testing SNMP connection to %s:%s with version %s", host, port, snmp_version)
         error_indication, error_status, error_index, var_binds = await getCmd(
             engine,
-            community_data,
+            auth_data,
             transport_target,
             context_data,
             test_oid,
@@ -88,10 +140,10 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
 
         _LOGGER.info("Successfully connected to iDRAC, discovering sensors...")
 
-        discovered_fans = await _discover_sensors(engine, community_data, transport_target, context_data, SNMP_WALK_OIDS["fans"])
-        discovered_cpus = await _discover_cpu_sensors(engine, community_data, transport_target, context_data, SNMP_WALK_OIDS["cpu_temps"])
-        discovered_psus = await _discover_psu_sensors(engine, community_data, transport_target, context_data, SNMP_WALK_OIDS["psu_status"])
-        discovered_voltage_probes = await _discover_voltage_probes(engine, community_data, transport_target, context_data, SNMP_WALK_OIDS["psu_voltage"])
+        discovered_fans = await _discover_sensors(engine, auth_data, transport_target, context_data, SNMP_WALK_OIDS["fans"])
+        discovered_cpus = await _discover_cpu_sensors(engine, auth_data, transport_target, context_data, SNMP_WALK_OIDS["cpu_temps"])
+        discovered_psus = await _discover_psu_sensors(engine, auth_data, transport_target, context_data, SNMP_WALK_OIDS["psu_status"])
+        discovered_voltage_probes = await _discover_voltage_probes(engine, auth_data, transport_target, context_data, SNMP_WALK_OIDS["psu_voltage"])
         # Try multiple memory health OID bases
         discovered_memory = []
         memory_oid_bases = [
@@ -113,7 +165,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
         
         for oid_base in memory_oid_bases:
             _LOGGER.debug("Trying memory discovery with OID base: %s", oid_base)
-            memory_results = await _discover_memory_sensors(engine, community_data, transport_target, context_data, oid_base)
+            memory_results = await _discover_memory_sensors(engine, auth_data, transport_target, context_data, oid_base)
             if memory_results:
                 discovered_memory.extend(memory_results)
                 _LOGGER.info("Found %d memory modules with OID base %s", len(memory_results), oid_base)
@@ -123,14 +175,14 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
         discovered_memory = sorted(list(set(discovered_memory)))
         
         # Discover storage components
-        discovered_virtual_disks = await _discover_sensors(engine, community_data, transport_target, context_data, SNMP_WALK_OIDS["virtual_disks"])
-        discovered_physical_disks = await _discover_sensors(engine, community_data, transport_target, context_data, SNMP_WALK_OIDS["physical_disks"])
-        discovered_storage_controllers = await _discover_sensors(engine, community_data, transport_target, context_data, SNMP_WALK_OIDS["storage_controllers"])
+        discovered_virtual_disks = await _discover_sensors(engine, auth_data, transport_target, context_data, SNMP_WALK_OIDS["virtual_disks"])
+        discovered_physical_disks = await _discover_sensors(engine, auth_data, transport_target, context_data, SNMP_WALK_OIDS["physical_disks"])
+        discovered_storage_controllers = await _discover_sensors(engine, auth_data, transport_target, context_data, SNMP_WALK_OIDS["storage_controllers"])
         
         # Discover new sensor types (enhanced features from comprehensive OID discovery)
-        discovered_detailed_memory = await _discover_sensors(engine, community_data, transport_target, context_data, SNMP_WALK_OIDS["detailed_memory"])
-        discovered_system_voltages = await _discover_system_voltages(engine, community_data, transport_target, context_data, SNMP_WALK_OIDS["system_voltages"])
-        discovered_power_consumption = await _discover_power_consumption_sensors(engine, community_data, transport_target, context_data, SNMP_WALK_OIDS["power_consumption"])
+        discovered_detailed_memory = await _discover_sensors(engine, auth_data, transport_target, context_data, SNMP_WALK_OIDS["detailed_memory"])
+        discovered_system_voltages = await _discover_system_voltages(engine, auth_data, transport_target, context_data, SNMP_WALK_OIDS["system_voltages"])
+        discovered_power_consumption = await _discover_power_consumption_sensors(engine, auth_data, transport_target, context_data, SNMP_WALK_OIDS["power_consumption"])
 
         _LOGGER.info("Discovered %d fans, %d CPU temperature sensors, %d PSU sensors, %d voltage probes, %d memory modules, %d virtual disks, %d physical disks, %d storage controllers, %d detailed memory modules, %d system voltages, %d power consumption sensors", 
                      len(discovered_fans), len(discovered_cpus), len(discovered_psus), len(discovered_voltage_probes), len(discovered_memory),
@@ -169,7 +221,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
 
 async def _discover_sensors(
     engine: SnmpEngine,
-    community_data: CommunityData,
+    auth_data: CommunityData | UsmUserData,
     transport_target: UdpTransportTarget,
     context_data: ContextData,
     base_oid: str,
@@ -186,7 +238,7 @@ async def _discover_sensors(
             try:
                 error_indication, error_status, error_index, var_binds = await getCmd(
                     engine,
-                    community_data,
+                    auth_data,
                     transport_target,
                     context_data,
                     ObjectType(ObjectIdentity(test_oid)),
@@ -223,14 +275,14 @@ async def _discover_sensors(
 
 async def _discover_cpu_sensors(
     engine: SnmpEngine,
-    community_data: CommunityData,
+    auth_data: CommunityData | UsmUserData,
     transport_target: UdpTransportTarget,
     context_data: ContextData,
     base_oid: str,
 ) -> list[int]:
     """Discover CPU temperature sensors, filtering out inlet/outlet temps."""
     all_temp_sensors = await _discover_sensors(
-        engine, community_data, transport_target, context_data, base_oid
+        engine, auth_data, transport_target, context_data, base_oid
     )
     
     return [sensor_id for sensor_id in all_temp_sensors if sensor_id > 2]
@@ -238,7 +290,7 @@ async def _discover_cpu_sensors(
 
 async def _discover_psu_sensors(
     engine: SnmpEngine,
-    community_data: CommunityData,
+    auth_data: CommunityData | UsmUserData,
     transport_target: UdpTransportTarget,
     context_data: ContextData,
     base_oid: str,
@@ -255,7 +307,7 @@ async def _discover_psu_sensors(
             try:
                 error_indication, error_status, error_index, var_binds = await getCmd(
                     engine,
-                    community_data,
+                    auth_data,
                     transport_target,
                     context_data,
                     ObjectType(ObjectIdentity(test_oid)),
@@ -292,7 +344,7 @@ async def _discover_psu_sensors(
 
 async def _discover_voltage_probes(
     engine: SnmpEngine,
-    community_data: CommunityData,
+    auth_data: CommunityData | UsmUserData,
     transport_target: UdpTransportTarget,
     context_data: ContextData,
     base_oid: str,
@@ -318,7 +370,7 @@ async def _discover_voltage_probes(
                 try:
                     error_indication, error_status, error_index, var_binds = await getCmd(
                         engine,
-                        community_data,
+                        auth_data,
                         transport_target,
                         context_data,
                         ObjectType(ObjectIdentity(test_oid)),
@@ -361,7 +413,7 @@ async def _discover_voltage_probes(
 
 async def _discover_memory_sensors(
     engine: SnmpEngine,
-    community_data: CommunityData,
+    auth_data: CommunityData | UsmUserData,
     transport_target: UdpTransportTarget,
     context_data: ContextData,
     base_oid: str,
@@ -380,7 +432,7 @@ async def _discover_memory_sensors(
             try:
                 error_indication, error_status, error_index, var_binds = await getCmd(
                     engine,
-                    community_data,
+                    auth_data,
                     transport_target,
                     context_data,
                     ObjectType(ObjectIdentity(test_oid)),
@@ -582,7 +634,7 @@ class OptionsFlow(config_entries.OptionsFlow):
         )
 async def _discover_system_voltages(
     engine: SnmpEngine,
-    community_data: CommunityData,
+    auth_data: CommunityData | UsmUserData,
     transport_target: UdpTransportTarget,
     context_data: ContextData,
     base_oid: str,
@@ -603,7 +655,7 @@ async def _discover_system_voltages(
             try:
                 error_indication, error_status, error_index, var_binds = await getCmd(
                     engine,
-                    community_data,
+                    auth_data,
                     transport_target,
                     context_data,
                     ObjectType(ObjectIdentity(oid)),
@@ -629,7 +681,7 @@ async def _discover_system_voltages(
 
 async def _discover_power_consumption_sensors(
     engine: SnmpEngine,
-    community_data: CommunityData,
+    auth_data: CommunityData | UsmUserData,
     transport_target: UdpTransportTarget,
     context_data: ContextData,
     base_oid: str,
@@ -650,7 +702,7 @@ async def _discover_power_consumption_sensors(
             try:
                 error_indication, error_status, error_index, var_binds = await getCmd(
                     engine,
-                    community_data,
+                    auth_data,
                     transport_target,
                     context_data,
                     ObjectType(ObjectIdentity(oid)),
