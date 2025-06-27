@@ -1,0 +1,431 @@
+{
+  "recommended_additions": {
+    "thermal_sensors_names": {
+      "base_oid": "1.3.6.1.4.1.674.10892.5.4.700.20.1.8.1",
+      "sample_values": [
+        "System Board Inlet Temp",
+        "System Board Exhaust Temp",
+        "CPU1 Temp",
+        "CPU2 Temp",
+        "CPU3 Temp"
+      ],
+      "total_count": 6
+    },
+    "thermal_sensors_readings": {
+      "base_oid": "1.3.6.1.4.1.674.10892.5.4.700.20.1.6.1",
+      "sample_values": [
+        "220",
+        "400",
+        "580",
+        "570",
+        "570"
+      ],
+      "total_count": 6
+    },
+    "thermal_sensors_status": {
+      "base_oid": "1.3.6.1.4.1.674.10892.5.4.700.20.1.5.1",
+      "status_values": [
+        "3"
+      ],
+      "total_count": 6
+    },
+    "cooling_devices_names": {
+      "base_oid": "1.3.6.1.4.1.674.10892.5.4.700.12.1.8.1",
+      "sample_values": [
+        "System Board Fan1",
+        "System Board Fan2",
+        "System Board Fan3",
+        "System Board Fan4",
+        "System Board Fan5"
+      ],
+      "total_count": 6
+    },
+    "cooling_devices_readings": {
+      "base_oid": "1.3.6.1.4.1.674.10892.5.4.700.12.1.6.1",
+      "sample_values": [
+        "3120",
+        "3000",
+        "3120",
+        "3120",
+        "2640"
+      ],
+      "total_count": 6
+    },
+    "cooling_devices_status": {
+      "base_oid": "1.3.6.1.4.1.674.10892.5.4.700.12.1.5.1",
+      "status_values": [
+        "3"
+      ],
+      "total_count": 6
+    },
+    "power_supplies_names": {
+      "base_oid": "1.3.6.1.4.1.674.10892.5.4.600.12.1.8.1",
+      "sample_values": [
+        "PS1 Status",
+        "PS2 Status"
+      ],
+      "total_count": 2
+    },
+    "power_supplies_readings": {
+      "base_oid": "1.3.6.1.4.1.674.10892.5.4.600.12.1.6.1",
+      "sample_values": [
+        "11000",
+        "11000"
+      ],
+      "total_count": 2
+    },
+    "power_supplies_status": {
+      "base_oid": "1.3.6.1.4.1.674.10892.5.4.600.12.1.5.1",
+      "status_values": [
+        "3"
+      ],
+      "total_count": 2
+    },
+    "voltage_sensors_names": {
+      "base_oid": "1.3.6.1.4.1.674.10892.5.4.600.30.1.8.1",
+      "sample_values": [
+        "PS1 Current 1",
+        "PS2 Current 2",
+        "System Board Pwr Consumption"
+      ],
+      "total_count": 3
+    },
+    "voltage_sensors_readings": {
+      "base_oid": "1.3.6.1.4.1.674.10892.5.4.600.30.1.6.1",
+      "sample_values": [
+        "18",
+        "0",
+        "210"
+      ],
+      "total_count": 3
+    },
+    "voltage_sensors_status": {
+      "base_oid": "1.3.6.1.4.1.674.10892.5.4.600.30.1.5.1",
+      "status_values": [
+        "3"
+      ],
+      "total_count": 3
+    },
+    "memory_modules_names": {
+      "base_oid": "1.3.6.1.4.1.674.10892.5.4.1100.50.1.8.1",
+      "sample_values": [
+        "DIMM.Socket.A1",
+        "DIMM.Socket.A2",
+        "DIMM.Socket.A3",
+        "DIMM.Socket.A4",
+        "DIMM.Socket.B1"
+      ],
+      "total_count": 16
+    },
+    "memory_modules_status": {
+      "base_oid": "1.3.6.1.4.1.674.10892.5.4.1100.50.1.5.1",
+      "status_values": [
+        "3"
+      ],
+      "total_count": 16
+    },
+    "processors_names": {
+      "base_oid": "1.3.6.1.4.1.674.10892.5.4.1200.10.1.8.1",
+      "sample_values": [
+        "PCI7"
+      ],
+      "total_count": 1
+    },
+    "processors_readings": {
+      "base_oid": "1.3.6.1.4.1.674.10892.5.4.1200.10.1.6.1",
+      "sample_values": [
+        "4"
+      ],
+      "total_count": 1
+    },
+    "processors_status": {
+      "base_oid": "1.3.6.1.4.1.674.10892.5.4.1200.10.1.5.1",
+      "status_values": [
+        "3"
+      ],
+      "total_count": 1
+    },
+    "system_voltages_names": {
+      "base_oid": "1.3.6.1.4.1.674.10892.5.4.600.20.1.8.1",
+      "sample_values": [
+        "CPU1 VCORE PG",
+        "CPU2 VCORE PG",
+        "CPU3 VCORE PG",
+        "CPU4 VCORE PG",
+        "System Board 3.3V PG"
+      ],
+      "total_count": 20
+    },
+    "system_voltages_status": {
+      "base_oid": "1.3.6.1.4.1.674.10892.5.4.600.20.1.5.1",
+      "status_values": [
+        "3"
+      ],
+      "total_count": 20
+    },
+    "intrusion_detection_names": {
+      "base_oid": "1.3.6.1.4.1.674.10892.5.4.300.70.1.8.1",
+      "sample_values": [
+        "System Board Intrusion"
+      ],
+      "total_count": 1
+    },
+    "intrusion_detection_readings": {
+      "base_oid": "1.3.6.1.4.1.674.10892.5.4.300.70.1.6.1",
+      "sample_values": [
+        "1"
+      ],
+      "total_count": 1
+    },
+    "intrusion_detection_status": {
+      "base_oid": "1.3.6.1.4.1.674.10892.5.4.300.70.1.5.1",
+      "status_values": [
+        "3"
+      ],
+      "total_count": 1
+    },
+    "system_battery_readings": {
+      "base_oid": "1.3.6.1.4.1.674.10892.5.4.600.50.1.6.1",
+      "sample_values": [
+        "4",
+        "4"
+      ],
+      "total_count": 2
+    },
+    "system_battery_status": {
+      "base_oid": "1.3.6.1.4.1.674.10892.5.4.600.50.1.5.1",
+      "status_values": [
+        "3"
+      ],
+      "total_count": 2
+    }
+  },
+  "sensor_counts": {
+    "thermal_sensors": {
+      "location": 6,
+      "reading": 6,
+      "status": 6,
+      "type": 6,
+      "upper_critical": 6,
+      "upper_warning": 6,
+      "lower_critical": 6,
+      "lower_warning": 6,
+      "max_reading": 6
+    },
+    "cooling_devices": {
+      "location": 6,
+      "reading": 6,
+      "status": 6,
+      "type": 6,
+      "lower_critical": 6,
+      "lower_warning": 6,
+      "units": 6,
+      "max_reading": 6
+    },
+    "power_supplies": {
+      "location": 2,
+      "reading": 2,
+      "status": 2,
+      "type": 2,
+      "upper_critical": 2,
+      "upper_warning": 2,
+      "lower_warning": 2,
+      "units": 2,
+      "max_reading": 2
+    },
+    "voltage_sensors": {
+      "location": 3,
+      "reading": 3,
+      "status": 3,
+      "type": 3,
+      "upper_critical": 1,
+      "upper_warning": 1,
+      "max_reading": 3
+    },
+    "memory_modules": {
+      "location": 16,
+      "status": 16,
+      "type": 16,
+      "upper_critical": 16,
+      "max_reading": 16
+    },
+    "processors": {
+      "location": 1,
+      "reading": 1,
+      "status": 1,
+      "type": 1,
+      "upper_warning": 1
+    },
+    "system_voltages": {
+      "location": 20,
+      "status": 20,
+      "type": 20,
+      "units": 20,
+      "max_reading": 20
+    },
+    "intrusion_detection": {
+      "location": 1,
+      "reading": 1,
+      "status": 1,
+      "type": 1
+    },
+    "system_battery": {
+      "reading": 2,
+      "status": 2,
+      "type": 2
+    }
+  },
+  "potential_thresholds": [
+    {
+      "category": "thermal_sensors",
+      "type": "upper_critical",
+      "oid": "1.3.6.1.4.1.674.10892.5.4.700.20.1.10.1",
+      "sample_values": [
+        "470",
+        "750",
+        "900"
+      ]
+    },
+    {
+      "category": "thermal_sensors",
+      "type": "upper_warning",
+      "oid": "1.3.6.1.4.1.674.10892.5.4.700.20.1.11.1",
+      "sample_values": [
+        "420",
+        "700",
+        "850"
+      ]
+    },
+    {
+      "category": "thermal_sensors",
+      "type": "lower_critical",
+      "oid": "1.3.6.1.4.1.674.10892.5.4.700.20.1.12.1",
+      "sample_values": [
+        "30",
+        "80",
+        "80"
+      ]
+    },
+    {
+      "category": "thermal_sensors",
+      "type": "lower_warning",
+      "oid": "1.3.6.1.4.1.674.10892.5.4.700.20.1.13.1",
+      "sample_values": [
+        "-70",
+        "30",
+        "30"
+      ]
+    },
+    {
+      "category": "cooling_devices",
+      "type": "lower_critical",
+      "oid": "1.3.6.1.4.1.674.10892.5.4.700.12.1.12.1",
+      "sample_values": [
+        "840",
+        "840",
+        "840"
+      ]
+    },
+    {
+      "category": "cooling_devices",
+      "type": "lower_warning",
+      "oid": "1.3.6.1.4.1.674.10892.5.4.700.12.1.13.1",
+      "sample_values": [
+        "600",
+        "600",
+        "600"
+      ]
+    },
+    {
+      "category": "power_supplies",
+      "type": "upper_critical",
+      "oid": "1.3.6.1.4.1.674.10892.5.4.600.12.1.10.1",
+      "sample_values": [
+        "1",
+        "1"
+      ]
+    },
+    {
+      "category": "power_supplies",
+      "type": "upper_warning",
+      "oid": "1.3.6.1.4.1.674.10892.5.4.600.12.1.11.1",
+      "sample_values": [
+        "1",
+        "1"
+      ]
+    },
+    {
+      "category": "power_supplies",
+      "type": "lower_warning",
+      "oid": "1.3.6.1.4.1.674.10892.5.4.600.12.1.13.1",
+      "sample_values": [
+        "1",
+        "1"
+      ]
+    },
+    {
+      "category": "voltage_sensors",
+      "type": "upper_critical",
+      "oid": "1.3.6.1.4.1.674.10892.5.4.600.30.1.10.1",
+      "sample_values": [
+        "1344"
+      ]
+    },
+    {
+      "category": "voltage_sensors",
+      "type": "upper_warning",
+      "oid": "1.3.6.1.4.1.674.10892.5.4.600.30.1.11.1",
+      "sample_values": [
+        "1232"
+      ]
+    },
+    {
+      "category": "memory_modules",
+      "type": "upper_critical",
+      "oid": "1.3.6.1.4.1.674.10892.5.4.1100.50.1.10.1",
+      "sample_values": [
+        "A",
+        "A",
+        "A"
+      ]
+    },
+    {
+      "category": "processors",
+      "type": "upper_warning",
+      "oid": "1.3.6.1.4.1.674.10892.5.4.1200.10.1.11.1",
+      "sample_values": [
+        "3"
+      ]
+    }
+  ],
+  "control_oids": [],
+  "status_mappings": {
+    "thermal_sensors": [
+      "3"
+    ],
+    "cooling_devices": [
+      "3"
+    ],
+    "power_supplies": [
+      "3"
+    ],
+    "voltage_sensors": [
+      "3"
+    ],
+    "memory_modules": [
+      "3"
+    ],
+    "processors": [
+      "3"
+    ],
+    "system_voltages": [
+      "3"
+    ],
+    "intrusion_detection": [
+      "3"
+    ],
+    "system_battery": [
+      "3"
+    ]
+  }
+}

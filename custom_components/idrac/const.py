@@ -28,6 +28,9 @@ CONF_DISCOVERED_STORAGE_CONTROLLERS: Final = "discovered_storage_controllers"
 CONF_DISCOVERED_DETAILED_MEMORY: Final = "discovered_detailed_memory"
 CONF_DISCOVERED_SYSTEM_VOLTAGES: Final = "discovered_system_voltages"
 CONF_DISCOVERED_POWER_CONSUMPTION: Final = "discovered_power_consumption"
+CONF_DISCOVERED_INTRUSION: Final = "discovered_intrusion"
+CONF_DISCOVERED_BATTERY: Final = "discovered_battery"
+CONF_DISCOVERED_PROCESSORS: Final = "discovered_processors"
 CONF_REQUEST_TIMEOUT: Final = "request_timeout"
 CONF_SESSION_TIMEOUT: Final = "session_timeout"
 CONF_SNMP_PORT: Final = "snmp_port"
@@ -165,6 +168,20 @@ IDRAC_OIDS: Final = {
     # System control buttons
     "power_button": "1.3.6.1.4.1.674.10892.5.4.200.10.1.11.1.1",  # Power button action
     "reset_button": "1.3.6.1.4.1.674.10892.5.4.200.10.1.11.1.2",  # Reset button action
+    
+    # Chassis intrusion detection (SNMP available!)
+    "intrusion_location": "1.3.6.1.4.1.674.10892.5.4.300.70.1.8.1.{index}",
+    "intrusion_reading": "1.3.6.1.4.1.674.10892.5.4.300.70.1.6.1.{index}",
+    "intrusion_status": "1.3.6.1.4.1.674.10892.5.4.300.70.1.5.1.{index}",
+    
+    # System battery
+    "battery_reading": "1.3.6.1.4.1.674.10892.5.4.600.50.1.6.1.{index}",
+    "battery_status": "1.3.6.1.4.1.674.10892.5.4.600.50.1.5.1.{index}",
+    
+    # Processor sensors
+    "processor_location": "1.3.6.1.4.1.674.10892.5.4.1200.10.1.8.1.{index}",
+    "processor_reading": "1.3.6.1.4.1.674.10892.5.4.1200.10.1.6.1.{index}",
+    "processor_status": "1.3.6.1.4.1.674.10892.5.4.1200.10.1.5.1.{index}",
 }
 
 # SNMP Walk OIDs for discovery
@@ -180,6 +197,9 @@ SNMP_WALK_OIDS: Final = {
     "detailed_memory": "1.3.6.1.4.1.674.10892.5.4.1100.50.1.14.1",
     "system_voltages": "1.3.6.1.4.1.674.10892.5.4.600.20.1.8.1",
     "power_consumption": "1.3.6.1.4.1.674.10892.5.4.600.30.1.6.1",
+    "intrusion_detection": "1.3.6.1.4.1.674.10892.5.4.300.70.1.8.1",
+    "system_battery": "1.3.6.1.4.1.674.10892.5.4.600.50.1.6.1",
+    "processors": "1.3.6.1.4.1.674.10892.5.4.1200.10.1.8.1",
 }
 
 # Status mappings for SNMP values
@@ -228,6 +248,31 @@ STORAGE_HEALTH_STATUS: Final = {
     2: "unknown", 
     3: "ok",
     4: "non_critical",
+    5: "critical",
+    6: "non_recoverable"
+}
+
+INTRUSION_STATUS: Final = {
+    1: "breach",
+    2: "no_breach", 
+    3: "ok",
+    4: "unknown"
+}
+
+BATTERY_STATUS: Final = {
+    1: "other",
+    2: "unknown",
+    3: "ok", 
+    4: "non_critical",
+    5: "critical",
+    6: "non_recoverable"
+}
+
+PROCESSOR_STATUS: Final = {
+    1: "other",
+    2: "unknown",
+    3: "ok",
+    4: "non_critical", 
     5: "critical",
     6: "non_recoverable"
 }

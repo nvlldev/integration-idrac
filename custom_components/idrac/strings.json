@@ -145,6 +145,42 @@
       "already_configured": "This iDRAC is already configured with the same connection type."
     }
   },
+  "selector": {
+    "connection_type": {
+      "options": {
+        "redfish": "Redfish API",
+        "snmp": "SNMP Only", 
+        "hybrid": "Hybrid (Redfish + SNMP)"
+      }
+    },
+    "snmp_version": {
+      "options": {
+        "v2c": "SNMP v2c",
+        "v3": "SNMP v3"
+      }
+    },
+    "auth_protocol": {
+      "options": {
+        "none": "None",
+        "md5": "MD5",
+        "sha": "SHA-1",
+        "sha224": "SHA-224",
+        "sha256": "SHA-256", 
+        "sha384": "SHA-384",
+        "sha512": "SHA-512"
+      }
+    },
+    "priv_protocol": {
+      "options": {
+        "none": "None",
+        "des": "DES",
+        "3des": "3DES",
+        "aes128": "AES-128",
+        "aes192": "AES-192",
+        "aes256": "AES-256"
+      }
+    }
+  },
   "options": {
     "step": {
       "init": {

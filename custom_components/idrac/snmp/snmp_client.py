@@ -39,6 +39,9 @@ from ..const import (
     CONF_DISCOVERED_DETAILED_MEMORY,
     CONF_DISCOVERED_SYSTEM_VOLTAGES,
     CONF_DISCOVERED_POWER_CONSUMPTION,
+    CONF_DISCOVERED_INTRUSION,
+    CONF_DISCOVERED_BATTERY,
+    CONF_DISCOVERED_PROCESSORS,
     DEFAULT_SNMP_VERSION,
     DEFAULT_SNMP_PORT,
     SNMP_AUTH_PROTOCOLS,
@@ -48,6 +51,9 @@ from ..const import (
     FAN_STATUS,
     TEMP_STATUS,
     MEMORY_HEALTH_STATUS,
+    INTRUSION_STATUS,
+    BATTERY_STATUS,
+    PROCESSOR_STATUS,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -137,6 +143,9 @@ class SNMPClient:
         self.discovered_detailed_memory = entry.data.get(CONF_DISCOVERED_DETAILED_MEMORY, [])
         self.discovered_system_voltages = entry.data.get(CONF_DISCOVERED_SYSTEM_VOLTAGES, [])
         self.discovered_power_consumption = entry.data.get(CONF_DISCOVERED_POWER_CONSUMPTION, [])
+        self.discovered_intrusion = entry.data.get(CONF_DISCOVERED_INTRUSION, [])
+        self.discovered_battery = entry.data.get(CONF_DISCOVERED_BATTERY, [])
+        self.discovered_processors = entry.data.get(CONF_DISCOVERED_PROCESSORS, [])
 
         # Initialize SNMP objects (these will be created later to avoid blocking I/O during init)
         self.engine = None
@@ -243,6 +252,9 @@ class SNMPClient:
             "storage_controllers": {},
             "system_voltages": {},
             "power_consumption": {},
+            "intrusion_detection": {},
+            "battery": {},
+            "processors": {},
         }
 
         # Get CPU temperature sensors
@@ -285,12 +297,19 @@ class SNMPClient:
             psu_max_output = await self.get_value(IDRAC_OIDS["psu_max_output"].format(index=psu_id))
             psu_current_output = await self.get_value(IDRAC_OIDS["psu_current_output"].format(index=psu_id))
 
-            data["power_supplies"][f"psu_{psu_id}"] = {
-                "name": psu_location or f"PSU {psu_id}",
-                "status": PSU_STATUS.get(psu_status, "unknown"),
-                "power_capacity_watts": psu_max_output,
-                "power_output_watts": psu_current_output,
-            }
+            # Only add PSU sensors that have valid status data
+            if psu_status is not None and psu_location:
+                data["power_supplies"][f"psu_{psu_id}"] = {
+                    "name": psu_location,
+                    "status": PSU_STATUS.get(psu_status, "unknown"),
+                    "power_capacity_watts": psu_max_output,
+                    "power_output_watts": psu_current_output,
+                }
+                _LOGGER.debug("Added PSU sensor %d: %s (status=%s)", 
+                            psu_id, psu_location, psu_status)
+            else:
+                _LOGGER.debug("Skipped PSU sensor %d: status=%s, location=%s", 
+                            psu_id, psu_status, psu_location)
 
         # Get voltage probe sensors
         for voltage_id in self.discovered_voltage_probes:
@@ -313,11 +332,18 @@ class SNMPClient:
             memory_location = await self.get_string(IDRAC_OIDS["memory_location"].format(index=memory_id))
             memory_size = await self.get_value(IDRAC_OIDS["memory_size"].format(index=memory_id))
 
-            data["memory"][f"memory_{memory_id}"] = {
-                "name": memory_location or f"Memory {memory_id}",
-                "status": MEMORY_HEALTH_STATUS.get(memory_status, "unknown"),
-                "size_kb": memory_size,
-            }
+            # Only add memory sensors that have valid status data
+            if memory_status is not None and memory_location:
+                data["memory"][f"memory_{memory_id}"] = {
+                    "name": memory_location,
+                    "status": MEMORY_HEALTH_STATUS.get(memory_status, "unknown"),
+                    "size_kb": memory_size,
+                }
+                _LOGGER.debug("Added memory sensor %d: %s (status=%s, size=%s)", 
+                            memory_id, memory_location, memory_status, memory_size)
+            else:
+                _LOGGER.debug("Skipped memory sensor %d: status=%s, location=%s", 
+                            memory_id, memory_status, memory_location)
 
         # Get power consumption
         if self.discovered_power_consumption:
@@ -329,6 +355,50 @@ class SNMPClient:
                     "consumed_watts": power_current,
                     "max_consumed_watts": power_peak,
                 }
+
+        # Get intrusion detection sensors
+        for intrusion_id in self.discovered_intrusion:
+            intrusion_reading = await self.get_value(IDRAC_OIDS["intrusion_reading"].format(index=intrusion_id))
+            intrusion_status = await self.get_value(IDRAC_OIDS["intrusion_status"].format(index=intrusion_id))
+            intrusion_location = await self.get_string(IDRAC_OIDS["intrusion_location"].format(index=intrusion_id))
+
+            if intrusion_reading is not None and intrusion_location:
+                data["intrusion_detection"][f"intrusion_{intrusion_id}"] = {
+                    "name": intrusion_location,
+                    "reading": intrusion_reading,
+                    "status": INTRUSION_STATUS.get(intrusion_status, "unknown"),
+                }
+                _LOGGER.debug("Added intrusion sensor %d: %s (reading=%s, status=%s)", 
+                            intrusion_id, intrusion_location, intrusion_reading, intrusion_status)
+
+        # Get battery sensors
+        for battery_id in self.discovered_battery:
+            battery_reading = await self.get_value(IDRAC_OIDS["battery_reading"].format(index=battery_id))
+            battery_status = await self.get_value(IDRAC_OIDS["battery_status"].format(index=battery_id))
+
+            if battery_reading is not None and battery_status is not None:
+                data["battery"][f"battery_{battery_id}"] = {
+                    "name": f"System Battery {battery_id}",
+                    "reading": battery_reading,
+                    "status": BATTERY_STATUS.get(battery_status, "unknown"),
+                }
+                _LOGGER.debug("Added battery sensor %d: reading=%s, status=%s", 
+                            battery_id, battery_reading, battery_status)
+
+        # Get processor sensors
+        for processor_id in self.discovered_processors:
+            processor_reading = await self.get_value(IDRAC_OIDS["processor_reading"].format(index=processor_id))
+            processor_status = await self.get_value(IDRAC_OIDS["processor_status"].format(index=processor_id))
+            processor_location = await self.get_string(IDRAC_OIDS["processor_location"].format(index=processor_id))
+
+            if processor_reading is not None and processor_location:
+                data["processors"][f"processor_{processor_id}"] = {
+                    "name": processor_location,
+                    "reading": processor_reading,
+                    "status": PROCESSOR_STATUS.get(processor_status, "unknown"),
+                }
+                _LOGGER.debug("Added processor sensor %d: %s (reading=%s, status=%s)", 
+                            processor_id, processor_location, processor_reading, processor_status)
 
         return data
 

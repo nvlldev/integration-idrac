@@ -353,3 +353,135 @@ async def _discover_power_consumption_sensors(
     
     _LOGGER.debug("Discovered power consumption sensors for base OID %s: %s", base_oid, discovered_sensors)
     return discovered_sensors
+
+
+async def _discover_intrusion_sensors(
+    engine: SnmpEngine,
+    auth_data: CommunityData | UsmUserData,
+    transport_target: UdpTransportTarget,
+    context_data: ContextData,
+    base_oid: str,
+) -> list[int]:
+    """Discover chassis intrusion sensors."""
+    _LOGGER.debug("Starting intrusion sensor discovery for base OID: %s", base_oid)
+    discovered_sensors = []
+    
+    # Test indices from 1 to 5 (intrusion sensors are typically few)
+    for index in range(1, 6):
+        test_oid = f"{base_oid}.{index}"
+        
+        try:
+            error_indication, error_status, error_index, var_binds = await getCmd(
+                engine,
+                auth_data,
+                transport_target,
+                context_data,
+                ObjectType(ObjectIdentity(test_oid)),
+            )
+            
+            if not error_indication and not error_status and var_binds:
+                for name, val in var_binds:
+                    if val is not None and str(val) != "No Such Object currently exists at this OID":
+                        val_str = str(val).strip()
+                        # Look for intrusion-related keywords
+                        if val_str and any(keyword in val_str for keyword in ["Intrusion", "Chassis", "Case"]):
+                            discovered_sensors.append(index)
+                            _LOGGER.debug("Found intrusion sensor at index %d: %s = %s", index, name, val)
+                        elif val_str:
+                            _LOGGER.debug("Skipping non-intrusion sensor at index %d: %s = %s", index, name, val)
+                        break
+                        
+        except Exception as exc:
+            _LOGGER.debug("Exception during intrusion sensor discovery at index %d: %s", index, exc)
+            continue
+    
+    _LOGGER.debug("Discovered intrusion sensors for base OID %s: %s", base_oid, discovered_sensors)
+    return discovered_sensors
+
+
+async def _discover_battery_sensors(
+    engine: SnmpEngine,
+    auth_data: CommunityData | UsmUserData,
+    transport_target: UdpTransportTarget,
+    context_data: ContextData,
+    base_oid: str,
+) -> list[int]:
+    """Discover system battery sensors."""
+    _LOGGER.debug("Starting battery sensor discovery for base OID: %s", base_oid)
+    discovered_sensors = []
+    
+    # Test indices from 1 to 5 (battery sensors are typically few)
+    for index in range(1, 6):
+        test_oid = f"{base_oid}.{index}"
+        
+        try:
+            error_indication, error_status, error_index, var_binds = await getCmd(
+                engine,
+                auth_data,
+                transport_target,
+                context_data,
+                ObjectType(ObjectIdentity(test_oid)),
+            )
+            
+            if not error_indication and not error_status and var_binds:
+                for name, val in var_binds:
+                    if val is not None and str(val) != "No Such Object currently exists at this OID":
+                        # For battery, we expect numeric readings
+                        try:
+                            int(val)
+                            discovered_sensors.append(index)
+                            _LOGGER.debug("Found battery sensor at index %d: %s = %s", index, name, val)
+                        except (ValueError, TypeError):
+                            _LOGGER.debug("Skipping non-numeric battery reading at index %d: %s = %s", index, name, val)
+                        break
+                        
+        except Exception as exc:
+            _LOGGER.debug("Exception during battery sensor discovery at index %d: %s", index, exc)
+            continue
+    
+    _LOGGER.debug("Discovered battery sensors for base OID %s: %s", base_oid, discovered_sensors)
+    return discovered_sensors
+
+
+async def _discover_processor_sensors(
+    engine: SnmpEngine,
+    auth_data: CommunityData | UsmUserData,
+    transport_target: UdpTransportTarget,
+    context_data: ContextData,
+    base_oid: str,
+) -> list[int]:
+    """Discover processor sensors."""
+    _LOGGER.debug("Starting processor sensor discovery for base OID: %s", base_oid)
+    discovered_sensors = []
+    
+    # Test indices from 1 to 10 (processor sensors)
+    for index in range(1, 11):
+        test_oid = f"{base_oid}.{index}"
+        
+        try:
+            error_indication, error_status, error_index, var_binds = await getCmd(
+                engine,
+                auth_data,
+                transport_target,
+                context_data,
+                ObjectType(ObjectIdentity(test_oid)),
+            )
+            
+            if not error_indication and not error_status and var_binds:
+                for name, val in var_binds:
+                    if val is not None and str(val) != "No Such Object currently exists at this OID":
+                        val_str = str(val).strip()
+                        # Look for processor-related keywords
+                        if val_str and any(keyword in val_str for keyword in ["CPU", "Processor", "PCI"]):
+                            discovered_sensors.append(index)
+                            _LOGGER.debug("Found processor sensor at index %d: %s = %s", index, name, val)
+                        elif val_str:
+                            _LOGGER.debug("Skipping non-processor sensor at index %d: %s = %s", index, name, val)
+                        break
+                        
+        except Exception as exc:
+            _LOGGER.debug("Exception during processor sensor discovery at index %d: %s", index, exc)
+            continue
+    
+    _LOGGER.debug("Discovered processor sensors for base OID %s: %s", base_oid, discovered_sensors)
+    return discovered_sensors

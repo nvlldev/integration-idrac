@@ -62,6 +62,31 @@ async def async_setup_entry(
             if voltage_reading is not None and (voltage_reading < 0.9 or voltage_reading > 1.1):
                 entities.append(IdracVoltageSensor(coordinator, config_entry, voltage_id, voltage_data))
 
+    # Add memory health sensors (SNMP data)
+    if coordinator.data and "memory" in coordinator.data:
+        for memory_id, memory_data in coordinator.data["memory"].items():
+            entities.append(IdracMemoryHealthSensor(coordinator, config_entry, memory_id, memory_data))
+
+    # Add PSU sensors
+    if coordinator.data and "power_supplies" in coordinator.data:
+        for psu_id, psu_data in coordinator.data["power_supplies"].items():
+            entities.append(IdracPSUStatusSensor(coordinator, config_entry, psu_id, psu_data))
+
+    # Add intrusion detection sensors (SNMP available!)
+    if coordinator.data and "intrusion_detection" in coordinator.data:
+        for intrusion_id, intrusion_data in coordinator.data["intrusion_detection"].items():
+            entities.append(IdracIntrusionSensor(coordinator, config_entry, intrusion_id, intrusion_data))
+
+    # Add battery sensors
+    if coordinator.data and "battery" in coordinator.data:
+        for battery_id, battery_data in coordinator.data["battery"].items():
+            entities.append(IdracBatterySensor(coordinator, config_entry, battery_id, battery_data))
+
+    # Add processor sensors
+    if coordinator.data and "processors" in coordinator.data:
+        for processor_id, processor_data in coordinator.data["processors"].items():
+            entities.append(IdracProcessorSensor(coordinator, config_entry, processor_id, processor_data))
+
     # Add system info sensors
     if coordinator.data and "system_info" in coordinator.data:
         system_info = coordinator.data["system_info"]
@@ -520,4 +545,260 @@ class IdracSystemHealthSensor(IdracSensor):
         return {
             "component_count": health_data.get("component_count"),
             "components": health_data.get("components"),
+        }
+
+
+class IdracMemoryHealthSensor(IdracSensor):
+    """Memory health sensor."""
+
+    def __init__(
+        self,
+        coordinator: IdracDataUpdateCoordinator,
+        config_entry: ConfigEntry,
+        memory_id: str,
+        memory_data: dict[str, Any],
+    ) -> None:
+        """Initialize the memory health sensor."""
+        memory_name = memory_data.get("name", f"Memory {memory_id}")
+        super().__init__(coordinator, config_entry, f"memory_{memory_id}_health", f"{memory_name} Health")
+        self.memory_id = memory_id
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the state of the sensor."""
+        if not self.coordinator.data or "memory" not in self.coordinator.data:
+            return None
+        memory_data = self.coordinator.data["memory"].get(self.memory_id)
+        if not memory_data:
+            return None
+        return memory_data.get("status", "Unknown")
+
+    @property
+    def icon(self) -> str:
+        """Return the icon for the sensor."""
+        status = self.native_value
+        if status == "ok":
+            return "mdi:memory"
+        elif status in ["non_critical", "critical", "non_recoverable"]:
+            return "mdi:memory-alert"
+        else:
+            return "mdi:memory-off"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return additional state attributes."""
+        if not self.coordinator.data or "memory" not in self.coordinator.data:
+            return None
+        memory_data = self.coordinator.data["memory"].get(self.memory_id)
+        if not memory_data:
+            return None
+        return {
+            "size_kb": memory_data.get("size_kb"),
+            "name": memory_data.get("name"),
+        }
+
+
+class IdracPSUStatusSensor(IdracSensor):
+    """PSU status sensor."""
+
+    def __init__(
+        self,
+        coordinator: IdracDataUpdateCoordinator,
+        config_entry: ConfigEntry,
+        psu_id: str,
+        psu_data: dict[str, Any],
+    ) -> None:
+        """Initialize the PSU status sensor."""
+        psu_name = psu_data.get("name", f"PSU {psu_id}")
+        super().__init__(coordinator, config_entry, f"psu_{psu_id}_status", f"{psu_name} Status")
+        self.psu_id = psu_id
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the state of the sensor."""
+        if not self.coordinator.data or "power_supplies" not in self.coordinator.data:
+            return None
+        psu_data = self.coordinator.data["power_supplies"].get(self.psu_id)
+        if not psu_data:
+            return None
+        return psu_data.get("status", "Unknown")
+
+    @property
+    def icon(self) -> str:
+        """Return the icon for the sensor."""
+        status = self.native_value
+        if status == "ok":
+            return "mdi:power-plug"
+        elif status in ["non_critical", "critical", "non_recoverable"]:
+            return "mdi:power-plug-off"
+        else:
+            return "mdi:power-plug-outline"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return additional state attributes."""
+        if not self.coordinator.data or "power_supplies" not in self.coordinator.data:
+            return None
+        psu_data = self.coordinator.data["power_supplies"].get(self.psu_id)
+        if not psu_data:
+            return None
+        return {
+            "power_capacity_watts": psu_data.get("power_capacity_watts"),
+            "power_output_watts": psu_data.get("power_output_watts"),
+            "name": psu_data.get("name"),
+        }
+
+
+class IdracIntrusionSensor(IdracSensor):
+    """Chassis intrusion sensor."""
+
+    def __init__(
+        self,
+        coordinator: IdracDataUpdateCoordinator,
+        config_entry: ConfigEntry,
+        intrusion_id: str,
+        intrusion_data: dict[str, Any],
+    ) -> None:
+        """Initialize the chassis intrusion sensor."""
+        intrusion_name = intrusion_data.get("name", f"Intrusion {intrusion_id}")
+        super().__init__(coordinator, config_entry, f"intrusion_{intrusion_id}", f"{intrusion_name}")
+        self.intrusion_id = intrusion_id
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the state of the sensor."""
+        if not self.coordinator.data or "intrusion_detection" not in self.coordinator.data:
+            return None
+        intrusion_data = self.coordinator.data["intrusion_detection"].get(self.intrusion_id)
+        if not intrusion_data:
+            return None
+        return intrusion_data.get("status", "Unknown")
+
+    @property
+    def icon(self) -> str:
+        """Return the icon for the sensor."""
+        status = self.native_value
+        if status == "ok":
+            return "mdi:shield-check"
+        elif status == "breach":
+            return "mdi:shield-alert"
+        else:
+            return "mdi:shield-outline"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return additional state attributes."""
+        if not self.coordinator.data or "intrusion_detection" not in self.coordinator.data:
+            return None
+        intrusion_data = self.coordinator.data["intrusion_detection"].get(self.intrusion_id)
+        if not intrusion_data:
+            return None
+        return {
+            "reading": intrusion_data.get("reading"),
+            "name": intrusion_data.get("name"),
+        }
+
+
+class IdracBatterySensor(IdracSensor):
+    """System battery sensor."""
+
+    def __init__(
+        self,
+        coordinator: IdracDataUpdateCoordinator,
+        config_entry: ConfigEntry,
+        battery_id: str,
+        battery_data: dict[str, Any],
+    ) -> None:
+        """Initialize the battery sensor."""
+        battery_name = battery_data.get("name", f"Battery {battery_id}")
+        super().__init__(coordinator, config_entry, f"battery_{battery_id}", f"{battery_name}")
+        self.battery_id = battery_id
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the state of the sensor."""
+        if not self.coordinator.data or "battery" not in self.coordinator.data:
+            return None
+        battery_data = self.coordinator.data["battery"].get(self.battery_id)
+        if not battery_data:
+            return None
+        return battery_data.get("status", "Unknown")
+
+    @property
+    def icon(self) -> str:
+        """Return the icon for the sensor."""
+        status = self.native_value
+        if status == "ok":
+            return "mdi:battery"
+        elif status in ["non_critical", "critical", "non_recoverable"]:
+            return "mdi:battery-alert"
+        else:
+            return "mdi:battery-unknown"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return additional state attributes."""
+        if not self.coordinator.data or "battery" not in self.coordinator.data:
+            return None
+        battery_data = self.coordinator.data["battery"].get(self.battery_id)
+        if not battery_data:
+            return None
+        return {
+            "reading": battery_data.get("reading"),
+            "name": battery_data.get("name"),
+        }
+
+
+class IdracProcessorSensor(IdracSensor):
+    """Processor sensor."""
+
+    def __init__(
+        self,
+        coordinator: IdracDataUpdateCoordinator,
+        config_entry: ConfigEntry,
+        processor_id: str,
+        processor_data: dict[str, Any],
+    ) -> None:
+        """Initialize the processor sensor."""
+        processor_name = processor_data.get("name", f"Processor {processor_id}")
+        super().__init__(coordinator, config_entry, f"processor_{processor_id}", f"{processor_name}")
+        self.processor_id = processor_id
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the state of the sensor."""
+        if not self.coordinator.data or "processors" not in self.coordinator.data:
+            return None
+        processor_data = self.coordinator.data["processors"].get(self.processor_id)
+        if not processor_data:
+            return None
+        return processor_data.get("status", "Unknown")
+
+    @property
+    def icon(self) -> str:
+        """Return the icon for the sensor."""
+        status = self.native_value
+        if status == "ok":
+            return "mdi:chip"
+        elif status in ["non_critical", "critical", "non_recoverable"]:
+            return "mdi:chip-alert"
+        else:
+            return "mdi:chip-off"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return additional state attributes."""
+        if not self.coordinator.data or "processors" not in self.coordinator.data:
+            return None
+        processor_data = self.coordinator.data["processors"].get(self.processor_id)
+        if not processor_data:
+            return None
+        return {
+            "reading": processor_data.get("reading"),
+            "name": processor_data.get("name"),
         }

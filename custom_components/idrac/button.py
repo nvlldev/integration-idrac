@@ -45,14 +45,23 @@ async def async_setup_entry(
     """Set up the Dell iDRAC buttons."""
     coordinator: IdracDataUpdateCoordinator = hass.data[DOMAIN][config_entry.entry_id]
     
-    entities: list[IdracButton] = [
-        IdracPowerOnButton(coordinator, config_entry),
-        IdracPowerOffButton(coordinator, config_entry),
-        IdracRebootButton(coordinator, config_entry),
-        IdracSafeModeButton(coordinator, config_entry),
-    ]
+    # Only create control buttons for redfish and hybrid modes
+    # SNMP-only mode should not have control buttons
+    if coordinator.connection_type in ["redfish", "hybrid"]:
+        entities: list[IdracButton] = [
+            IdracPowerOnButton(coordinator, config_entry),
+            IdracPowerOffButton(coordinator, config_entry),
+            IdracRebootButton(coordinator, config_entry),
+        ]
+        
+        # Safe mode button only for SNMP-capable modes (currently disabled as not working reliably)
+        # if coordinator.connection_type == "hybrid":
+        #     entities.append(IdracSafeModeButton(coordinator, config_entry))
 
-    async_add_entities(entities)
+        async_add_entities(entities)
+    else:
+        # SNMP-only mode - no control buttons
+        _LOGGER.debug("Skipping button creation for SNMP-only mode")
 
 
 class IdracButton(CoordinatorEntity, ButtonEntity):
@@ -86,34 +95,17 @@ class IdracButton(CoordinatorEntity, ButtonEntity):
 
         self._attr_device_info = coordinator.device_info
 
-    async def _async_snmp_set(self, oid: str, value: int) -> bool:
-        """Send SNMP SET command using coordinator's SNMP connection."""
-        if self.coordinator.connection_type != "snmp":
-            _LOGGER.error("SNMP commands only available when using SNMP connection")
-            return False
-            
+    async def _async_redfish_action(self, action: str) -> bool:
+        """Execute Redfish power action using coordinator."""
         try:
-            error_indication, error_status, error_index, var_binds = await setCmd(
-                self.coordinator.engine,
-                self.coordinator.auth_data,
-                self.coordinator.transport_target,
-                self.coordinator.context_data,
-                ObjectType(ObjectIdentity(oid), SnmpInteger(value)),
-            )
-
-            if error_indication:
-                _LOGGER.error("SNMP SET error indication for OID %s: %s", oid, error_indication)
-                return False
-            
-            if error_status:
-                _LOGGER.error("SNMP SET error status for OID %s: %s", oid, error_status)
-                return False
-
-            _LOGGER.info("Successfully executed %s command on %s", self._button_key, self._host)
-            return True
-
+            success = await self.coordinator.async_reset_system(action)
+            if success:
+                _LOGGER.info("Successfully executed %s command (%s) on %s", self._button_key, action, self._host)
+            else:
+                _LOGGER.error("Failed to execute %s command (%s) on %s", self._button_key, action, self._host)
+            return success
         except Exception as exc:
-            _LOGGER.error("Exception during SNMP SET for OID %s: %s", oid, exc)
+            _LOGGER.error("Exception during Redfish %s action: %s", action, exc)
             return False
 
     @property
@@ -167,11 +159,7 @@ class IdracPowerOnButton(IdracButton):
 
     async def async_press(self) -> None:
         """Power on the system."""
-        if self.coordinator.connection_type == "redfish":
-            success = await self.coordinator.async_reset_system("On")
-        else:
-            # SNMP power control
-            success = await self._async_snmp_set(IDRAC_OIDS["power_button"], 1)
+        success = await self._async_redfish_action("On")
         
         if success:
             # Request coordinator update to reflect the change
@@ -210,11 +198,7 @@ class IdracPowerOffButton(IdracButton):
 
     async def async_press(self) -> None:
         """Power off the system."""
-        if self.coordinator.connection_type == "redfish":
-            success = await self.coordinator.async_reset_system("ForceOff")
-        else:
-            # SNMP power control
-            success = await self._async_snmp_set(IDRAC_OIDS["power_button"], 2)
+        success = await self._async_redfish_action("ForceOff")
         
         if success:
             # Request coordinator update to reflect the change
@@ -253,11 +237,7 @@ class IdracRebootButton(IdracButton):
 
     async def async_press(self) -> None:
         """Reboot the system."""
-        if self.coordinator.connection_type == "redfish":
-            success = await self.coordinator.async_reset_system("GracefulRestart")
-        else:
-            # SNMP reset control
-            success = await self._async_snmp_set(IDRAC_OIDS["reset_button"], 1)
+        success = await self._async_redfish_action("GracefulRestart")
         
         if success:
             # Request coordinator update to reflect the change
@@ -282,8 +262,4 @@ class IdracSafeModeButton(IdracButton):
 
     async def async_press(self) -> None:
         """Enter safe mode."""
-        if self.coordinator.connection_type == "redfish":
-            _LOGGER.warning("Safe mode not available via Redfish API")
-        else:
-            # Safe mode only available via SNMP
-            await self._async_snmp_set(IDRAC_OIDS["reset_button"], 2)
+        _LOGGER.warning("Safe mode not available via Redfish API")

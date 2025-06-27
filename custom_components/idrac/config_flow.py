@@ -49,6 +49,9 @@ from .const import (
     CONF_DISCOVERED_DETAILED_MEMORY,
     CONF_DISCOVERED_SYSTEM_VOLTAGES,
     CONF_DISCOVERED_POWER_CONSUMPTION,
+    CONF_DISCOVERED_INTRUSION,
+    CONF_DISCOVERED_BATTERY,
+    CONF_DISCOVERED_PROCESSORS,
     CONNECTION_TYPES,
     DEFAULT_PORT,
     DEFAULT_SNMP_PORT,
@@ -280,6 +283,9 @@ async def validate_snmp_input(hass: HomeAssistant, data: dict[str, Any]) -> dict
             _discover_memory_sensors,
             _discover_system_voltages,
             _discover_power_consumption_sensors,
+            _discover_intrusion_sensors,
+            _discover_battery_sensors,
+            _discover_processor_sensors,
         )
         
         discovered_fans = await _discover_fan_sensors(engine, auth_data, transport_target, context_data, SNMP_WALK_OIDS["fans"])
@@ -315,11 +321,16 @@ async def validate_snmp_input(hass: HomeAssistant, data: dict[str, Any]) -> dict
         discovered_detailed_memory = await _discover_sensors(engine, auth_data, transport_target, context_data, SNMP_WALK_OIDS["detailed_memory"])
         discovered_system_voltages = await _discover_system_voltages(engine, auth_data, transport_target, context_data, SNMP_WALK_OIDS["system_voltages"])
         discovered_power_consumption = await _discover_power_consumption_sensors(engine, auth_data, transport_target, context_data, SNMP_WALK_OIDS["power_consumption"])
+        
+        # Discover newly added sensor types
+        discovered_intrusion = await _discover_intrusion_sensors(engine, auth_data, transport_target, context_data, SNMP_WALK_OIDS["intrusion_detection"])
+        discovered_battery = await _discover_battery_sensors(engine, auth_data, transport_target, context_data, SNMP_WALK_OIDS["system_battery"])
+        discovered_processors = await _discover_processor_sensors(engine, auth_data, transport_target, context_data, SNMP_WALK_OIDS["processors"])
 
-        _LOGGER.info("Discovered %d fans, %d CPU temperature sensors, %d PSU sensors, %d voltage probes, %d memory modules, %d virtual disks, %d physical disks, %d storage controllers, %d detailed memory modules, %d system voltages, %d power consumption sensors", 
+        _LOGGER.info("Discovered %d fans, %d CPU temperature sensors, %d PSU sensors, %d voltage probes, %d memory modules, %d virtual disks, %d physical disks, %d storage controllers, %d detailed memory modules, %d system voltages, %d power consumption sensors, %d intrusion sensors, %d battery sensors, %d processor sensors", 
                      len(discovered_fans), len(discovered_cpus), len(discovered_psus), len(discovered_voltage_probes), len(discovered_memory),
                      len(discovered_virtual_disks), len(discovered_physical_disks), len(discovered_storage_controllers), len(discovered_detailed_memory),
-                     len(discovered_system_voltages), len(discovered_power_consumption))
+                     len(discovered_system_voltages), len(discovered_power_consumption), len(discovered_intrusion), len(discovered_battery), len(discovered_processors))
 
         # Store discovered sensors in data for later use
         data[CONF_DISCOVERED_FANS] = discovered_fans
@@ -333,6 +344,9 @@ async def validate_snmp_input(hass: HomeAssistant, data: dict[str, Any]) -> dict
         data[CONF_DISCOVERED_DETAILED_MEMORY] = discovered_detailed_memory
         data[CONF_DISCOVERED_SYSTEM_VOLTAGES] = discovered_system_voltages
         data[CONF_DISCOVERED_POWER_CONSUMPTION] = discovered_power_consumption
+        data[CONF_DISCOVERED_INTRUSION] = discovered_intrusion
+        data[CONF_DISCOVERED_BATTERY] = discovered_battery
+        data[CONF_DISCOVERED_PROCESSORS] = discovered_processors
 
         return {"title": f"Dell iDRAC ({host})"}
 

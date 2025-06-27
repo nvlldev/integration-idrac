@@ -46,11 +46,16 @@ async def async_setup_entry(
     """Set up the Dell iDRAC switches."""
     coordinator: IdracDataUpdateCoordinator = hass.data[DOMAIN][config_entry.entry_id]
     
-    entities: list[IdracSwitch] = [
-        IdracIdentifyLEDSwitch(coordinator, config_entry),
-    ]
-
-    async_add_entities(entities)
+    # Only create control switches for redfish and hybrid modes
+    # SNMP-only mode should not have control switches
+    if coordinator.connection_type in ["redfish", "hybrid"]:
+        entities: list[IdracSwitch] = [
+            IdracIdentifyLEDSwitch(coordinator, config_entry),
+        ]
+        async_add_entities(entities)
+    else:
+        # SNMP-only mode - no control switches
+        _LOGGER.debug("Skipping switch creation for SNMP-only mode")
 
 
 class IdracSwitch(CoordinatorEntity, SwitchEntity):
@@ -86,8 +91,8 @@ class IdracSwitch(CoordinatorEntity, SwitchEntity):
 
     async def _async_snmp_set(self, oid: str, value: int) -> bool:
         """Send SNMP SET command using coordinator's SNMP connection."""
-        if self.coordinator.connection_type != "snmp":
-            _LOGGER.error("SNMP commands only available when using SNMP connection")
+        if self.coordinator.connection_type not in ["snmp", "hybrid"]:
+            _LOGGER.error("SNMP commands only available when using SNMP or hybrid connection")
             return False
             
         try:
