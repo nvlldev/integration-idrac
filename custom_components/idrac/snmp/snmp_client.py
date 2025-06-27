@@ -386,6 +386,13 @@ class SNMPClient:
         try:
             await self._ensure_initialized()
             
+            # Verify initialization was successful before proceeding
+            if self.context_data is None:
+                _LOGGER.error("SNMP initialization failed - context_data is None")
+                return data
+            
+            _LOGGER.debug("SNMP initialization successful, proceeding with data collection")
+            
             # Collect all OIDs to query
             all_value_oids = []
             all_string_oids = []
@@ -460,21 +467,29 @@ class SNMPClient:
                 ])
                 all_string_oids.append(IDRAC_OIDS["processor_location"].format(index=processor_id))
                 
-            # Get ALL data in just two bulk operations
-            async def _empty_dict():
-                return {}
-                
-            values, strings = await asyncio.gather(
-                self._bulk_get_values(all_value_oids) if all_value_oids else _empty_dict(),
-                self._bulk_get_strings(all_string_oids) if all_string_oids else _empty_dict(),
-                return_exceptions=True
-            )
+            # Get ALL data in sequential operations to avoid SNMP concurrency issues
+            _LOGGER.debug("Collecting %d value OIDs and %d string OIDs", len(all_value_oids), len(all_string_oids))
             
-            if isinstance(values, Exception):
-                _LOGGER.warning("Bulk SNMP values collection failed: %s", values)
+            try:
+                if all_value_oids:
+                    _LOGGER.debug("Starting bulk value collection")
+                    values = await self._bulk_get_values(all_value_oids)
+                    _LOGGER.debug("Bulk value collection completed: %d results", len(values))
+                else:
+                    values = {}
+            except Exception as exc:
+                _LOGGER.warning("Bulk SNMP values collection failed: %s", exc)
                 values = {}
-            if isinstance(strings, Exception):
-                _LOGGER.warning("Bulk SNMP strings collection failed: %s", strings)
+            
+            try:
+                if all_string_oids:
+                    _LOGGER.debug("Starting bulk string collection")
+                    strings = await self._bulk_get_strings(all_string_oids)
+                    _LOGGER.debug("Bulk string collection completed: %d results", len(strings))
+                else:
+                    strings = {}
+            except Exception as exc:
+                _LOGGER.warning("Bulk SNMP strings collection failed: %s", exc)
                 strings = {}
                 
             bulk_success = len(values) > 0 or len(strings) > 0
@@ -562,13 +577,12 @@ class SNMPClient:
 
     async def _bulk_get_values(self, oids: list[str]) -> dict[str, int]:
         """Get multiple SNMP values as integers using individual async calls."""
-        await self._ensure_initialized()
-        results = {}
-        
-        # Verify initialization was successful
+        # Don't call _ensure_initialized again if already called
         if self.context_data is None:
-            _LOGGER.error("SNMP context_data is None - cannot perform SNMP operations")
-            return results
+            _LOGGER.error("SNMP context_data is None - initialization was not successful")
+            return {}
+        
+        results = {}
         
         for oid in oids:
             try:
@@ -590,13 +604,12 @@ class SNMPClient:
     
     async def _bulk_get_strings(self, oids: list[str]) -> dict[str, str]:
         """Get multiple SNMP values as strings using individual async calls."""
-        await self._ensure_initialized()
-        results = {}
-        
-        # Verify initialization was successful
+        # Don't call _ensure_initialized again if already called
         if self.context_data is None:
-            _LOGGER.error("SNMP context_data is None - cannot perform SNMP operations")
-            return results
+            _LOGGER.error("SNMP context_data is None - initialization was not successful")
+            return {}
+        
+        results = {}
         
         for oid in oids:
             try:
