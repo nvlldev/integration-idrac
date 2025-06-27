@@ -40,30 +40,55 @@ class RedfishClient:
         self.session_timeout = session_timeout
         self.base_url = f"https://{host}:{port}"
         self._session: Optional[aiohttp.ClientSession] = None
+        self._ssl_context: Optional[ssl.SSLContext] = None
+
+    async def _get_ssl_context(self) -> Optional[ssl.SSLContext]:
+        """Get or create SSL context once and cache it."""
+        if not self.verify_ssl and self._ssl_context is None:
+            # Create SSL context once and cache it to avoid repeated SSL handshake overhead
+            loop = asyncio.get_event_loop()
+            ssl_context = await loop.run_in_executor(None, ssl.create_default_context)
+            ssl_context.check_hostname = False
+            ssl_context.verify_mode = ssl.CERT_NONE
+            # Optimize SSL for performance
+            ssl_context.set_ciphers('ECDHE+AESGCM:ECDHE+CHACHA20:DHE+AESGCM:DHE+CHACHA20:!aNULL:!MD5:!DSS')
+            self._ssl_context = ssl_context
+        return self._ssl_context if not self.verify_ssl else None
 
     async def _get_session(self) -> aiohttp.ClientSession:
         """Get or create HTTP session."""
         if self._session is None:
-            # Create our own session since we need custom SSL settings
-            if self.verify_ssl:
-                connector = aiohttp.TCPConnector()
-            else:
-                # Disable SSL verification for older iDRACs
-                # Use executor to avoid blocking the event loop
-                import functools
-                loop = asyncio.get_event_loop()
-                ssl_context = await loop.run_in_executor(None, ssl.create_default_context)
-                ssl_context.check_hostname = False
-                ssl_context.verify_mode = ssl.CERT_NONE
-                connector = aiohttp.TCPConnector(ssl=ssl_context)
+            # Get SSL context (cached)
+            ssl_context = await self._get_ssl_context()
+            
+            # Optimized connector for SSL performance and connection reuse
+            connector = aiohttp.TCPConnector(
+                ssl=ssl_context,
+                limit=20,  # Increase total connection pool size
+                limit_per_host=10,  # More connections per host for concurrent requests
+                ttl_dns_cache=600,  # Longer DNS cache TTL
+                use_dns_cache=True,
+                keepalive_timeout=120,  # Much longer keep-alive to avoid SSL handshakes
+                enable_cleanup_closed=True,
+                force_close=False,  # Don't force close connections
+                # Optimize TCP settings for performance
+                sock_connect=15,  # TCP connect timeout
+                resolver=aiohttp.resolver.AsyncResolver(),  # Use async DNS resolver
+            )
 
             self._session = aiohttp.ClientSession(
                 connector=connector,
                 headers={
                     "Content-Type": "application/json",
                     "Accept": "application/json",
+                    "Connection": "keep-alive",  # Explicit keep-alive header
                 },
-                timeout=aiohttp.ClientTimeout(total=self.session_timeout, connect=15),
+                timeout=aiohttp.ClientTimeout(
+                    total=self.session_timeout, 
+                    connect=15, 
+                    sock_read=self.request_timeout,
+                    sock_connect=10  # Shorter socket connect timeout
+                ),
             )
 
         return self._session
@@ -73,9 +98,36 @@ class RedfishClient:
         if self._session:
             await self._session.close()
             self._session = None
+            self._ssl_context = None
+    
+    async def warm_up_connection(self) -> bool:
+        """Pre-warm the SSL connection to avoid first-request penalty."""
+        try:
+            import time
+            start_time = time.time()
+            
+            # Make a lightweight request to establish SSL connection
+            session = await self._get_session()
+            url = f"{self.base_url}/redfish/v1"
+            auth = aiohttp.BasicAuth(self.username, self.password)
+            
+            async with session.get(url, auth=auth, timeout=aiohttp.ClientTimeout(total=10)) as response:
+                # Don't need to read the full response, just establish connection
+                await response.read()
+            
+            warm_up_time = time.time() - start_time
+            _LOGGER.debug("SSL connection warm-up completed in %.2f seconds", warm_up_time)
+            return True
+            
+        except Exception as exc:
+            _LOGGER.debug("SSL connection warm-up failed: %s", exc)
+            return False
 
     async def get(self, path: str) -> Optional[Dict[str, Any]]:
         """Make GET request to Redfish API."""
+        import time
+        start_time = time.time()
+        
         url = f"{self.base_url}{path}"
         auth = aiohttp.BasicAuth(self.username, self.password)
 
@@ -83,17 +135,23 @@ class RedfishClient:
             session = await self._get_session()
             async with session.get(url, auth=auth, timeout=aiohttp.ClientTimeout(total=self.request_timeout)) as response:
                 if response.status == 200:
-                    return await response.json()
+                    result = await response.json()
+                    request_time = time.time() - start_time
+                    _LOGGER.debug("GET %s completed in %.2f seconds", path, request_time)
+                    return result
                 elif response.status == 401:
                     raise RedfishError("Authentication failed - check credentials")
                 else:
-                    _LOGGER.warning("GET %s failed: %s %s", path, response.status, response.reason)
+                    request_time = time.time() - start_time
+                    _LOGGER.warning("GET %s failed: %s %s (%.2f seconds)", path, response.status, response.reason, request_time)
                     return None
         except asyncio.TimeoutError:
-            _LOGGER.warning("GET %s timed out after %d seconds", path, self.request_timeout)
+            request_time = time.time() - start_time
+            _LOGGER.warning("GET %s timed out after %d seconds (actual: %.2f)", path, self.request_timeout, request_time)
             return None
         except Exception as e:
-            _LOGGER.error("GET %s error: %s", path, e)
+            request_time = time.time() - start_time
+            _LOGGER.error("GET %s error: %s (%.2f seconds)", path, e, request_time)
             return None
 
     async def post(self, path: str, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -231,3 +289,16 @@ class RedfishClient:
         except Exception as e:
             _LOGGER.error("Connection test failed to %s: %s", self.base_url, e)
             return False
+
+    def get_performance_info(self) -> dict:
+        """Get performance configuration information for debugging."""
+        return {
+            "request_timeout": self.request_timeout,
+            "session_timeout": self.session_timeout,
+            "verify_ssl": self.verify_ssl,
+            "base_url": self.base_url,
+            "ssl_context_cached": self._ssl_context is not None,
+            "session_active": self._session is not None and not self._session.closed,
+            "connection_pool_limit": 20,
+            "keepalive_timeout": 120,
+        }

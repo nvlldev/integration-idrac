@@ -122,6 +122,7 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
                 hass, self.host, self.username, self.password, self.port, self.verify_ssl, 
                 self.request_timeout, self.session_timeout
             )
+            self._ssl_warmed_up = False
         else:
             # SNMP configuration
             self.snmp_version = entry.data.get(CONF_SNMP_VERSION, DEFAULT_SNMP_VERSION)
@@ -145,6 +146,7 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
             self.auth_data = _create_auth_data(entry)
             self.transport_target = UdpTransportTarget((self.host, self.port), timeout=5, retries=1)
             self.context_data = ContextData()
+            self._ssl_warmed_up = True  # Not applicable for SNMP
         
         # Store server identification for logging
         self._server_id = f"{self.host}:{self.port}"
@@ -272,7 +274,18 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
     async def _async_update_redfish_data(self) -> dict[str, Any]:
         """Update data via Redfish API with concurrent requests for better performance."""
         import asyncio
+        import time
         
+        # Pre-warm SSL connection on first run to reduce latency
+        if not self._ssl_warmed_up:
+            try:
+                _LOGGER.debug("Warming up SSL connection for %s", self._server_id)
+                await self.client.warm_up_connection()
+                self._ssl_warmed_up = True
+            except Exception as exc:
+                _LOGGER.debug("Failed to warm up SSL connection: %s", exc)
+        
+        start_time = time.time()
         data = {
             "temperatures": {},
             "fans": {},
@@ -286,16 +299,19 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
         }
 
         # Fetch all data concurrently to improve performance
+        api_start = time.time()
         try:
+            # Include power subsystem in the main concurrent batch for better performance
             system_task = self.client.get_system_info()
             thermal_task = self.client.get_thermal_info()
             power_task = self.client.get_power_info()
             manager_task = self.client.get_manager_info()
             chassis_task = self.client.get_chassis_info()
+            power_subsystem_task = self.client.get_power_subsystem()
             
-            # Wait for all main API calls to complete concurrently
-            system_data, thermal_data, power_data, manager_data, chassis_data = await asyncio.gather(
-                system_task, thermal_task, power_task, manager_task, chassis_task,
+            # Wait for all API calls to complete concurrently
+            system_data, thermal_data, power_data, manager_data, chassis_data, power_subsystem_data = await asyncio.gather(
+                system_task, thermal_task, power_task, manager_task, chassis_task, power_subsystem_task,
                 return_exceptions=True
             )
             
@@ -315,6 +331,12 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
             if isinstance(chassis_data, Exception):
                 _LOGGER.warning("Failed to get chassis info: %s", chassis_data)
                 chassis_data = None
+            if isinstance(power_subsystem_data, Exception):
+                _LOGGER.debug("Failed to get power subsystem info: %s", power_subsystem_data)
+                power_subsystem_data = None
+        
+        api_end = time.time()
+        _LOGGER.debug("Redfish API calls completed in %.2f seconds", api_end - api_start)
                 
         except Exception as exc:
             _LOGGER.error("Error during concurrent Redfish API calls: %s", exc)
@@ -324,6 +346,7 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
             power_data = await self.client.get_power_info()
             manager_data = await self.client.get_manager_info()
             chassis_data = await self.client.get_chassis_info()
+            power_subsystem_data = await self.client.get_power_subsystem()
 
         # Process system information
         if system_data:
@@ -345,30 +368,30 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
 
         # Process thermal information (already fetched concurrently)
         if thermal_data:
-            # Process temperatures
-            temperatures = thermal_data.get("Temperatures", [])
+            # Process temperatures - optimize by filtering None readings upfront
+            temperatures = [temp for temp in thermal_data.get("Temperatures", []) 
+                          if temp.get("ReadingCelsius") is not None]
             for i, temp in enumerate(temperatures):
-                if temp.get("ReadingCelsius") is not None:
-                    sensor_name = temp.get("Name", f"Temperature {i+1}")
-                    data["temperatures"][f"temp_{i+1}"] = {
-                        "name": sensor_name,
-                        "temperature": temp.get("ReadingCelsius"),
-                        "status": temp.get("Status", {}).get("Health"),
-                        "upper_threshold_critical": temp.get("UpperThresholdCritical"),
-                        "upper_threshold_non_critical": temp.get("UpperThresholdNonCritical"),
-                    }
+                sensor_name = temp.get("Name", f"Temperature {i+1}")
+                data["temperatures"][f"temp_{i+1}"] = {
+                    "name": sensor_name,
+                    "temperature": temp.get("ReadingCelsius"),
+                    "status": temp.get("Status", {}).get("Health"),
+                    "upper_threshold_critical": temp.get("UpperThresholdCritical"),
+                    "upper_threshold_non_critical": temp.get("UpperThresholdNonCritical"),
+                }
 
-            # Process fans
-            fans = thermal_data.get("Fans", [])
+            # Process fans - optimize by filtering None readings upfront
+            fans = [fan for fan in thermal_data.get("Fans", []) 
+                   if fan.get("Reading") is not None]
             for i, fan in enumerate(fans):
-                if fan.get("Reading") is not None:
-                    fan_name = fan.get("Name", f"Fan {i+1}")
-                    data["fans"][f"fan_{i+1}"] = {
-                        "name": fan_name,
-                        "speed_rpm": fan.get("Reading"),
-                        "speed_percent": fan.get("ReadingUnits") == "Percent" and fan.get("Reading"),
-                        "status": fan.get("Status", {}).get("Health"),
-                    }
+                fan_name = fan.get("Name", f"Fan {i+1}")
+                data["fans"][f"fan_{i+1}"] = {
+                    "name": fan_name,
+                    "speed_rpm": fan.get("Reading"),
+                    "speed_percent": fan.get("ReadingUnits") == "Percent" and fan.get("Reading"),
+                    "status": fan.get("Status", {}).get("Health"),
+                }
 
         # Process power information (already fetched concurrently)
         if power_data:
@@ -452,49 +475,46 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
                 "re_arm": physical_security.get("IntrusionSensorReArm"),
             }
 
-        # Try to get power subsystem for redundancy info (separate async call)
-        try:
-            power_subsystem_data = await self.client.get_power_subsystem()
-            if power_subsystem_data:
-                power_supplies_data = power_subsystem_data.get("PowerSupplies", {})
-                redundancy_data = power_supplies_data.get("Redundancy", [])
+        # Process power subsystem for redundancy info (already fetched concurrently)
+        if power_subsystem_data:
+            power_supplies_data = power_subsystem_data.get("PowerSupplies", {})
+            redundancy_data = power_supplies_data.get("Redundancy", [])
+            
+            if redundancy_data:
+                redundancy_info = redundancy_data[0] if isinstance(redundancy_data, list) else redundancy_data
+                data["power_redundancy"] = {
+                    "mode": redundancy_info.get("Mode"),
+                    "status": redundancy_info.get("Status", {}).get("Health"),
+                    "state": redundancy_info.get("Status", {}).get("State"),
+                    "redundancy_set": redundancy_info.get("RedundancySet", []),
+                    "min_num_needed": redundancy_info.get("MinNumNeeded"),
+                    "max_num_supported": redundancy_info.get("MaxNumSupported"),
+                }
+            else:
+                # Fallback: analyze power supply status for redundancy
+                power_supplies = data.get("power_supplies", {})
+                total_psus = len(power_supplies)
+                healthy_psus = sum(1 for psu in power_supplies.values() 
+                                 if psu.get("status") in ["OK", "ok"])
                 
-                if redundancy_data:
-                    redundancy_info = redundancy_data[0] if isinstance(redundancy_data, list) else redundancy_data
-                    data["power_redundancy"] = {
-                        "mode": redundancy_info.get("Mode"),
-                        "status": redundancy_info.get("Status", {}).get("Health"),
-                        "state": redundancy_info.get("Status", {}).get("State"),
-                        "redundancy_set": redundancy_info.get("RedundancySet", []),
-                        "min_num_needed": redundancy_info.get("MinNumNeeded"),
-                        "max_num_supported": redundancy_info.get("MaxNumSupported"),
-                    }
-                else:
-                    # Fallback: analyze power supply status for redundancy
-                    power_supplies = data.get("power_supplies", {})
-                    total_psus = len(power_supplies)
-                    healthy_psus = sum(1 for psu in power_supplies.values() 
-                                     if psu.get("status") in ["OK", "ok"])
-                    
-                    if total_psus > 1:
-                        if healthy_psus == total_psus:
-                            redundancy_status = "OK"
-                        elif healthy_psus >= total_psus // 2:
-                            redundancy_status = "Warning"
-                        else:
-                            redundancy_status = "Critical"
+                if total_psus > 1:
+                    if healthy_psus == total_psus:
+                        redundancy_status = "OK"
+                    elif healthy_psus >= total_psus // 2:
+                        redundancy_status = "Warning"
                     else:
-                        redundancy_status = "Non-Redundant"
-                    
-                    data["power_redundancy"] = {
-                        "mode": "N+1" if total_psus > 1 else "Non-Redundant",
-                        "status": redundancy_status,
-                        "total_psus": total_psus,
-                        "healthy_psus": healthy_psus,
-                    }
-        except Exception as exc:
-            _LOGGER.debug("Could not get power subsystem data: %s", exc)
-            # Fallback power redundancy calculation
+                        redundancy_status = "Critical"
+                else:
+                    redundancy_status = "Non-Redundant"
+                
+                data["power_redundancy"] = {
+                    "mode": "N+1" if total_psus > 1 else "Non-Redundant",
+                    "status": redundancy_status,
+                    "total_psus": total_psus,
+                    "healthy_psus": healthy_psus,
+                }
+        else:
+            # Fallback power redundancy calculation when power subsystem unavailable
             power_supplies = data.get("power_supplies", {})
             total_psus = len(power_supplies)
             healthy_psus = sum(1 for psu in power_supplies.values() 
@@ -568,6 +588,9 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
             "components": health_components,
         }
 
+        total_time = time.time() - start_time
+        _LOGGER.debug("Total Redfish update completed in %.2f seconds", total_time)
+        
         return data
 
     async def _async_update_snmp_data(self) -> dict[str, Any]:
