@@ -74,7 +74,7 @@ class RedfishClient:
 
         try:
             session = await self._get_session()
-            async with session.get(url, auth=auth, timeout=aiohttp.ClientTimeout(total=10)) as response:
+            async with session.get(url, auth=auth, timeout=aiohttp.ClientTimeout(total=30)) as response:
                 if response.status == 200:
                     return await response.json()
                 elif response.status == 401:
@@ -83,7 +83,7 @@ class RedfishClient:
                     _LOGGER.warning("GET %s failed: %s %s", path, response.status, response.reason)
                     return None
         except asyncio.TimeoutError:
-            _LOGGER.warning("GET %s timed out", path)
+            _LOGGER.warning("GET %s timed out after 30 seconds", path)
             return None
         except Exception as e:
             _LOGGER.error("GET %s error: %s", path, e)
@@ -97,7 +97,7 @@ class RedfishClient:
         try:
             session = await self._get_session()
             async with session.post(
-                url, auth=auth, json=data, timeout=aiohttp.ClientTimeout(total=10)
+                url, auth=auth, json=data, timeout=aiohttp.ClientTimeout(total=30)
             ) as response:
                 if response.status in [200, 202, 204]:
                     if response.content_length and response.content_length > 0:
@@ -122,7 +122,11 @@ class RedfishClient:
 
     async def get_service_root(self) -> Optional[Dict[str, Any]]:
         """Get Redfish service root information."""
-        return await self.get("/redfish/v1/")
+        # Try without trailing slash first, then with trailing slash
+        result = await self.get("/redfish/v1")
+        if result is None:
+            result = await self.get("/redfish/v1/")
+        return result
 
     async def get_system_info(self, system_id: str = "System.Embedded.1") -> Optional[Dict[str, Any]]:
         """Get system information."""
@@ -159,8 +163,14 @@ class RedfishClient:
     async def test_connection(self) -> bool:
         """Test connection to iDRAC Redfish API."""
         try:
+            _LOGGER.debug("Testing connection to %s", self.base_url)
             service_root = await self.get_service_root()
-            return service_root is not None
+            success = service_root is not None
+            if success:
+                _LOGGER.debug("Connection test successful to %s", self.base_url)
+            else:
+                _LOGGER.error("Connection test failed - no service root returned from %s", self.base_url)
+            return success
         except Exception as e:
-            _LOGGER.error("Connection test failed: %s", e)
+            _LOGGER.error("Connection test failed to %s: %s", self.base_url, e)
             return False

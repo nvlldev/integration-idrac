@@ -53,15 +53,20 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
 
     try:
         # Test connection to iDRAC
+        _LOGGER.debug("Testing connection to %s:%s", host, port)
         if not await client.test_connection():
+            _LOGGER.error("Connection test failed to %s:%s", host, port)
             raise CannotConnect
 
         # Get service root to verify API access
+        _LOGGER.debug("Getting service root from %s:%s", host, port)
         service_root = await client.get_service_root()
         if not service_root:
+            _LOGGER.error("Failed to get service root from %s:%s", host, port)
             raise CannotConnect
 
         # Get system info for device identification
+        _LOGGER.debug("Getting system info from %s:%s", host, port)
         system_info = await client.get_system_info()
         device_name = "Dell iDRAC"
         if system_info:
@@ -69,12 +74,14 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
             if model:
                 device_name = f"Dell {model}"
 
+        _LOGGER.info("Successfully validated connection to %s:%s", host, port)
         return {"title": f"{device_name} ({host})", "service_info": service_root}
 
-    except RedfishError:
+    except RedfishError as exc:
+        _LOGGER.error("Redfish authentication error for %s:%s: %s", host, port, exc)
         raise InvalidAuth
     except Exception as exc:
-        _LOGGER.exception("Unexpected exception during validation: %s", exc)
+        _LOGGER.exception("Unexpected exception during validation for %s:%s: %s", host, port, exc)
         raise CannotConnect
     finally:
         await client.close()
