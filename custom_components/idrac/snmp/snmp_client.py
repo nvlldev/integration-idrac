@@ -193,8 +193,40 @@ class SNMPClient:
                 _LOGGER.debug("Auth data created: %s", type(self.auth_data).__name__)
                 
                 _LOGGER.debug("Creating transport target...")
-                self.transport_target = UdpTransportTarget((self.host, self.port), timeout=5.0, retries=1)
-                _LOGGER.debug("Transport target created for %s:%d", self.host, self.port)
+                _LOGGER.debug("Transport target parameters: host=%s (type: %s), port=%s (type: %s)", 
+                             self.host, type(self.host).__name__, self.port, type(self.port).__name__)
+                
+                # Ensure port is an integer
+                if not isinstance(self.port, int):
+                    try:
+                        port_int = int(self.port)
+                        _LOGGER.debug("Converted port from %s to %d", self.port, port_int)
+                        self.port = port_int
+                    except (ValueError, TypeError) as exc:
+                        _LOGGER.error("Invalid port value: %s (type: %s): %s", self.port, type(self.port).__name__, exc)
+                        raise ValueError(f"Invalid SNMP port: {self.port}") from exc
+                
+                # Ensure host is a string
+                if not isinstance(self.host, str):
+                    _LOGGER.error("Invalid host value: %s (type: %s)", self.host, type(self.host).__name__)
+                    raise ValueError(f"Invalid SNMP host: {self.host}")
+                
+                # Validate values before creating transport target
+                if not self.host or not self.host.strip():
+                    raise ValueError("SNMP host is empty or whitespace")
+                if self.port <= 0 or self.port > 65535:
+                    raise ValueError(f"SNMP port {self.port} is out of valid range (1-65535)")
+                
+                _LOGGER.debug("Creating UdpTransportTarget with validated parameters: ('%s', %d)", self.host, self.port)
+                
+                try:
+                    self.transport_target = UdpTransportTarget((self.host, self.port), timeout=5.0, retries=1)
+                    _LOGGER.debug("Transport target created successfully for %s:%d", self.host, self.port)
+                except Exception as transport_exc:
+                    _LOGGER.error("Failed to create UdpTransportTarget: %s", transport_exc, exc_info=True)
+                    _LOGGER.error("Transport parameters were: host='%s' (len=%d), port=%d", 
+                                self.host, len(self.host) if self.host else 0, self.port)
+                    raise
                 
                 _LOGGER.debug("Creating context data...")
                 self.context_data = ContextData()
