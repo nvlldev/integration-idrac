@@ -2,37 +2,44 @@
   "config": {
     "step": {
       "user": {
-        "title": "Dell iDRAC Integration Setup",
-        "description": "Configure your Dell iDRAC connection. First, specify the host and choose your connection method.",
+        "title": "Dell iDRAC Setup",
+        "description": "Connect to your Dell iDRAC for comprehensive server monitoring and control.",
         "data": {
           "host": "Hostname or IP Address",
           "connection_type": "Connection Type",
-          "scan_interval": "Scan Interval (seconds)"
+          "scan_interval": "Update Interval (seconds)"
         },
         "data_description": {
-          "host": "The IP address or hostname of your Dell iDRAC",
-          "connection_type": "How to connect to your iDRAC:\n• **Redfish**: Full featured with moderate performance\n• **SNMP**: Fast performance, monitoring only\n• **Hybrid**: Best of both - SNMP speed with Redfish controls",
-          "scan_interval": "How often to refresh sensor data (10-300 seconds)"
+          "host": "Enter the IP address or hostname of your Dell iDRAC",
+          "connection_type": "Choose how to connect:\n• **Redfish API**: Full control with system management\n• **SNMP Only**: Fast monitoring without controls\n• **Hybrid**: SNMP monitoring + Redfish controls (recommended)",
+          "scan_interval": "How often to update sensor readings"
+        },
+        "options": {
+          "connection_type": {
+            "redfish": "Redfish API",
+            "snmp": "SNMP Only", 
+            "hybrid": "Hybrid (Redfish + SNMP)"
+          }
         }
       },
       "redfish": {
-        "title": "Redfish API Credentials",
-        "description": "Enter your Redfish API credentials for {host}. This provides full control features including LED control and system resets.",
+        "title": "Redfish API Setup",
+        "description": "Configure API access to {host} for full server control and monitoring.",
         "data": {
-          "port": "Redfish Port",
+          "port": "Port",
           "username": "Username",
           "password": "Password",
           "verify_ssl": "Verify SSL Certificate",
-          "request_timeout": "Request Timeout (seconds)",
-          "session_timeout": "Session Timeout (seconds)"
+          "request_timeout": "Request Timeout",
+          "session_timeout": "Session Timeout"
         },
         "data_description": {
-          "port": "Redfish API port (usually 443)",
-          "username": "iDRAC username (usually 'root')",
-          "password": "iDRAC password",
-          "verify_ssl": "Enable SSL certificate verification (usually disabled for iDRACs)",
-          "request_timeout": "Timeout for individual API requests (5-120 seconds)",
-          "session_timeout": "Timeout for the entire session (10-180 seconds)"
+          "port": "HTTPS port for iDRAC web interface",
+          "username": "iDRAC login username",
+          "password": "iDRAC login password",
+          "verify_ssl": "Verify SSL certificates (disable for self-signed certificates)",
+          "request_timeout": "Maximum time to wait for API responses",
+          "session_timeout": "How long to keep the connection active"
         }
       },
       "snmp_version": {
@@ -45,6 +52,12 @@
         "data_description": {
           "snmp_port": "SNMP port (usually 161)",
           "snmp_version": "Choose SNMP protocol version:\n• **v2c**: Simple setup with community string\n• **v3**: Secure setup with username and authentication"
+        },
+        "options": {
+          "snmp_version": {
+            "v2c": "SNMP v2c",
+            "v3": "SNMP v3"
+          }
         }
       },
       "snmp_v2c": {
@@ -73,18 +86,37 @@
           "auth_password": "Authentication password",
           "priv_protocol": "Encryption method (AES128 recommended)",
           "priv_password": "Encryption password"
+        },
+        "options": {
+          "auth_protocol": {
+            "none": "None",
+            "md5": "MD5",
+            "sha": "SHA-1",
+            "sha224": "SHA-224",
+            "sha256": "SHA-256", 
+            "sha384": "SHA-384",
+            "sha512": "SHA-512"
+          },
+          "priv_protocol": {
+            "none": "None",
+            "des": "DES",
+            "3des": "3DES",
+            "aes128": "AES-128",
+            "aes192": "AES-192",
+            "aes256": "AES-256"
+          }
         }
       },
       "hybrid_redfish": {
         "title": "Hybrid Mode - Redfish Controls",
         "description": "Step 1 of 2: Configure Redfish API for {host}. This will be used for control operations like LED and system resets.",
         "data": {
-          "port": "Redfish Port",
+          "port": "Port",
           "username": "Username",
           "password": "Password",
           "verify_ssl": "Verify SSL Certificate",
-          "request_timeout": "Request Timeout (seconds)",
-          "session_timeout": "Session Timeout (seconds)"
+          "request_timeout": "Request Timeout",
+          "session_timeout": "Session Timeout"
         },
         "data_description": {
           "port": "Redfish API port for controls (usually 443)",
@@ -105,6 +137,12 @@
         "data_description": {
           "snmp_port": "SNMP port for data collection (usually 161)",
           "snmp_version": "Choose SNMP protocol version:\n• **v2c**: Simple setup with community string\n• **v3**: Secure setup with username and authentication"
+        },
+        "options": {
+          "snmp_version": {
+            "v2c": "SNMP v2c",
+            "v3": "SNMP v3"
+          }
         }
       },
       "hybrid_snmp_v2c": {
@@ -133,6 +171,25 @@
           "auth_password": "Authentication password",
           "priv_protocol": "Encryption method (AES128 recommended)",
           "priv_password": "Encryption password"
+        },
+        "options": {
+          "auth_protocol": {
+            "none": "None",
+            "md5": "MD5",
+            "sha": "SHA-1",
+            "sha224": "SHA-224",
+            "sha256": "SHA-256", 
+            "sha384": "SHA-384",
+            "sha512": "SHA-512"
+          },
+          "priv_protocol": {
+            "none": "None",
+            "des": "DES",
+            "3des": "3DES",
+            "aes128": "AES-128",
+            "aes192": "AES-192",
+            "aes256": "AES-256"
+          }
         }
       }
     },
@@ -143,42 +200,6 @@
     },
     "abort": {
       "already_configured": "This iDRAC is already configured with the same connection type."
-    }
-  },
-  "selector": {
-    "connection_type": {
-      "options": {
-        "redfish": "Redfish API",
-        "snmp": "SNMP Only", 
-        "hybrid": "Hybrid (Redfish + SNMP)"
-      }
-    },
-    "snmp_version": {
-      "options": {
-        "v2c": "SNMP v2c",
-        "v3": "SNMP v3"
-      }
-    },
-    "auth_protocol": {
-      "options": {
-        "none": "None",
-        "md5": "MD5",
-        "sha": "SHA-1",
-        "sha224": "SHA-224",
-        "sha256": "SHA-256", 
-        "sha384": "SHA-384",
-        "sha512": "SHA-512"
-      }
-    },
-    "priv_protocol": {
-      "options": {
-        "none": "None",
-        "des": "DES",
-        "3des": "3DES",
-        "aes128": "AES-128",
-        "aes192": "AES-192",
-        "aes256": "AES-256"
-      }
     }
   },
   "options": {

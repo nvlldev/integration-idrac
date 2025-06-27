@@ -5,6 +5,7 @@ import logging
 from typing import Any
 
 import voluptuous as vol
+from homeassistant.helpers import selector
 from pysnmp.hlapi.asyncio import (
     CommunityData,
     ContextData,
@@ -73,79 +74,194 @@ _LOGGER = logging.getLogger(__name__)
 
 # Step 1: Host and connection type selection
 STEP_HOST_SCHEMA = vol.Schema({
-    vol.Required(CONF_HOST): str,
-    vol.Required(CONF_CONNECTION_TYPE, default="redfish"): vol.In(CONNECTION_TYPES),
-    vol.Optional(CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL): vol.All(
-        vol.Coerce(int), vol.Range(min=10, max=300)
+    vol.Required(CONF_HOST): selector.TextSelector(
+        selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
+    ),
+    vol.Required(CONF_CONNECTION_TYPE, default="redfish"): selector.SelectSelector(
+        selector.SelectSelectorConfig(
+            options=CONNECTION_TYPES,
+            mode=selector.SelectSelectorMode.DROPDOWN
+        )
+    ),
+    vol.Optional(CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL): selector.NumberSelector(
+        selector.NumberSelectorConfig(
+            min=10,
+            max=300,
+            step=5,
+            unit_of_measurement="seconds",
+            mode=selector.NumberSelectorMode.BOX
+        )
     ),
 })
 
 # Step 2a: Redfish credentials
 STEP_REDFISH_SCHEMA = vol.Schema({
-    vol.Optional(CONF_PORT, default=DEFAULT_PORT): int,
-    vol.Required(CONF_USERNAME, default="root"): str,
-    vol.Required(CONF_PASSWORD): str,
-    vol.Optional(CONF_VERIFY_SSL, default=False): bool,
-    vol.Optional(CONF_REQUEST_TIMEOUT, default=DEFAULT_REQUEST_TIMEOUT): vol.All(
-        vol.Coerce(int), vol.Range(min=5, max=120)
+    vol.Optional(CONF_PORT, default=DEFAULT_PORT): selector.NumberSelector(
+        selector.NumberSelectorConfig(
+            min=1,
+            max=65535,
+            mode=selector.NumberSelectorMode.BOX
+        )
     ),
-    vol.Optional(CONF_SESSION_TIMEOUT, default=DEFAULT_SESSION_TIMEOUT): vol.All(
-        vol.Coerce(int), vol.Range(min=10, max=180)
+    vol.Required(CONF_USERNAME, default="root"): selector.TextSelector(
+        selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
+    ),
+    vol.Required(CONF_PASSWORD): selector.TextSelector(
+        selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
+    ),
+    vol.Optional(CONF_VERIFY_SSL, default=False): selector.BooleanSelector(),
+    vol.Optional(CONF_REQUEST_TIMEOUT, default=DEFAULT_REQUEST_TIMEOUT): selector.NumberSelector(
+        selector.NumberSelectorConfig(
+            min=5,
+            max=120,
+            step=5,
+            unit_of_measurement="seconds",
+            mode=selector.NumberSelectorMode.SLIDER
+        )
+    ),
+    vol.Optional(CONF_SESSION_TIMEOUT, default=DEFAULT_SESSION_TIMEOUT): selector.NumberSelector(
+        selector.NumberSelectorConfig(
+            min=10,
+            max=180,
+            step=5,
+            unit_of_measurement="seconds",
+            mode=selector.NumberSelectorMode.SLIDER
+        )
     ),
 })
 
 # Step 2b: SNMP version selection
 STEP_SNMP_VERSION_SCHEMA = vol.Schema({
-    vol.Optional(CONF_SNMP_PORT, default=DEFAULT_SNMP_PORT): int,
-    vol.Required(CONF_SNMP_VERSION, default=DEFAULT_SNMP_VERSION): vol.In(SNMP_VERSIONS),
+    vol.Optional(CONF_SNMP_PORT, default=DEFAULT_SNMP_PORT): selector.NumberSelector(
+        selector.NumberSelectorConfig(
+            min=1,
+            max=65535,
+            mode=selector.NumberSelectorMode.BOX
+        )
+    ),
+    vol.Required(CONF_SNMP_VERSION, default=DEFAULT_SNMP_VERSION): selector.SelectSelector(
+        selector.SelectSelectorConfig(
+            options=SNMP_VERSIONS,
+            mode=selector.SelectSelectorMode.DROPDOWN
+        )
+    ),
 })
 
 # Step 3a: SNMP v2c credentials (community string)
 STEP_SNMP_V2C_SCHEMA = vol.Schema({
-    vol.Required(CONF_COMMUNITY, default=DEFAULT_COMMUNITY): str,
+    vol.Required(CONF_COMMUNITY, default=DEFAULT_COMMUNITY): selector.TextSelector(
+        selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
+    ),
 })
 
 # Step 3b: SNMP v3 credentials (username/password)
 STEP_SNMP_V3_SCHEMA = vol.Schema({
-    vol.Required(CONF_USERNAME): str,
-    vol.Optional(CONF_AUTH_PROTOCOL, default="sha"): vol.In(list(SNMP_AUTH_PROTOCOLS.keys())),
-    vol.Optional(CONF_AUTH_PASSWORD): str,
-    vol.Optional(CONF_PRIV_PROTOCOL, default="aes128"): vol.In(list(SNMP_PRIV_PROTOCOLS.keys())),
-    vol.Optional(CONF_PRIV_PASSWORD): str,
+    vol.Required(CONF_USERNAME): selector.TextSelector(
+        selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
+    ),
+    vol.Optional(CONF_AUTH_PROTOCOL, default="sha"): selector.SelectSelector(
+        selector.SelectSelectorConfig(
+            options=list(SNMP_AUTH_PROTOCOLS.keys()),
+            mode=selector.SelectSelectorMode.DROPDOWN
+        )
+    ),
+    vol.Optional(CONF_AUTH_PASSWORD): selector.TextSelector(
+        selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
+    ),
+    vol.Optional(CONF_PRIV_PROTOCOL, default="aes128"): selector.SelectSelector(
+        selector.SelectSelectorConfig(
+            options=list(SNMP_PRIV_PROTOCOLS.keys()),
+            mode=selector.SelectSelectorMode.DROPDOWN
+        )
+    ),
+    vol.Optional(CONF_PRIV_PASSWORD): selector.TextSelector(
+        selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
+    ),
 })
 
 # Step 3: Hybrid Redfish credentials
 STEP_HYBRID_REDFISH_SCHEMA = vol.Schema({
-    vol.Optional(CONF_PORT, default=DEFAULT_PORT): int,
-    vol.Required(CONF_USERNAME, default="root"): str,
-    vol.Required(CONF_PASSWORD): str,
-    vol.Optional(CONF_VERIFY_SSL, default=False): bool,
-    vol.Optional(CONF_REQUEST_TIMEOUT, default=DEFAULT_REQUEST_TIMEOUT): vol.All(
-        vol.Coerce(int), vol.Range(min=5, max=120)
+    vol.Optional(CONF_PORT, default=DEFAULT_PORT): selector.NumberSelector(
+        selector.NumberSelectorConfig(
+            min=1,
+            max=65535,
+            mode=selector.NumberSelectorMode.BOX
+        )
     ),
-    vol.Optional(CONF_SESSION_TIMEOUT, default=DEFAULT_SESSION_TIMEOUT): vol.All(
-        vol.Coerce(int), vol.Range(min=10, max=180)
+    vol.Required(CONF_USERNAME, default="root"): selector.TextSelector(
+        selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
+    ),
+    vol.Required(CONF_PASSWORD): selector.TextSelector(
+        selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
+    ),
+    vol.Optional(CONF_VERIFY_SSL, default=False): selector.BooleanSelector(),
+    vol.Optional(CONF_REQUEST_TIMEOUT, default=DEFAULT_REQUEST_TIMEOUT): selector.NumberSelector(
+        selector.NumberSelectorConfig(
+            min=5,
+            max=120,
+            step=5,
+            unit_of_measurement="seconds",
+            mode=selector.NumberSelectorMode.SLIDER
+        )
+    ),
+    vol.Optional(CONF_SESSION_TIMEOUT, default=DEFAULT_SESSION_TIMEOUT): selector.NumberSelector(
+        selector.NumberSelectorConfig(
+            min=10,
+            max=180,
+            step=5,
+            unit_of_measurement="seconds",
+            mode=selector.NumberSelectorMode.SLIDER
+        )
     ),
 })
 
 # Step 4: Hybrid SNMP version selection
 STEP_HYBRID_SNMP_VERSION_SCHEMA = vol.Schema({
-    vol.Optional(CONF_SNMP_PORT, default=DEFAULT_SNMP_PORT): int,
-    vol.Required(CONF_SNMP_VERSION, default=DEFAULT_SNMP_VERSION): vol.In(SNMP_VERSIONS),
+    vol.Optional(CONF_SNMP_PORT, default=DEFAULT_SNMP_PORT): selector.NumberSelector(
+        selector.NumberSelectorConfig(
+            min=1,
+            max=65535,
+            mode=selector.NumberSelectorMode.BOX
+        )
+    ),
+    vol.Required(CONF_SNMP_VERSION, default=DEFAULT_SNMP_VERSION): selector.SelectSelector(
+        selector.SelectSelectorConfig(
+            options=SNMP_VERSIONS,
+            mode=selector.SelectSelectorMode.DROPDOWN
+        )
+    ),
 })
 
 # Step 5a: Hybrid SNMP v2c credentials
 STEP_HYBRID_SNMP_V2C_SCHEMA = vol.Schema({
-    vol.Required(CONF_COMMUNITY, default=DEFAULT_COMMUNITY): str,
+    vol.Required(CONF_COMMUNITY, default=DEFAULT_COMMUNITY): selector.TextSelector(
+        selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
+    ),
 })
 
 # Step 5b: Hybrid SNMP v3 credentials
 STEP_HYBRID_SNMP_V3_SCHEMA = vol.Schema({
-    vol.Required(CONF_USERNAME): str,
-    vol.Optional(CONF_AUTH_PROTOCOL, default="sha"): vol.In(list(SNMP_AUTH_PROTOCOLS.keys())),
-    vol.Optional(CONF_AUTH_PASSWORD): str,
-    vol.Optional(CONF_PRIV_PROTOCOL, default="aes128"): vol.In(list(SNMP_PRIV_PROTOCOLS.keys())),
-    vol.Optional(CONF_PRIV_PASSWORD): str,
+    vol.Required(CONF_USERNAME): selector.TextSelector(
+        selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
+    ),
+    vol.Optional(CONF_AUTH_PROTOCOL, default="sha"): selector.SelectSelector(
+        selector.SelectSelectorConfig(
+            options=list(SNMP_AUTH_PROTOCOLS.keys()),
+            mode=selector.SelectSelectorMode.DROPDOWN
+        )
+    ),
+    vol.Optional(CONF_AUTH_PASSWORD): selector.TextSelector(
+        selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
+    ),
+    vol.Optional(CONF_PRIV_PROTOCOL, default="aes128"): selector.SelectSelector(
+        selector.SelectSelectorConfig(
+            options=list(SNMP_PRIV_PROTOCOLS.keys()),
+            mode=selector.SelectSelectorMode.DROPDOWN
+        )
+    ),
+    vol.Optional(CONF_PRIV_PASSWORD): selector.TextSelector(
+        selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
+    ),
 })
 
 
