@@ -84,18 +84,88 @@ class SNMPDataProcessor:
             "processors": {},
         }
         
-        # Process each sensor category
-        self._process_temperature_sensors(data, values, strings)
-        self._process_fan_sensors(data, values, strings)
-        self._process_psu_sensors(data, values, strings)
-        self._process_memory_sensors(data, values, strings)
-        self._process_voltage_sensors(data, values, strings)
-        self._process_power_consumption(data, values, strings)
-        self._process_intrusion_sensors(data, values, strings)
-        self._process_battery_sensors(data, values, strings)
-        self._process_processor_sensors(data, values, strings)
+        # Sanitize data types before processing
+        values = self._sanitize_values_dict(values)
+        
+        # Process each sensor category with error handling
+        try:
+            self._process_temperature_sensors(data, values, strings)
+        except Exception as exc:
+            _LOGGER.warning("Error processing temperature sensors: %s", exc)
+            
+        try:
+            self._process_fan_sensors(data, values, strings)
+        except Exception as exc:
+            _LOGGER.warning("Error processing fan sensors: %s", exc)
+            
+        try:
+            self._process_psu_sensors(data, values, strings)
+        except Exception as exc:
+            _LOGGER.warning("Error processing PSU sensors: %s", exc)
+            
+        try:
+            self._process_memory_sensors(data, values, strings)
+        except Exception as exc:
+            _LOGGER.warning("Error processing memory sensors: %s", exc)
+            
+        try:
+            self._process_voltage_sensors(data, values, strings)
+        except Exception as exc:
+            _LOGGER.warning("Error processing voltage sensors: %s", exc)
+            
+        try:
+            self._process_power_consumption(data, values, strings)
+        except Exception as exc:
+            _LOGGER.warning("Error processing power consumption: %s", exc)
+            
+        try:
+            self._process_intrusion_sensors(data, values, strings)
+        except Exception as exc:
+            _LOGGER.warning("Error processing intrusion sensors: %s", exc)
+            
+        try:
+            self._process_battery_sensors(data, values, strings)
+        except Exception as exc:
+            _LOGGER.warning("Error processing battery sensors: %s", exc)
+            
+        try:
+            self._process_processor_sensors(data, values, strings)
+        except Exception as exc:
+            _LOGGER.warning("Error processing processor sensors: %s", exc)
         
         return data
+    
+    def _sanitize_values_dict(self, values: Dict[str, Any]) -> Dict[str, int]:
+        """Sanitize the values dictionary to ensure all values are integers.
+        
+        Args:
+            values: Raw values dictionary that may contain mixed data types
+            
+        Returns:
+            Dictionary with only valid integer values
+        """
+        sanitized = {}
+        
+        for oid, value in values.items():
+            if value is None:
+                continue
+                
+            try:
+                # Try to convert to integer
+                if isinstance(value, str):
+                    # Handle string representations of integers
+                    if value.strip():  # Only process non-empty strings
+                        sanitized[oid] = int(value)
+                elif isinstance(value, (int, float)):
+                    sanitized[oid] = int(value)
+                else:
+                    _LOGGER.debug("Skipping non-numeric SNMP value for OID %s: %s (type: %s)", 
+                                oid, repr(value), type(value).__name__)
+            except (ValueError, TypeError) as exc:
+                _LOGGER.debug("Failed to convert SNMP value to int for OID %s (value: %s): %s", 
+                            oid, repr(value), exc)
+                
+        return sanitized
     
     def _process_temperature_sensors(self, data: Dict[str, Any], values: Dict[str, int], strings: Dict[str, str]) -> None:
         """Process temperature sensor data from SNMP values."""
@@ -350,15 +420,41 @@ class SNMPDataProcessor:
         """
         if raw_value is None:
             return None
-        return raw_value / 10.0 if raw_value > 100 else float(raw_value)
+        
+        try:
+            # Handle string values that might have been passed incorrectly
+            if isinstance(raw_value, str):
+                raw_value = int(raw_value)
+            elif not isinstance(raw_value, (int, float)):
+                _LOGGER.warning("Invalid temperature value type: %s (value: %s)", type(raw_value).__name__, repr(raw_value))
+                return None
+                
+            return raw_value / 10.0 if raw_value > 100 else float(raw_value)
+        except (ValueError, TypeError) as exc:
+            _LOGGER.warning("Failed to convert temperature value %s: %s", repr(raw_value), exc)
+            return None
     
-    def _convert_voltage(self, raw_value: int) -> float:
+    def _convert_voltage(self, raw_value: int) -> float | None:
         """Convert raw voltage value to volts.
         
         Dell iDRAC typically reports voltages in millivolts.
         Values > 1000 are assumed to be in millivolts and converted to volts.
         """
-        return raw_value / 1000.0 if raw_value > 1000 else float(raw_value)
+        if raw_value is None:
+            return None
+            
+        try:
+            # Handle string values that might have been passed incorrectly
+            if isinstance(raw_value, str):
+                raw_value = int(raw_value)
+            elif not isinstance(raw_value, (int, float)):
+                _LOGGER.warning("Invalid voltage value type: %s (value: %s)", type(raw_value).__name__, repr(raw_value))
+                return None
+                
+            return raw_value / 1000.0 if raw_value > 1000 else float(raw_value)
+        except (ValueError, TypeError) as exc:
+            _LOGGER.warning("Failed to convert voltage value %s: %s", repr(raw_value), exc)
+            return None
     
     def _check_temperature_anomalies(self, sensor_data: Dict[str, Any], sensor_id: int) -> None:
         """Check for temperature anomalies and log warnings."""
