@@ -178,31 +178,45 @@ class SNMPClient:
         
         device_info = {}
         
+        # Get system information via SNMP with individual error handling for each OID
+        system_model = None
         try:
-            # Get system information via SNMP
+            _LOGGER.debug("Fetching system model via SNMP OID: %s", IDRAC_OIDS["system_model"])
             system_model = await self.get_string(IDRAC_OIDS["system_model"])
-            service_tag = await self.get_string(IDRAC_OIDS["system_service_tag"])
-            bios_version = await self.get_string(IDRAC_OIDS["system_bios_version"])
-            
-            if system_model:
-                device_info["model"] = system_model
-                device_info["name"] = f"Dell {system_model} ({self.host})"
-            else:
-                device_info["name"] = f"Dell iDRAC ({self.host})"
-                
-            if service_tag:
-                device_info["serial_number"] = service_tag
-                
-            if bios_version:
-                device_info["sw_version"] = bios_version
-                
-            _LOGGER.debug("Retrieved device info via SNMP: %s", device_info)
-            
+            _LOGGER.debug("System model: %s", system_model)
         except Exception as exc:
-            _LOGGER.warning("Failed to get device info via SNMP: %s", exc)
-            # Return minimal device info on failure
-            device_info = {"name": f"Dell iDRAC ({self.host})"}
+            _LOGGER.warning("Failed to get system model via SNMP: %s", exc)
             
+        service_tag = None
+        try:
+            _LOGGER.debug("Fetching service tag via SNMP OID: %s", IDRAC_OIDS["system_service_tag"])
+            service_tag = await self.get_string(IDRAC_OIDS["system_service_tag"])
+            _LOGGER.debug("Service tag: %s", service_tag)
+        except Exception as exc:
+            _LOGGER.warning("Failed to get service tag via SNMP: %s", exc)
+            
+        bios_version = None
+        try:
+            _LOGGER.debug("Fetching BIOS version via SNMP OID: %s", IDRAC_OIDS["system_bios_version"])
+            bios_version = await self.get_string(IDRAC_OIDS["system_bios_version"])
+            _LOGGER.debug("BIOS version: %s", bios_version)
+        except Exception as exc:
+            _LOGGER.warning("Failed to get BIOS version via SNMP: %s", exc)
+        
+        # Build device info from successfully retrieved values
+        if system_model:
+            device_info["model"] = system_model
+            device_info["name"] = f"Dell {system_model} ({self.host})"
+        else:
+            device_info["name"] = f"Dell iDRAC ({self.host})"
+            
+        if service_tag:
+            device_info["serial_number"] = service_tag
+            
+        if bios_version:
+            device_info["sw_version"] = bios_version
+            
+        _LOGGER.debug("Retrieved device info via SNMP: %s", device_info)
         return device_info
 
     async def set_snmp_value(self, oid: str, value: int) -> bool:
@@ -476,11 +490,27 @@ class SNMPClient:
                     self.engine, self.auth_data, self.transport_target, self.context_data, ObjectType(ObjectIdentity(oid))
                 )
                 
-                if not error_indication and not error_status:
-                    for name, val in var_binds:
-                        if val is not None and str(val) != "No Such Object currently exists at this OID":
-                            results[oid] = str(val).strip()
+                if error_indication:
+                    _LOGGER.debug("SNMP error indication for OID %s: %s", oid, error_indication)
+                    continue
+                    
+                if error_status:
+                    _LOGGER.debug("SNMP error status for OID %s: %s at index %s", oid, error_status, error_index)
+                    continue
+                
+                for name, val in var_binds:
+                    if val is not None and str(val) != "No Such Object currently exists at this OID":
+                        try:
+                            # Handle different data types that pysnmp might return
+                            string_val = str(val).strip()
+                            if string_val:  # Only add non-empty strings
+                                results[oid] = string_val
+                                _LOGGER.debug("Successfully retrieved string for OID %s: %s", oid, string_val)
+                        except Exception as val_exc:
+                            _LOGGER.warning("Failed to convert SNMP value to string for OID %s (value type: %s, value: %s): %s", 
+                                          oid, type(val).__name__, repr(val), val_exc)
+                            
             except Exception as exc:
-                _LOGGER.debug("Failed to get SNMP value for OID %s: %s", oid, exc)
+                _LOGGER.warning("Failed to get SNMP value for OID %s: %s", oid, exc)
                 
         return results
