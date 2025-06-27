@@ -242,6 +242,61 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
             _LOGGER.error("Error setting LED state on iDRAC %s: %s", self._server_id, exc)
             return False
 
+    async def async_set_snmp_value(self, oid: str, value: int) -> bool:
+        """Set an SNMP value via the appropriate coordinator.
+        
+        This method provides a unified interface for SNMP SET operations
+        regardless of the connection type.
+        
+        Args:
+            oid: SNMP OID to set
+            value: Integer value to set
+            
+        Returns:
+            True if the operation was successful, False otherwise.
+        """
+        if self.connection_type not in ["snmp", "hybrid"]:
+            _LOGGER.error("SNMP operations only available in SNMP or hybrid connection modes")
+            return False
+        
+        try:
+            # Use SNMP coordinator for SNMP operations
+            if self.connection_type == "hybrid":
+                return await self.snmp_coordinator.set_snmp_value(oid, value)
+            else:
+                return await self.protocol_coordinator.set_snmp_value(oid, value)
+                
+        except Exception as exc:
+            _LOGGER.error("Error setting SNMP value for OID %s: %s", oid, exc)
+            return False
+
+    async def async_get_snmp_value(self, oid: str) -> int | None:
+        """Get an SNMP value via the appropriate coordinator.
+        
+        This method provides a unified interface for SNMP GET operations
+        regardless of the connection type.
+        
+        Args:
+            oid: SNMP OID to get
+            
+        Returns:
+            Integer value if successful, None otherwise.
+        """
+        if self.connection_type not in ["snmp", "hybrid"]:
+            _LOGGER.error("SNMP operations only available in SNMP or hybrid connection modes")
+            return None
+        
+        try:
+            # Use SNMP coordinator for SNMP operations
+            if self.connection_type == "hybrid":
+                return await self.snmp_coordinator.get_snmp_value(oid)
+            else:
+                return await self.protocol_coordinator.get_snmp_value(oid)
+                
+        except Exception as exc:
+            _LOGGER.error("Error getting SNMP value for OID %s: %s", oid, exc)
+            return None
+
     async def async_shutdown(self) -> None:
         """Shutdown the coordinator and close all connections.
         

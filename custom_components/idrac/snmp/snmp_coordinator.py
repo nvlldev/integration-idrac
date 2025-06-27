@@ -96,6 +96,59 @@ class SNMPCoordinator:
         """
         return await self.client.get_sensor_data()
 
+    async def set_snmp_value(self, oid: str, value: int) -> bool:
+        """Set an SNMP value via the SNMP client.
+        
+        Args:
+            oid: SNMP OID to set
+            value: Integer value to set
+            
+        Returns:
+            True if the operation was successful, False otherwise.
+        """
+        return await self.client.set_snmp_value(oid, value)
+
+    async def get_snmp_value(self, oid: str) -> int | None:
+        """Get an SNMP value via the SNMP client.
+        
+        Args:
+            oid: SNMP OID to get
+            
+        Returns:
+            Integer value if successful, None otherwise.
+        """
+        return await self.client.get_value(oid)
+
+    async def reset_system(self, reset_type: str = "GracefulRestart") -> bool:
+        """Reset the server system.
+        
+        SNMP does not support system reset operations.
+        This method always returns False and logs a warning.
+        
+        Args:
+            reset_type: Type of reset (ignored for SNMP)
+            
+        Returns:
+            False - SNMP does not support this operation
+        """
+        _LOGGER.warning("System reset not supported via SNMP - use Redfish or hybrid mode")
+        return False
+
+    async def set_indicator_led(self, state: str) -> bool:
+        """Set the server's indicator LED state.
+        
+        SNMP does not support LED control operations.
+        This method always returns False and logs a warning.
+        
+        Args:
+            state: LED state (ignored for SNMP)
+            
+        Returns:
+            False - SNMP does not support this operation
+        """
+        _LOGGER.warning("LED control not supported via SNMP - use Redfish or hybrid mode")
+        return False
+
     async def close(self) -> None:
         """Close the coordinator.
         

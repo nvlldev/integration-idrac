@@ -14,7 +14,9 @@ from pysnmp.hlapi.asyncio import (
     UdpTransportTarget,
     UsmUserData,
     getCmd,
+    setCmd,
 )
+from pysnmp.proto.rfc1902 import Integer as SnmpInteger
 from pysnmp.proto import rfc1902
 
 from homeassistant.config_entries import ConfigEntry
@@ -165,6 +167,81 @@ class SNMPClient:
         if self.engine:
             self.engine.transportDispatcher.closeDispatcher()
             _LOGGER.debug("SNMP client closed for %s:%d", self.host, self.port)
+
+    async def get_device_info(self) -> dict[str, Any]:
+        """Get device information via SNMP for device registry.
+        
+        Returns:
+            Dictionary containing device information like model, service tag, etc.
+        """
+        await self._ensure_initialized()
+        
+        device_info = {}
+        
+        try:
+            # Get system information via SNMP
+            system_model = await self.get_string(IDRAC_OIDS["system_model"])
+            service_tag = await self.get_string(IDRAC_OIDS["system_service_tag"])
+            bios_version = await self.get_string(IDRAC_OIDS["system_bios_version"])
+            
+            if system_model:
+                device_info["model"] = system_model
+                device_info["name"] = f"Dell {system_model} ({self.host})"
+            else:
+                device_info["name"] = f"Dell iDRAC ({self.host})"
+                
+            if service_tag:
+                device_info["serial_number"] = service_tag
+                
+            if bios_version:
+                device_info["sw_version"] = bios_version
+                
+            _LOGGER.debug("Retrieved device info via SNMP: %s", device_info)
+            
+        except Exception as exc:
+            _LOGGER.warning("Failed to get device info via SNMP: %s", exc)
+            # Return minimal device info on failure
+            device_info = {"name": f"Dell iDRAC ({self.host})"}
+            
+        return device_info
+
+    async def set_snmp_value(self, oid: str, value: int) -> bool:
+        """Set an SNMP value using SET command.
+        
+        Args:
+            oid: SNMP OID to set
+            value: Integer value to set
+            
+        Returns:
+            True if the operation was successful, False otherwise.
+        """
+        await self._ensure_initialized()
+        
+        try:
+            error_indication, error_status, error_index, var_binds = await setCmd(
+                self.engine,
+                self.auth_data,
+                self.transport_target,
+                self.context_data,
+                ObjectType(ObjectIdentity(oid), SnmpInteger(value)),
+            )
+
+            if error_indication:
+                _LOGGER.error("SNMP SET error indication for OID %s: %s", oid, error_indication)
+                return False
+                
+            if error_status:
+                _LOGGER.error("SNMP SET error status for OID %s: %s at %s", 
+                             oid, error_status.prettyPrint(), 
+                             error_index and var_binds[int(error_index) - 1][0] or '?')
+                return False
+                
+            _LOGGER.debug("Successfully set SNMP value for OID %s to %s", oid, value)
+            return True
+            
+        except Exception as exc:
+            _LOGGER.error("Exception during SNMP SET for OID %s: %s", oid, exc)
+            return False
 
     async def get_sensor_data(self) -> dict[str, Any]:
         """Collect comprehensive sensor data from the Dell iDRAC device.

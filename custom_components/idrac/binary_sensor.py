@@ -146,10 +146,10 @@ class IdracPsuStatusBinarySensor(IdracBinarySensor):
     @property
     def is_on(self) -> bool | None:
         """Return True if PSU has a problem."""
-        if self.coordinator.data is None or "psu_statuses" not in self.coordinator.data:
+        if self.coordinator.data is None or "power_supplies" not in self.coordinator.data:
             return None
         
-        status_value = self.coordinator.data["psu_statuses"].get(self._sensor_key)
+        status_value = self.coordinator.data["power_supplies"].get(self._sensor_key)
         if status_value is None:
             return None
             
@@ -164,10 +164,10 @@ class IdracPsuStatusBinarySensor(IdracBinarySensor):
     @property
     def extra_state_attributes(self) -> dict[str, str] | None:
         """Return additional state attributes."""
-        if self.coordinator.data is None or "psu_statuses" not in self.coordinator.data:
+        if self.coordinator.data is None or "power_supplies" not in self.coordinator.data:
             return None
         
-        status_value = self.coordinator.data["psu_statuses"].get(self._sensor_key)
+        status_value = self.coordinator.data["power_supplies"].get(self._sensor_key)
         if status_value is None:
             return None
             
@@ -622,7 +622,7 @@ class IdracPowerStateBinarySensor(IdracBinarySensor):
         if self.coordinator.data is None:
             return None
         
-        power_state = self.coordinator.data.get("system_power_state")
+        power_state = self.coordinator.data.get("system_info", {}).get("power_state")
         if power_state is not None:
             try:
                 power_int = int(power_state)
@@ -638,7 +638,7 @@ class IdracPowerStateBinarySensor(IdracBinarySensor):
         if self.coordinator.data is None:
             return None
         
-        power_state = self.coordinator.data.get("system_power_state")
+        power_state = self.coordinator.data.get("system_info", {}).get("power_state")
         if power_state is not None:
             try:
                 power_int = int(power_state)
@@ -726,367 +726,3 @@ class IdracMemoryHealthBinarySensor(IdracBinarySensor):
                 return {"raw_value": str(health_value)}
         return None
 
-
-class IdracVirtualDiskBinarySensor(IdracBinarySensor):
-    """Dell iDRAC virtual disk binary sensor."""
-
-    def __init__(
-        self,
-        coordinator: IdracDataUpdateCoordinator,
-        config_entry: ConfigEntry,
-        vdisk_index: int,
-    ) -> None:
-        """Initialize the virtual disk binary sensor."""
-        sensor_key = f"vdisk_{vdisk_index}"
-        sensor_name = f"Virtual Disk {vdisk_index} Status"
-        super().__init__(
-            coordinator,
-            config_entry,
-            sensor_key,
-            sensor_name,
-            BinarySensorDeviceClass.PROBLEM,
-        )
-        self._vdisk_index = vdisk_index
-
-    @property
-    def is_on(self) -> bool | None:
-        """Return true if the virtual disk has a problem."""
-        if self.coordinator.data is None or "virtual_disks" not in self.coordinator.data:
-            return None
-        
-        vdisk_data = self.coordinator.data["virtual_disks"].get(self._sensor_key)
-        if vdisk_data is None:
-            return None
-        
-        state_value = vdisk_data.get("state")
-        if state_value is not None:
-            try:
-                state_int = int(state_value)
-                # True (problem) for: 1, 3, 4, 6 (unknown, degraded, failed, offline)
-                # False (OK) for: 2 (online)
-                return state_int != 2
-            except (ValueError, TypeError):
-                return True  # Unknown state treated as problem
-        return None
-
-    @property
-    def available(self) -> bool:
-        """Return if entity is available."""
-        return (
-            self.coordinator.last_update_success
-            and self.coordinator.data is not None
-            and "virtual_disks" in self.coordinator.data
-            and self._sensor_key in self.coordinator.data["virtual_disks"]
-        )
-
-
-class IdracPhysicalDiskBinarySensor(IdracBinarySensor):
-    """Dell iDRAC physical disk binary sensor."""
-
-    def __init__(
-        self,
-        coordinator: IdracDataUpdateCoordinator,
-        config_entry: ConfigEntry,
-        pdisk_index: int,
-    ) -> None:
-        """Initialize the physical disk binary sensor."""
-        sensor_key = f"pdisk_{pdisk_index}"
-        sensor_name = f"Physical Disk {pdisk_index} Status"
-        super().__init__(
-            coordinator,
-            config_entry,
-            sensor_key,
-            sensor_name,
-            BinarySensorDeviceClass.PROBLEM,
-        )
-        self._pdisk_index = pdisk_index
-
-    @property
-    def is_on(self) -> bool | None:
-        """Return true if the physical disk has a problem."""
-        if self.coordinator.data is None or "physical_disks" not in self.coordinator.data:
-            return None
-        
-        pdisk_data = self.coordinator.data["physical_disks"].get(self._sensor_key)
-        if pdisk_data is None:
-            return None
-        
-        state_value = pdisk_data.get("state")
-        if state_value is not None:
-            try:
-                state_int = int(state_value)
-                # True (problem) for: 1, 4, 5, 6, 7, 8, 9 (unknown, foreign, offline, blocked, failed, non_raid, removed)
-                # False (OK) for: 2, 3 (ready, online)
-                return state_int not in [2, 3]
-            except (ValueError, TypeError):
-                return True  # Unknown state treated as problem
-        return None
-
-    @property
-    def available(self) -> bool:
-        """Return if entity is available."""
-        return (
-            self.coordinator.last_update_success
-            and self.coordinator.data is not None
-            and "physical_disks" in self.coordinator.data
-            and self._sensor_key in self.coordinator.data["physical_disks"]
-        )
-
-
-
-
-class IdracControllerBatteryBinarySensor(IdracBinarySensor):
-    """Dell iDRAC storage controller battery binary sensor."""
-
-    def __init__(
-        self,
-        coordinator: IdracDataUpdateCoordinator,
-        config_entry: ConfigEntry,
-        controller_index: int,
-    ) -> None:
-        """Initialize the controller battery binary sensor."""
-        sensor_key = f"controller_{controller_index}_battery"
-        sensor_name = f"Storage Controller {controller_index} Battery"
-        super().__init__(
-            coordinator,
-            config_entry,
-            sensor_key,
-            sensor_name,
-            BinarySensorDeviceClass.BATTERY,
-        )
-        self._controller_index = controller_index
-        self._controller_key = f"controller_{controller_index}"
-
-    @property
-    def is_on(self) -> bool | None:
-        """Return true if the controller battery has a problem."""
-        if self.coordinator.data is None or "storage_controllers" not in self.coordinator.data:
-            return None
-        
-        controller_data = self.coordinator.data["storage_controllers"].get(self._controller_key)
-        if controller_data is None:
-            return None
-        
-        battery_state = controller_data.get("battery_state")
-        if battery_state is not None:
-            try:
-                battery_int = int(battery_state)
-                # True (problem) for: 1, 3, 4, 5, 7 (unknown, failed, degraded, missing, below_threshold)
-                # False (OK) for: 2, 6 (ready, charging)
-                return battery_int not in [2, 6]
-            except (ValueError, TypeError):
-                return True  # Unknown state treated as problem
-        return None
-
-    @property
-    def available(self) -> bool:
-        """Return if entity is available."""
-        return (
-            self.coordinator.last_update_success
-            and self.coordinator.data is not None
-            and "storage_controllers" in self.coordinator.data
-            and self._controller_key in self.coordinator.data["storage_controllers"]
-            and self.coordinator.data["storage_controllers"][self._controller_key].get("battery_state") is not None
-        )
-class IdracCpu1VcoreBinarySensor(IdracBinarySensor):
-    """Dell iDRAC CPU1 VCORE voltage binary sensor."""
-
-    def __init__(
-        self,
-        coordinator: IdracDataUpdateCoordinator,
-        config_entry: ConfigEntry,
-    ) -> None:
-        """Initialize the CPU1 VCORE voltage binary sensor."""
-        sensor_key = "cpu1_vcore"
-        sensor_name = "CPU1 VCORE Voltage Status"
-        super().__init__(
-            coordinator,
-            config_entry,
-            sensor_key,
-            sensor_name,
-            BinarySensorDeviceClass.PROBLEM,
-        )
-
-    @property
-    def is_on(self) -> bool | None:
-        """Return True if CPU1 VCORE voltage has a problem."""
-        if self.coordinator.data is None or "system_voltages" not in self.coordinator.data:
-            return None
-        
-        voltage_status = self.coordinator.data["system_voltages"].get(self._sensor_key)
-        if voltage_status is not None:
-            try:
-                status_int = int(voltage_status)
-                # True (problem) for any value other than 1 (OK)
-                # False (OK) for: 1 (voltage OK)
-                return status_int != 1
-            except (ValueError, TypeError):
-                return True  # Unknown state treated as problem
-        return None
-
-    @property
-    def available(self) -> bool:
-        """Return if entity is available."""
-        return (
-            self.coordinator.last_update_success
-            and self.coordinator.data is not None
-            and "system_voltages" in self.coordinator.data
-            and self._sensor_key in self.coordinator.data["system_voltages"]
-        )
-
-
-class IdracCpu2VcoreBinarySensor(IdracBinarySensor):
-    """Dell iDRAC CPU2 VCORE voltage binary sensor."""
-
-    def __init__(
-        self,
-        coordinator: IdracDataUpdateCoordinator,
-        config_entry: ConfigEntry,
-    ) -> None:
-        """Initialize the CPU2 VCORE voltage binary sensor."""
-        sensor_key = "cpu2_vcore"
-        sensor_name = "CPU2 VCORE Voltage Status"
-        super().__init__(
-            coordinator,
-            config_entry,
-            sensor_key,
-            sensor_name,
-            BinarySensorDeviceClass.PROBLEM,
-        )
-
-    @property
-    def is_on(self) -> bool | None:
-        """Return True if CPU2 VCORE voltage has a problem."""
-        if self.coordinator.data is None or "system_voltages" not in self.coordinator.data:
-            return None
-        
-        voltage_status = self.coordinator.data["system_voltages"].get(self._sensor_key)
-        if voltage_status is not None:
-            try:
-                status_int = int(voltage_status)
-                # True (problem) for any value other than 1 (OK)
-                # False (OK) for: 1 (voltage OK)
-                return status_int != 1
-            except (ValueError, TypeError):
-                return True  # Unknown state treated as problem
-        return None
-
-    @property
-    def available(self) -> bool:
-        """Return if entity is available."""
-        return (
-            self.coordinator.last_update_success
-            and self.coordinator.data is not None
-            and "system_voltages" in self.coordinator.data
-            and self._sensor_key in self.coordinator.data["system_voltages"]
-        )
-
-
-class IdracSystem3V3BinarySensor(IdracBinarySensor):
-    """Dell iDRAC System 3.3V voltage binary sensor."""
-
-    def __init__(
-        self,
-        coordinator: IdracDataUpdateCoordinator,
-        config_entry: ConfigEntry,
-    ) -> None:
-        """Initialize the System 3.3V voltage binary sensor."""
-        sensor_key = "system_3v3"
-        sensor_name = "System 3.3V Voltage Status"
-        super().__init__(
-            coordinator,
-            config_entry,
-            sensor_key,
-            sensor_name,
-            BinarySensorDeviceClass.PROBLEM,
-        )
-
-    @property
-    def is_on(self) -> bool | None:
-        """Return True if System 3.3V voltage has a problem."""
-        if self.coordinator.data is None or "system_voltages" not in self.coordinator.data:
-            return None
-        
-        voltage_status = self.coordinator.data["system_voltages"].get(self._sensor_key)
-        if voltage_status is not None:
-            try:
-                status_int = int(voltage_status)
-                # True (problem) for any value other than 1 (OK)
-                # False (OK) for: 1 (voltage OK)
-                return status_int != 1
-            except (ValueError, TypeError):
-                return True  # Unknown state treated as problem
-        return None
-
-    @property
-    def available(self) -> bool:
-        """Return if entity is available."""
-        return (
-            self.coordinator.last_update_success
-            and self.coordinator.data is not None
-            and "system_voltages" in self.coordinator.data
-            and self._sensor_key in self.coordinator.data["system_voltages"]
-        )
-
-
-class IdracVoltageStatusBinarySensor(IdracBinarySensor):
-    """Dell iDRAC voltage status binary sensor."""
-
-    def __init__(
-        self,
-        coordinator: IdracDataUpdateCoordinator,
-        config_entry: ConfigEntry,
-        voltage_id: str,
-        voltage_data: dict,
-    ) -> None:
-        """Initialize the voltage status binary sensor."""
-        voltage_name = voltage_data.get("name", f"Voltage {voltage_id}")
-        sensor_key = f"voltage_status_{voltage_id}"
-        sensor_name = f"{voltage_name} Status"
-        super().__init__(
-            coordinator,
-            config_entry,
-            sensor_key,
-            sensor_name,
-            BinarySensorDeviceClass.PROBLEM,  # "On" means problem, "Off" means OK
-        )
-        self.voltage_id = voltage_id
-
-    @property
-    def is_on(self) -> bool | None:
-        """Return True if voltage has a problem (reading is 0), False if OK (reading is 1)."""
-        if not self.coordinator.data or "voltages" not in self.coordinator.data:
-            return None
-        
-        voltage_data = self.coordinator.data["voltages"].get(self.voltage_id, {})
-        voltage_reading = voltage_data.get("reading_volts")
-        
-        if voltage_reading is not None:
-            # For status indicators: 1.0 = OK, 0.0 = Problem
-            # Return True (problem) if reading is close to 0, False (OK) if close to 1
-            return abs(voltage_reading - 0.0) < 0.1
-        
-        return None
-
-    @property
-    def extra_state_attributes(self) -> dict[str, any] | None:
-        """Return additional state attributes."""
-        if not self.coordinator.data or "voltages" not in self.coordinator.data:
-            return None
-        
-        voltage_data = self.coordinator.data["voltages"].get(self.voltage_id, {})
-        return {
-            "voltage_reading": voltage_data.get("reading_volts"),
-            "status": voltage_data.get("status"),
-            "raw_name": voltage_data.get("name"),
-        }
-
-    @property
-    def available(self) -> bool:
-        """Return if entity is available."""
-        return (
-            self.coordinator.last_update_success
-            and self.coordinator.data is not None
-            and "voltages" in self.coordinator.data
-            and self.voltage_id in self.coordinator.data["voltages"]
-        )

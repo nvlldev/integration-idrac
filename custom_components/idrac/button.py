@@ -4,17 +4,6 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from pysnmp.hlapi.asyncio import (
-    CommunityData,
-    ContextData,
-    ObjectIdentity,
-    ObjectType,
-    SnmpEngine,
-    UdpTransportTarget,
-    setCmd,
-)
-from pysnmp.proto.rfc1902 import Integer as SnmpInteger
-
 from homeassistant.components.button import ButtonEntity, ButtonDeviceClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PORT
@@ -118,7 +107,7 @@ class IdracButton(CoordinatorEntity, ButtonEntity):
         if self.coordinator.data is None:
             return None
         
-        power_state = self.coordinator.data.get("system_power_state")
+        power_state = self.coordinator.data.get("system_info", {}).get("power_state")
         if power_state is not None:
             try:
                 return int(power_state)

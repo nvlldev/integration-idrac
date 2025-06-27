@@ -4,18 +4,6 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from pysnmp.hlapi.asyncio import (
-    CommunityData,
-    ContextData,
-    ObjectIdentity,
-    ObjectType,
-    SnmpEngine,
-    UdpTransportTarget,
-    setCmd,
-    getCmd,
-)
-from pysnmp.proto.rfc1902 import Integer as SnmpInteger
-
 from homeassistant.components.switch import SwitchEntity, SwitchDeviceClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PORT
@@ -95,57 +83,17 @@ class IdracSwitch(CoordinatorEntity, SwitchEntity):
             _LOGGER.error("SNMP commands only available when using SNMP or hybrid connection")
             return False
             
-        try:
-            error_indication, error_status, error_index, var_binds = await setCmd(
-                self.coordinator.engine,
-                self.coordinator.auth_data,
-                self.coordinator.transport_target,
-                self.coordinator.context_data,
-                ObjectType(ObjectIdentity(oid), SnmpInteger(value)),
-            )
-
-            if error_indication:
-                _LOGGER.error("SNMP SET error indication for OID %s: %s", oid, error_indication)
-                return False
-            
-            if error_status:
-                _LOGGER.error("SNMP SET error status for OID %s: %s", oid, error_status)
-                return False
-
+        # Use coordinator's unified SNMP interface
+        result = await self.coordinator.async_set_snmp_value(oid, value)
+        
+        if result:
             _LOGGER.info("Successfully executed %s command on %s", self._switch_key, self._host)
-            return True
-
-        except Exception as exc:
-            _LOGGER.error("Exception during SNMP SET for OID %s: %s", oid, exc)
-            return False
+        
+        return result
 
     async def _async_snmp_get(self, oid: str) -> int | None:
         """Send SNMP GET command using coordinator's SNMP connection."""
-        try:
-            error_indication, error_status, error_index, var_binds = await getCmd(
-                self.coordinator.engine,
-                self.coordinator.auth_data,
-                self.coordinator.transport_target,
-                self.coordinator.context_data,
-                ObjectType(ObjectIdentity(oid)),
-            )
-
-            if error_indication or error_status:
-                _LOGGER.debug("SNMP GET error for OID %s: %s", oid, error_indication or error_status)
-                return None
-
-            if var_binds:
-                try:
-                    return int(var_binds[0][1])
-                except (ValueError, TypeError):
-                    _LOGGER.debug("Could not convert SNMP value to int for OID %s: %s", oid, var_binds[0][1])
-                    return None
-
-            return None
-
-        except Exception as exc:
-            _LOGGER.debug("Exception getting SNMP value for OID %s: %s", oid, exc)
-            return None
+        return await self.coordinator.async_get_snmp_value(oid)
 
     @property
     def available(self) -> bool:
