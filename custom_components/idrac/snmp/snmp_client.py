@@ -184,21 +184,40 @@ class SNMPClient:
             _LOGGER.debug("Initializing SNMP engine for %s:%d", self.host, self.port)
             
             try:
+                _LOGGER.debug("Creating SnmpEngine...")
                 self.engine = SnmpEngine()
-                _LOGGER.debug("SnmpEngine created")
+                _LOGGER.debug("SnmpEngine created successfully")
                 
+                _LOGGER.debug("Creating auth data...")
                 self.auth_data = _create_auth_data(self.entry)
                 _LOGGER.debug("Auth data created: %s", type(self.auth_data).__name__)
                 
+                _LOGGER.debug("Creating transport target...")
                 self.transport_target = UdpTransportTarget((self.host, self.port), timeout=5.0, retries=1)
                 _LOGGER.debug("Transport target created for %s:%d", self.host, self.port)
                 
+                _LOGGER.debug("Creating context data...")
                 self.context_data = ContextData()
-                _LOGGER.debug("Context data created")
+                _LOGGER.debug("Context data created successfully")
                 
-                _LOGGER.debug("SNMP engine initialized successfully for %s:%d", self.host, self.port)
+                # Verify all components are properly initialized
+                if self.engine is None:
+                    raise RuntimeError("SnmpEngine is None after creation")
+                if self.auth_data is None:
+                    raise RuntimeError("auth_data is None after creation")
+                if self.transport_target is None:
+                    raise RuntimeError("transport_target is None after creation")
+                if self.context_data is None:
+                    raise RuntimeError("context_data is None after creation")
+                
+                _LOGGER.info("SNMP engine initialized successfully for %s:%d", self.host, self.port)
             except Exception as exc:
                 _LOGGER.error("Failed to initialize SNMP components: %s", exc, exc_info=True)
+                # Reset all components on failure
+                self.engine = None
+                self.auth_data = None
+                self.transport_target = None
+                self.context_data = None
                 raise
 
     async def close(self) -> None:
@@ -514,6 +533,11 @@ class SNMPClient:
         await self._ensure_initialized()
         results = {}
         
+        # Verify initialization was successful
+        if self.context_data is None:
+            _LOGGER.error("SNMP context_data is None - cannot perform SNMP operations")
+            return results
+        
         for oid in oids:
             try:
                 error_indication, error_status, error_index, var_binds = await getCmd(
@@ -536,6 +560,11 @@ class SNMPClient:
         """Get multiple SNMP values as strings using individual async calls."""
         await self._ensure_initialized()
         results = {}
+        
+        # Verify initialization was successful
+        if self.context_data is None:
+            _LOGGER.error("SNMP context_data is None - cannot perform SNMP operations")
+            return results
         
         for oid in oids:
             try:
@@ -566,6 +595,20 @@ class SNMPClient:
                     except Exception as alt_exc:
                         _LOGGER.error("Alternative ObjectIdentity creation also failed for OID %s: %s", oid, alt_exc)
                         continue
+                
+                # Verify all SNMP objects are properly initialized
+                if self.context_data is None:
+                    _LOGGER.error("SNMP context_data is None - initialization failed")
+                    continue
+                if self.engine is None:
+                    _LOGGER.error("SNMP engine is None - initialization failed")  
+                    continue
+                if self.auth_data is None:
+                    _LOGGER.error("SNMP auth_data is None - initialization failed")
+                    continue
+                if self.transport_target is None:
+                    _LOGGER.error("SNMP transport_target is None - initialization failed")
+                    continue
                 
                 # Execute SNMP command with detailed error handling  
                 try:
