@@ -144,14 +144,43 @@ class RedfishClient:
         """Get iDRAC manager information."""
         return await self.get(f"/redfish/v1/Managers/{manager_id}")
 
+    async def patch(self, path: str, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Make PATCH request to Redfish API."""
+        url = f"{self.base_url}{path}"
+        auth = aiohttp.BasicAuth(self.username, self.password)
+
+        try:
+            session = await self._get_session()
+            async with session.patch(
+                url, auth=auth, json=data, timeout=aiohttp.ClientTimeout(total=30)
+            ) as response:
+                if response.status in [200, 202, 204]:
+                    if response.content_length and response.content_length > 0:
+                        return await response.json()
+                    return {"status": "success"}
+                elif response.status == 401:
+                    raise RedfishError("Authentication failed - check credentials")
+                else:
+                    _LOGGER.warning("PATCH %s failed: %s %s", path, response.status, response.reason)
+                    try:
+                        error_data = await response.json()
+                        _LOGGER.warning("Error details: %s", error_data)
+                    except:
+                        pass
+                    return None
+        except asyncio.TimeoutError:
+            _LOGGER.warning("PATCH %s timed out", path)
+            return None
+        except Exception as e:
+            _LOGGER.error("PATCH %s error: %s", path, e)
+            return None
+
     async def set_indicator_led(
         self, state: str, system_id: str = "System.Embedded.1"
     ) -> Optional[Dict[str, Any]]:
         """Set system indicator LED state."""
-        data = {"IndicatorLEDState": state}
-        return await self.post(
-            f"/redfish/v1/Systems/{system_id}/Actions/ComputerSystem.IndicatorLEDControl", data
-        )
+        data = {"IndicatorLED": state}
+        return await self.patch(f"/redfish/v1/Systems/{system_id}", data)
 
     async def reset_system(
         self, reset_type: str, system_id: str = "System.Embedded.1"
