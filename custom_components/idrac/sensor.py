@@ -127,6 +127,37 @@ async def async_setup_entry(
     if coordinator.connection_type == "redfish" and coordinator.data and "system_health" in coordinator.data:
         entities.append(IdracSystemHealthSensor(coordinator, config_entry))
 
+    # Add manager info sensors (Redfish only)
+    if coordinator.connection_type == "redfish" and coordinator.data and "manager_info" in coordinator.data:
+        manager_info = coordinator.data["manager_info"]
+        if manager_info.get("firmware_version"):
+            entities.append(IdracFirmwareVersionSensor(coordinator, config_entry))
+        if manager_info.get("datetime"):
+            entities.append(IdracDateTimeSensor(coordinator, config_entry))
+
+    # Add additional PSU power sensors for Redfish
+    if coordinator.connection_type in ["redfish", "hybrid"] and coordinator.data and "power_supplies" in coordinator.data:
+        for psu_id, psu_data in coordinator.data["power_supplies"].items():
+            # Input power sensor
+            if psu_data.get("power_input_watts") is not None:
+                entities.append(IdracPSUInputPowerSensor(coordinator, config_entry, psu_id, psu_data))
+            # Output power sensor
+            if psu_data.get("power_output_watts") is not None:
+                entities.append(IdracPSUOutputPowerSensor(coordinator, config_entry, psu_id, psu_data))
+            # Input voltage sensor
+            if psu_data.get("line_input_voltage") is not None:
+                entities.append(IdracPSUInputVoltageSensor(coordinator, config_entry, psu_id, psu_data))
+
+    # Add advanced power metrics (Redfish only)
+    if coordinator.connection_type == "redfish" and coordinator.data and "power_consumption" in coordinator.data:
+        power_data = coordinator.data["power_consumption"]
+        if power_data.get("average_consumed_watts") is not None:
+            entities.append(IdracAveragePowerSensor(coordinator, config_entry))
+        if power_data.get("max_consumed_watts") is not None:
+            entities.append(IdracMaxPowerSensor(coordinator, config_entry))
+        if power_data.get("min_consumed_watts") is not None:
+            entities.append(IdracMinPowerSensor(coordinator, config_entry))
+
     if entities:
         _LOGGER.info("Successfully created %d sensor entities for iDRAC %s", 
                     len(entities), coordinator.host)
@@ -861,3 +892,194 @@ class IdracProcessorSensor(IdracSensor):
             "reading": processor_data.get("reading"),
             "name": processor_data.get("name"),
         }
+
+
+class IdracFirmwareVersionSensor(IdracSensor):
+    """iDRAC firmware version sensor."""
+    
+    def __init__(self, coordinator: IdracDataUpdateCoordinator, config_entry: ConfigEntry) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, config_entry)
+        device_name_prefix = _get_device_name_prefix(coordinator)
+        self._attr_name = f"{device_name_prefix} iDRAC Firmware Version"
+        self._attr_unique_id = f"{coordinator.host}_idrac_firmware_version"
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_icon = "mdi:chip"
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the firmware version."""
+        if not self.coordinator.data or "manager_info" not in self.coordinator.data:
+            return None
+        return self.coordinator.data["manager_info"].get("firmware_version")
+
+
+class IdracDateTimeSensor(IdracSensor):
+    """iDRAC system date/time sensor."""
+    
+    def __init__(self, coordinator: IdracDataUpdateCoordinator, config_entry: ConfigEntry) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, config_entry)
+        device_name_prefix = _get_device_name_prefix(coordinator)
+        self._attr_name = f"{device_name_prefix} System Date Time"
+        self._attr_unique_id = f"{coordinator.host}_system_datetime"
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_device_class = SensorDeviceClass.TIMESTAMP
+        self._attr_icon = "mdi:clock-outline"
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the system date/time."""
+        if not self.coordinator.data or "manager_info" not in self.coordinator.data:
+            return None
+        return self.coordinator.data["manager_info"].get("datetime")
+
+
+class IdracPSUInputPowerSensor(IdracSensor):
+    """PSU input power sensor."""
+    
+    def __init__(self, coordinator: IdracDataUpdateCoordinator, config_entry: ConfigEntry, 
+                 psu_id: str, psu_data: dict[str, Any]) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, config_entry)
+        device_name_prefix = _get_device_name_prefix(coordinator)
+        psu_name = psu_data.get("name", f"PSU {psu_id.replace('psu_', '')}")
+        self._attr_name = f"{device_name_prefix} {psu_name} Input Power"
+        self._attr_unique_id = f"{coordinator.host}_{psu_id}_input_power"
+        self._attr_device_class = SensorDeviceClass.POWER
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_native_unit_of_measurement = UnitOfPower.WATT
+        self._attr_icon = "mdi:flash"
+        self.psu_id = psu_id
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the PSU input power."""
+        if not self.coordinator.data or "power_supplies" not in self.coordinator.data:
+            return None
+        psu_data = self.coordinator.data["power_supplies"].get(self.psu_id)
+        if not psu_data:
+            return None
+        return psu_data.get("power_input_watts")
+
+
+class IdracPSUOutputPowerSensor(IdracSensor):
+    """PSU output power sensor."""
+    
+    def __init__(self, coordinator: IdracDataUpdateCoordinator, config_entry: ConfigEntry, 
+                 psu_id: str, psu_data: dict[str, Any]) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, config_entry)
+        device_name_prefix = _get_device_name_prefix(coordinator)
+        psu_name = psu_data.get("name", f"PSU {psu_id.replace('psu_', '')}")
+        self._attr_name = f"{device_name_prefix} {psu_name} Output Power"
+        self._attr_unique_id = f"{coordinator.host}_{psu_id}_output_power"
+        self._attr_device_class = SensorDeviceClass.POWER
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_native_unit_of_measurement = UnitOfPower.WATT
+        self._attr_icon = "mdi:flash-outline"
+        self.psu_id = psu_id
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the PSU output power."""
+        if not self.coordinator.data or "power_supplies" not in self.coordinator.data:
+            return None
+        psu_data = self.coordinator.data["power_supplies"].get(self.psu_id)
+        if not psu_data:
+            return None
+        return psu_data.get("power_output_watts")
+
+
+class IdracPSUInputVoltageSensor(IdracSensor):
+    """PSU input voltage sensor."""
+    
+    def __init__(self, coordinator: IdracDataUpdateCoordinator, config_entry: ConfigEntry, 
+                 psu_id: str, psu_data: dict[str, Any]) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, config_entry)
+        device_name_prefix = _get_device_name_prefix(coordinator)
+        psu_name = psu_data.get("name", f"PSU {psu_id.replace('psu_', '')}")
+        self._attr_name = f"{device_name_prefix} {psu_name} Input Voltage"
+        self._attr_unique_id = f"{coordinator.host}_{psu_id}_input_voltage"
+        self._attr_device_class = SensorDeviceClass.VOLTAGE
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_native_unit_of_measurement = UnitOfElectricPotential.VOLT
+        self._attr_icon = "mdi:lightning-bolt"
+        self.psu_id = psu_id
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the PSU input voltage."""
+        if not self.coordinator.data or "power_supplies" not in self.coordinator.data:
+            return None
+        psu_data = self.coordinator.data["power_supplies"].get(self.psu_id)
+        if not psu_data:
+            return None
+        return psu_data.get("line_input_voltage")
+
+
+class IdracAveragePowerSensor(IdracSensor):
+    """System average power consumption sensor."""
+    
+    def __init__(self, coordinator: IdracDataUpdateCoordinator, config_entry: ConfigEntry) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, config_entry)
+        device_name_prefix = _get_device_name_prefix(coordinator)
+        self._attr_name = f"{device_name_prefix} Average Power Consumption"
+        self._attr_unique_id = f"{coordinator.host}_average_power_consumption"
+        self._attr_device_class = SensorDeviceClass.POWER
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_native_unit_of_measurement = UnitOfPower.WATT
+        self._attr_icon = "mdi:flash-outline"
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the average power consumption."""
+        if not self.coordinator.data or "power_consumption" not in self.coordinator.data:
+            return None
+        return self.coordinator.data["power_consumption"].get("average_consumed_watts")
+
+
+class IdracMaxPowerSensor(IdracSensor):
+    """System maximum power consumption sensor."""
+    
+    def __init__(self, coordinator: IdracDataUpdateCoordinator, config_entry: ConfigEntry) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, config_entry)
+        device_name_prefix = _get_device_name_prefix(coordinator)
+        self._attr_name = f"{device_name_prefix} Maximum Power Consumption"
+        self._attr_unique_id = f"{coordinator.host}_max_power_consumption"
+        self._attr_device_class = SensorDeviceClass.POWER
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_native_unit_of_measurement = UnitOfPower.WATT
+        self._attr_icon = "mdi:flash-triangle"
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the maximum power consumption."""
+        if not self.coordinator.data or "power_consumption" not in self.coordinator.data:
+            return None
+        return self.coordinator.data["power_consumption"].get("max_consumed_watts")
+
+
+class IdracMinPowerSensor(IdracSensor):
+    """System minimum power consumption sensor."""
+    
+    def __init__(self, coordinator: IdracDataUpdateCoordinator, config_entry: ConfigEntry) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, config_entry)
+        device_name_prefix = _get_device_name_prefix(coordinator)
+        self._attr_name = f"{device_name_prefix} Minimum Power Consumption"
+        self._attr_unique_id = f"{coordinator.host}_min_power_consumption"
+        self._attr_device_class = SensorDeviceClass.POWER
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_native_unit_of_measurement = UnitOfPower.WATT
+        self._attr_icon = "mdi:flash-off"
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the minimum power consumption."""
+        if not self.coordinator.data or "power_consumption" not in self.coordinator.data:
+            return None
+        return self.coordinator.data["power_consumption"].get("min_consumed_watts")

@@ -42,8 +42,8 @@ DEFAULT_COMMUNITY: Final = "public"
 DEFAULT_SCAN_INTERVAL: Final = 30  # Reasonable default for hardware monitoring
 DEFAULT_SNMP_VERSION: Final = "v2c"
 DEFAULT_CONNECTION_TYPE: Final = "redfish"
-DEFAULT_REQUEST_TIMEOUT: Final = 30  # Faster timeout
-DEFAULT_SESSION_TIMEOUT: Final = 45  # Faster timeout
+DEFAULT_REQUEST_TIMEOUT: Final = 8  # Much faster timeout for Redfish
+DEFAULT_SESSION_TIMEOUT: Final = 15  # Much faster session timeout
 
 # Connection type options
 CONNECTION_TYPES: Final = ["redfish", "snmp", "hybrid"]

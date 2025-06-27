@@ -177,21 +177,35 @@ class RedfishCoordinator:
             "system_health": {},
         }
 
-        # Fetch all data concurrently to improve performance
+        # Fetch core sensor data concurrently, prioritizing essential endpoints
         try:
-            # Include power subsystem in the main concurrent batch for better performance
+            # Primary concurrent batch - essential sensor data
             system_task = self.client.get_system_info()
             thermal_task = self.client.get_thermal_info()
             power_task = self.client.get_power_info()
-            manager_task = self.client.get_manager_info()
-            chassis_task = self.client.get_chassis_info()
-            power_subsystem_task = self.client.get_power_subsystem()
             
-            # Wait for all API calls to complete concurrently
-            system_data, thermal_data, power_data, manager_data, chassis_data, power_subsystem_data = await asyncio.gather(
-                system_task, thermal_task, power_task, manager_task, chassis_task, power_subsystem_task,
+            # Wait for primary data to complete concurrently
+            system_data, thermal_data, power_data = await asyncio.gather(
+                system_task, thermal_task, power_task,
                 return_exceptions=True
             )
+            
+            # Secondary batch - nice-to-have data (only if primary batch was fast)
+            secondary_start = time.time()
+            if (secondary_start - start_time) < 5.0:  # Only fetch if primary was under 5s
+                manager_task = self.client.get_manager_info()
+                chassis_task = self.client.get_chassis_info()
+                
+                manager_data, chassis_data = await asyncio.gather(
+                    manager_task, chassis_task,
+                    return_exceptions=True
+                )
+                
+                # Skip power subsystem for now - it's often slow and non-essential
+                power_subsystem_data = None
+            else:
+                # Skip secondary data if primary took too long
+                manager_data = chassis_data = power_subsystem_data = None
             
             # Handle any exceptions from the concurrent calls
             if isinstance(system_data, Exception):
@@ -460,10 +474,12 @@ class RedfishCoordinator:
             "components": health_components,
         }
 
-        # Only log timing if it's taking too long
+        # Log timing for performance monitoring
         total_time = time.time() - start_time
-        if total_time > 10:
+        if total_time > 8:
             _LOGGER.warning("Redfish update took %.2f seconds - consider optimizing", total_time)
+        else:
+            _LOGGER.debug("Redfish update completed in %.2f seconds", total_time)
         
         return data
 

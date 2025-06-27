@@ -542,6 +542,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="redfish",
             data_schema=STEP_REDFISH_SCHEMA,
             errors=errors,
+            description_placeholders={"host": self.data[CONF_HOST]},
         )
 
     async def async_step_snmp_version(
@@ -563,6 +564,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="snmp_version",
             data_schema=STEP_SNMP_VERSION_SCHEMA,
+            description_placeholders={"host": self.data[CONF_HOST]},
         )
 
     async def async_step_snmp_v2c(
@@ -590,6 +592,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="snmp_v2c",
             data_schema=STEP_SNMP_V2C_SCHEMA,
             errors=errors,
+            description_placeholders={"host": self.data[CONF_HOST]},
         )
 
     async def async_step_snmp_v3(
@@ -617,6 +620,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="snmp_v3",
             data_schema=STEP_SNMP_V3_SCHEMA,
             errors=errors,
+            description_placeholders={"host": self.data[CONF_HOST]},
         )
 
     async def async_step_hybrid_redfish(
@@ -646,6 +650,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="hybrid_redfish",
             data_schema=STEP_HYBRID_REDFISH_SCHEMA,
             errors=errors,
+            description_placeholders={"host": self.data[CONF_HOST]},
         )
 
     async def async_step_hybrid_snmp_version(
@@ -667,6 +672,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="hybrid_snmp_version",
             data_schema=STEP_HYBRID_SNMP_VERSION_SCHEMA,
+            description_placeholders={"host": self.data[CONF_HOST]},
         )
 
     async def async_step_hybrid_snmp_v2c(
@@ -694,6 +700,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="hybrid_snmp_v2c",
             data_schema=STEP_HYBRID_SNMP_V2C_SCHEMA,
             errors=errors,
+            description_placeholders={"host": self.data[CONF_HOST]},
         )
 
     async def async_step_hybrid_snmp_v3(
@@ -721,6 +728,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="hybrid_snmp_v3",
             data_schema=STEP_HYBRID_SNMP_V3_SCHEMA,
             errors=errors,
+            description_placeholders={"host": self.data[CONF_HOST]},
         )
 
 
