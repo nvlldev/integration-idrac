@@ -164,13 +164,15 @@ class IdracIdentifyLEDSwitch(IdracSwitch):
             "Identify LED",
             None,
         )
-        # Initialize LED state as False
-        self._led_state = False
 
     @property
     def is_on(self) -> bool:
         """Return if the identify LED is on."""
-        return self._led_state
+        if self.coordinator.connection_type == "redfish" and self.coordinator.data:
+            led_state = self.coordinator.data.get("indicator_led_state")
+            # LED is considered "on" if it's blinking or lit
+            return led_state in ["Blinking", "Lit"]
+        return False
 
     @property
     def icon(self) -> str:
@@ -181,31 +183,27 @@ class IdracIdentifyLEDSwitch(IdracSwitch):
         """Turn on the identify LED."""
         if self.coordinator.connection_type == "redfish":
             success = await self.coordinator.async_set_indicator_led("Blinking")
+            if success:
+                # Request coordinator update to get the new state
+                await self.coordinator.async_request_refresh()
+            else:
+                _LOGGER.error("Failed to turn on identify LED for %s", self._host)
         else:
             # LED control via SNMP is not typically available in Dell iDRAC SNMP MIB
             _LOGGER.warning("LED control not available via SNMP")
-            success = False
-            
-        if success:
-            self._led_state = True
-            self.async_write_ha_state()
-        else:
-            _LOGGER.error("Failed to turn on identify LED for %s", self._host)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn off the identify LED."""
         if self.coordinator.connection_type == "redfish":
             success = await self.coordinator.async_set_indicator_led("Off")
+            if success:
+                # Request coordinator update to get the new state
+                await self.coordinator.async_request_refresh()
+            else:
+                _LOGGER.error("Failed to turn off identify LED for %s", self._host)
         else:
             # LED control via SNMP is not typically available in Dell iDRAC SNMP MIB
             _LOGGER.warning("LED control not available via SNMP")
-            success = False
-            
-        if success:
-            self._led_state = False
-            self.async_write_ha_state()
-        else:
-            _LOGGER.error("Failed to turn off identify LED for %s", self._host)
 
     async def async_toggle(self, **kwargs: Any) -> None:
         """Toggle the identify LED."""

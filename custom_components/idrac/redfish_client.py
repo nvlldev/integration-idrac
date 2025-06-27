@@ -144,6 +144,14 @@ class RedfishClient:
         """Get iDRAC manager information."""
         return await self.get(f"/redfish/v1/Managers/{manager_id}")
 
+    async def get_chassis_info(self, system_id: str = "System.Embedded.1") -> Optional[Dict[str, Any]]:
+        """Get chassis information."""
+        return await self.get(f"/redfish/v1/Chassis/{system_id}")
+
+    async def get_power_subsystem(self, system_id: str = "System.Embedded.1") -> Optional[Dict[str, Any]]:
+        """Get power subsystem information including redundancy."""
+        return await self.get(f"/redfish/v1/Chassis/{system_id}/PowerSubsystem")
+
     async def patch(self, path: str, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Make PATCH request to Redfish API."""
         url = f"{self.base_url}{path}"

@@ -271,6 +271,9 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
             "voltages": {},
             "system_info": {},
             "manager_info": {},
+            "chassis_info": {},
+            "power_redundancy": {},
+            "system_health": {},
         }
 
         # Get system information
@@ -288,6 +291,9 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
                 "processor_count": system_data.get("ProcessorSummary", {}).get("Count"),
                 "processor_model": system_data.get("ProcessorSummary", {}).get("Model"),
             }
+            
+            # Store LED state separately for easy access
+            data["indicator_led_state"] = system_data.get("IndicatorLED")
 
         # Get thermal information
         thermal_data = await self.client.get_thermal_info()
@@ -376,6 +382,147 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
                 "state": manager_data.get("Status", {}).get("State"),
                 "datetime": manager_data.get("DateTime"),
             }
+
+        # Get chassis information (includes intrusion detection)
+        chassis_data = await self.client.get_chassis_info()
+        if chassis_data:
+            # Extract intrusion detection status
+            physical_security = chassis_data.get("PhysicalSecurity", {})
+            data["chassis_info"] = {
+                "chassis_type": chassis_data.get("ChassisType"),
+                "manufacturer": chassis_data.get("Manufacturer"),
+                "model": chassis_data.get("Model"),
+                "serial_number": chassis_data.get("SerialNumber"),
+                "status": chassis_data.get("Status", {}).get("Health"),
+                "state": chassis_data.get("Status", {}).get("State"),
+                # Chassis intrusion detection
+                "intrusion_sensor": physical_security.get("IntrusionSensor"),
+                "intrusion_sensor_number": physical_security.get("IntrusionSensorNumber"),
+                "intrusion_sensor_re_arm": physical_security.get("IntrusionSensorReArm"),
+            }
+            
+            # Store chassis intrusion separately for easy access
+            data["chassis_intrusion"] = {
+                "status": physical_security.get("IntrusionSensor", "Unknown"),
+                "sensor_number": physical_security.get("IntrusionSensorNumber"),
+                "re_arm": physical_security.get("IntrusionSensorReArm"),
+            }
+
+        # Try to get power subsystem for redundancy info
+        try:
+            power_subsystem_data = await self.client.get_power_subsystem()
+            if power_subsystem_data:
+                power_supplies_data = power_subsystem_data.get("PowerSupplies", {})
+                redundancy_data = power_supplies_data.get("Redundancy", [])
+                
+                if redundancy_data:
+                    redundancy_info = redundancy_data[0] if isinstance(redundancy_data, list) else redundancy_data
+                    data["power_redundancy"] = {
+                        "mode": redundancy_info.get("Mode"),
+                        "status": redundancy_info.get("Status", {}).get("Health"),
+                        "state": redundancy_info.get("Status", {}).get("State"),
+                        "redundancy_set": redundancy_info.get("RedundancySet", []),
+                        "min_num_needed": redundancy_info.get("MinNumNeeded"),
+                        "max_num_supported": redundancy_info.get("MaxNumSupported"),
+                    }
+                else:
+                    # Fallback: analyze power supply status for redundancy
+                    power_supplies = data.get("power_supplies", {})
+                    total_psus = len(power_supplies)
+                    healthy_psus = sum(1 for psu in power_supplies.values() 
+                                     if psu.get("status") in ["OK", "ok"])
+                    
+                    if total_psus > 1:
+                        if healthy_psus == total_psus:
+                            redundancy_status = "OK"
+                        elif healthy_psus >= total_psus // 2:
+                            redundancy_status = "Warning"
+                        else:
+                            redundancy_status = "Critical"
+                    else:
+                        redundancy_status = "Non-Redundant"
+                    
+                    data["power_redundancy"] = {
+                        "mode": "N+1" if total_psus > 1 else "Non-Redundant",
+                        "status": redundancy_status,
+                        "total_psus": total_psus,
+                        "healthy_psus": healthy_psus,
+                    }
+        except Exception as exc:
+            _LOGGER.debug("Could not get power subsystem data: %s", exc)
+            # Fallback power redundancy calculation
+            power_supplies = data.get("power_supplies", {})
+            total_psus = len(power_supplies)
+            healthy_psus = sum(1 for psu in power_supplies.values() 
+                             if psu.get("status") in ["OK", "ok"])
+            
+            if total_psus > 1:
+                if healthy_psus == total_psus:
+                    redundancy_status = "OK"
+                elif healthy_psus >= total_psus // 2:
+                    redundancy_status = "Warning"
+                else:
+                    redundancy_status = "Critical"
+            else:
+                redundancy_status = "Non-Redundant"
+            
+            data["power_redundancy"] = {
+                "mode": "N+1" if total_psus > 1 else "Non-Redundant",
+                "status": redundancy_status,
+                "total_psus": total_psus,
+                "healthy_psus": healthy_psus,
+            }
+
+        # Calculate overall system health
+        health_components = []
+        
+        # System health
+        if system_data:
+            system_health = system_data.get("Status", {}).get("Health")
+            if system_health:
+                health_components.append(system_health)
+        
+        # Chassis health
+        if chassis_data:
+            chassis_health = chassis_data.get("Status", {}).get("Health")
+            if chassis_health:
+                health_components.append(chassis_health)
+        
+        # Power supply health
+        for psu_data in data.get("power_supplies", {}).values():
+            psu_health = psu_data.get("status")
+            if psu_health:
+                health_components.append(psu_health)
+        
+        # Fan health
+        for fan_data in data.get("fans", {}).values():
+            fan_health = fan_data.get("status")
+            if fan_health:
+                health_components.append(fan_health)
+        
+        # Temperature sensor health
+        for temp_data in data.get("temperatures", {}).values():
+            temp_health = temp_data.get("status")
+            if temp_health:
+                health_components.append(temp_health)
+        
+        # Calculate overall health
+        if health_components:
+            # Check for any critical issues
+            if any(health in ["Critical", "critical"] for health in health_components):
+                overall_health = "Critical"
+            elif any(health in ["Warning", "warning", "OK"] for health in health_components):
+                overall_health = "Warning"
+            else:
+                overall_health = "OK"
+        else:
+            overall_health = "Unknown"
+        
+        data["system_health"] = {
+            "overall_status": overall_health,
+            "component_count": len(health_components),
+            "components": health_components,
+        }
 
         return data
 

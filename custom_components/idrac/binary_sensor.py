@@ -79,14 +79,13 @@ async def async_setup_entry(
             IdracControllerBatteryBinarySensor(coordinator, config_entry, controller_index),
         ])
     
-    # Add system voltage monitoring binary sensors (new feature)
-    for voltage_index in config_entry.data.get(CONF_DISCOVERED_SYSTEM_VOLTAGES, []):
-        entities.extend([
-            IdracCpu1VcoreBinarySensor(coordinator, config_entry),
-            IdracCpu2VcoreBinarySensor(coordinator, config_entry),
-            IdracSystem3V3BinarySensor(coordinator, config_entry),
-        ])
-        break  # Only add once since they're not indexed
+    # Add voltage status binary sensors (for readings that are status indicators, not actual voltages)
+    if coordinator.data and "voltages" in coordinator.data:
+        for voltage_id, voltage_data in coordinator.data["voltages"].items():
+            voltage_reading = voltage_data.get("reading_volts")
+            # Create binary sensors for voltage status indicators (readings around 1.0v)
+            if voltage_reading is not None and (0.9 <= voltage_reading <= 1.1):
+                entities.append(IdracVoltageStatusBinarySensor(coordinator, config_entry, voltage_id, voltage_data))
 
     async_add_entities(entities)
 
@@ -1027,4 +1026,67 @@ class IdracSystem3V3BinarySensor(IdracBinarySensor):
             and self.coordinator.data is not None
             and "system_voltages" in self.coordinator.data
             and self._sensor_key in self.coordinator.data["system_voltages"]
+        )
+
+
+class IdracVoltageStatusBinarySensor(IdracBinarySensor):
+    """Dell iDRAC voltage status binary sensor."""
+
+    def __init__(
+        self,
+        coordinator: IdracDataUpdateCoordinator,
+        config_entry: ConfigEntry,
+        voltage_id: str,
+        voltage_data: dict,
+    ) -> None:
+        """Initialize the voltage status binary sensor."""
+        voltage_name = voltage_data.get("name", f"Voltage {voltage_id}")
+        sensor_key = f"voltage_status_{voltage_id}"
+        sensor_name = f"{voltage_name} Status"
+        super().__init__(
+            coordinator,
+            config_entry,
+            sensor_key,
+            sensor_name,
+            BinarySensorDeviceClass.PROBLEM,  # "On" means problem, "Off" means OK
+        )
+        self.voltage_id = voltage_id
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return True if voltage has a problem (reading is 0), False if OK (reading is 1)."""
+        if not self.coordinator.data or "voltages" not in self.coordinator.data:
+            return None
+        
+        voltage_data = self.coordinator.data["voltages"].get(self.voltage_id, {})
+        voltage_reading = voltage_data.get("reading_volts")
+        
+        if voltage_reading is not None:
+            # For status indicators: 1.0 = OK, 0.0 = Problem
+            # Return True (problem) if reading is close to 0, False (OK) if close to 1
+            return abs(voltage_reading - 0.0) < 0.1
+        
+        return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, any] | None:
+        """Return additional state attributes."""
+        if not self.coordinator.data or "voltages" not in self.coordinator.data:
+            return None
+        
+        voltage_data = self.coordinator.data["voltages"].get(self.voltage_id, {})
+        return {
+            "voltage_reading": voltage_data.get("reading_volts"),
+            "status": voltage_data.get("status"),
+            "raw_name": voltage_data.get("name"),
+        }
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        return (
+            self.coordinator.last_update_success
+            and self.coordinator.data is not None
+            and "voltages" in self.coordinator.data
+            and self.voltage_id in self.coordinator.data["voltages"]
         )
