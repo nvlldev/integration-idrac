@@ -30,10 +30,14 @@ from .const import (
     CONF_DISCOVERED_VIRTUAL_DISKS,
     CONF_DISCOVERED_PHYSICAL_DISKS,
     CONF_DISCOVERED_STORAGE_CONTROLLERS,
+    CONF_DISCOVERED_DETAILED_MEMORY,
+    CONF_DISCOVERED_POWER_CONSUMPTION,
+    CONF_DISCOVERED_SYSTEM_VOLTAGES,
     CONF_SCAN_INTERVAL,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     IDRAC_OIDS,
+    MEMORY_HEALTH_STATUS,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -56,6 +60,9 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
         self.discovered_virtual_disks = entry.data.get(CONF_DISCOVERED_VIRTUAL_DISKS, [])
         self.discovered_physical_disks = entry.data.get(CONF_DISCOVERED_PHYSICAL_DISKS, [])
         self.discovered_storage_controllers = entry.data.get(CONF_DISCOVERED_STORAGE_CONTROLLERS, [])
+        self.discovered_detailed_memory = entry.data.get(CONF_DISCOVERED_DETAILED_MEMORY, [])
+        self.discovered_power_consumption = entry.data.get(CONF_DISCOVERED_POWER_CONSUMPTION, [])
+        self.discovered_system_voltages = entry.data.get(CONF_DISCOVERED_SYSTEM_VOLTAGES, [])
 
         # Create isolated SNMP engine for this coordinator instance
         self.engine = SnmpEngine()
@@ -177,6 +184,9 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
                 "psu_statuses": {},
                 "psu_amperages": {},
                 "memory_health": {},
+                "detailed_memory": {},
+                "system_voltages": {},
+                "power_consumption": {},
                 "virtual_disks": {},
                 "physical_disks": {},
                 "storage_controllers": {},
@@ -264,29 +274,88 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
                 else:
                     _LOGGER.debug("PSU amperage sensor %d returned invalid value: %s", psu_index, amperage_value)
 
-            # Get memory health data - memory OIDs require double indexing (.1.X format)
+            # Get memory health data - FIXED with verified OIDs from discovery
             for memory_index in self.discovered_memory:
-                # Try multiple memory health OID bases with correct double indexing
-                memory_oid_bases = [
-                    IDRAC_OIDS['memory_health_base'],                 # Primary: 1.3.6.1.4.1.674.10892.5.4.1100.50.1.4.1 (requires .X)
-                    IDRAC_OIDS['memory_health_base_alt'],             # Alternative: 1.3.6.1.4.1.674.10892.5.4.1100.50.1.5.1 (requires .X)  
-                    "1.3.6.1.4.1.674.10892.5.4.1100.50.1.6.1",       # Alternative memory health status (double-indexed)
-                    "1.3.6.1.4.1.674.10892.5.4.1100.50.1.20.1",      # Memory device status (double-indexed)
-                ]
+                # Use verified working OID with correct indexing pattern
+                memory_oid = f"{IDRAC_OIDS['memory_health_base']}.{memory_index}"  # 1.3.6.1.4.1.674.10892.5.4.1100.50.1.4.1.X
+                health_value = await self._async_get_snmp_value(memory_oid)
                 
-                health_value = None
-                for oid_base in memory_oid_bases:
-                    # Memory OIDs use double indexing: base_oid.{memory_index} where base already includes .1
-                    memory_oid = f"{oid_base}.{memory_index}"
-                    health_value = await self._async_get_snmp_value(memory_oid)
-                    if health_value is not None:
-                        _LOGGER.debug("Found memory health for module %d using OID %s: %s", memory_index, memory_oid, health_value)
-                        break
-                
-                if health_value is not None:  # Health status can be various values
+                if health_value is not None:
                     data["memory_health"][f"memory_{memory_index}"] = health_value
+                    _LOGGER.debug("Memory health module %d: status=%s (%s)", memory_index, health_value, MEMORY_HEALTH_STATUS.get(health_value, "unknown"))
                 else:
-                    _LOGGER.debug("Memory health sensor %d returned invalid value from all OIDs", memory_index)
+                    _LOGGER.debug("Memory health sensor %d returned no value", memory_index)
+            
+            # Get detailed memory information (new feature from discovery)
+            for memory_index in self.discovered_detailed_memory:
+                memory_data = {
+                    "size_kb": await self._async_get_snmp_value(f"{IDRAC_OIDS['memory_device_size']}.{memory_index}"),
+                    "speed_mhz": await self._async_get_snmp_value(f"{IDRAC_OIDS['memory_device_speed']}.{memory_index}"),
+                    "type_code": await self._async_get_snmp_value(f"{IDRAC_OIDS['memory_device_type']}.{memory_index}"),
+                    "manufacturer": await self._async_get_snmp_string(f"{IDRAC_OIDS['memory_device_manufacturer']}.{memory_index}"),
+                    "part_number": await self._async_get_snmp_string(f"{IDRAC_OIDS['memory_device_part_number']}.{memory_index}"),
+                    "serial_number": await self._async_get_snmp_string(f"{IDRAC_OIDS['memory_device_serial']}.{memory_index}"),
+                    "bank_location": await self._async_get_snmp_string(f"{IDRAC_OIDS['memory_device_bank']}.{memory_index}"),
+                    "device_location": await self._async_get_snmp_string(f"{IDRAC_OIDS['memory_device_location']}.{memory_index}"),
+                }
+                
+                # Only include if we got at least the size (indicates module is present)
+                if memory_data["size_kb"] is not None and memory_data["size_kb"] > 0:
+                    data["detailed_memory"][f"memory_detail_{memory_index}"] = memory_data
+                    _LOGGER.debug("Detailed memory module %d: %s MB, %s MHz, %s", 
+                                memory_index, memory_data["size_kb"] // 1024 if memory_data["size_kb"] else "Unknown", 
+                                memory_data["speed_mhz"], memory_data["manufacturer"])
+            
+            # Get system voltage monitoring (new feature from discovery)
+            for voltage_index in self.discovered_system_voltages:
+                voltage_data = {
+                    "cpu1_vcore_status": await self._async_get_snmp_value(f"{IDRAC_OIDS['system_voltage_cpu1_vcore']}"),
+                    "cpu2_vcore_status": await self._async_get_snmp_value(f"{IDRAC_OIDS['system_voltage_cpu2_vcore']}"),
+                    "system_3v3_status": await self._async_get_snmp_value(f"{IDRAC_OIDS['system_voltage_3v3']}"),
+                    "cpu1_vcore_name": await self._async_get_snmp_string(f"{IDRAC_OIDS['system_voltage_cpu1_name']}"),
+                    "cpu2_vcore_name": await self._async_get_snmp_string(f"{IDRAC_OIDS['system_voltage_cpu2_name']}"),
+                    "system_3v3_name": await self._async_get_snmp_string(f"{IDRAC_OIDS['system_voltage_3v3_name']}"),
+                }
+                
+                # Add individual voltage sensors 
+                if voltage_data["cpu1_vcore_status"] is not None:
+                    data["system_voltages"]["cpu1_vcore"] = voltage_data["cpu1_vcore_status"]
+                if voltage_data["cpu2_vcore_status"] is not None:
+                    data["system_voltages"]["cpu2_vcore"] = voltage_data["cpu2_vcore_status"]
+                if voltage_data["system_3v3_status"] is not None:
+                    data["system_voltages"]["system_3v3"] = voltage_data["system_3v3_status"]
+                
+                _LOGGER.debug("System voltages: CPU1=%s, CPU2=%s, 3.3V=%s", 
+                            voltage_data["cpu1_vcore_status"], voltage_data["cpu2_vcore_status"], voltage_data["system_3v3_status"])
+            
+            # Get enhanced power consumption monitoring (new feature from discovery)
+            for power_index in self.discovered_power_consumption:
+                power_data = {
+                    "system_watts": await self._async_get_snmp_value(f"{IDRAC_OIDS['power_consumption_system']}"),  # Fixed: use actual current consumption (140W) not max capacity (644W)
+                    "warning_threshold": await self._async_get_snmp_value(f"{IDRAC_OIDS['power_consumption_warning_threshold']}"),
+                    "psu1_current": await self._async_get_snmp_value(f"{IDRAC_OIDS['power_consumption_psu1']}", divide_by=10),  # Fixed: convert tenths of amps to amps
+                    "psu2_current": await self._async_get_snmp_value(f"{IDRAC_OIDS['power_consumption_psu2']}", divide_by=10),  # Fixed: convert tenths of amps to amps
+                    "system_current": await self._async_get_snmp_value(f"{IDRAC_OIDS['power_consumption_system']}"),
+                    "psu1_name": await self._async_get_snmp_string(f"{IDRAC_OIDS['power_psu1_name']}"),
+                    "psu2_name": await self._async_get_snmp_string(f"{IDRAC_OIDS['power_psu2_name']}"),
+                    "system_name": await self._async_get_snmp_string(f"{IDRAC_OIDS['power_system_name']}"),
+                }
+                
+                # Add power consumption sensors with meaningful names
+                if power_data["system_watts"] is not None:
+                    data["power_consumption"]["system_power_watts"] = power_data["system_watts"]
+                if power_data["warning_threshold"] is not None:
+                    data["power_consumption"]["warning_threshold_watts"] = power_data["warning_threshold"]
+                if power_data["psu1_current"] is not None:
+                    data["power_consumption"]["psu1_current_amps"] = power_data["psu1_current"]
+                if power_data["psu2_current"] is not None:
+                    data["power_consumption"]["psu2_current_amps"] = power_data["psu2_current"]
+                if power_data["system_current"] is not None:
+                    data["power_consumption"]["system_current_amps"] = power_data["system_current"]
+                
+                _LOGGER.debug("Power consumption: System=%sW (threshold %sW), PSU1=%sA, PSU2=%sA, System=%sA", 
+                            power_data["system_watts"], power_data["warning_threshold"], 
+                            power_data["psu1_current"], power_data["psu2_current"], power_data["system_current"])
 
             # Get virtual disk data
             for vdisk_index in self.discovered_virtual_disks:
@@ -300,17 +369,30 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
                     "layout": await self._async_get_snmp_value(f"{IDRAC_OIDS['virtual_disk_layout']}.{vdisk_index}"),
                 }
 
-            # Get physical disk data
+            # Get enhanced physical disk data (with verified OIDs from discovery)
             for pdisk_index in self.discovered_physical_disks:
                 pdisk_oid = f"{IDRAC_OIDS['physical_disk_state']}.{pdisk_index}"
                 pdisk_state = await self._async_get_snmp_value(pdisk_oid)
-                # Create entry even if state is None - it will be discovered so should exist
-                data["physical_disks"][f"pdisk_{pdisk_index}"] = {
-                    "state": pdisk_state if pdisk_state is not None else 0,  # Default to 0 if state unavailable
+                
+                # Get enhanced disk information
+                disk_data = {
+                    "state": pdisk_state if pdisk_state is not None else 0,
                     "capacity": await self._async_get_snmp_value(f"{IDRAC_OIDS['physical_disk_capacity']}.{pdisk_index}"),
                     "used_space": await self._async_get_snmp_value(f"{IDRAC_OIDS['physical_disk_used_space']}.{pdisk_index}"),
                     "serial": await self._async_get_snmp_string(f"{IDRAC_OIDS['physical_disk_serial']}.{pdisk_index}"),
+                    # Enhanced attributes from discovery
+                    "name": await self._async_get_snmp_string(f"{IDRAC_OIDS['physical_disk_name']}.{pdisk_index}"),
+                    "vendor": await self._async_get_snmp_string(f"{IDRAC_OIDS['physical_disk_vendor']}.{pdisk_index}"),
+                    "product_id": await self._async_get_snmp_string(f"{IDRAC_OIDS['physical_disk_product_id']}.{pdisk_index}"),
+                    "revision": await self._async_get_snmp_string(f"{IDRAC_OIDS['physical_disk_revision']}.{pdisk_index}"),
+                    "size_mb": await self._async_get_snmp_value(f"{IDRAC_OIDS['physical_disk_size_mb']}.{pdisk_index}"),
+                    "fqdd": await self._async_get_snmp_string(f"{IDRAC_OIDS['physical_disk_fqdd']}.{pdisk_index}"),
                 }
+                
+                data["physical_disks"][f"pdisk_{pdisk_index}"] = disk_data
+                
+                _LOGGER.debug("Physical disk %d: %s %s %s (%s MB)", pdisk_index, 
+                            disk_data["vendor"], disk_data["product_id"], disk_data["name"], disk_data["size_mb"])
 
             # Get storage controller data
             for controller_index in self.discovered_storage_controllers:
@@ -318,12 +400,12 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
                 controller_state = await self._async_get_snmp_value(controller_oid)
                 battery_state = await self._async_get_snmp_value(f"{IDRAC_OIDS['controller_battery_state']}.{controller_index}")
                 
-                # Get additional diagnostic information
+                # Get additional diagnostic information (updated with verified OIDs)
                 rollup_status = await self._async_get_snmp_value(f"{IDRAC_OIDS['controller_rollup_status']}.{controller_index}")
                 controller_name = await self._async_get_snmp_string(f"{IDRAC_OIDS['controller_name']}.{controller_index}")
                 firmware_version = await self._async_get_snmp_string(f"{IDRAC_OIDS['controller_firmware']}.{controller_index}")
-                cache_size = await self._async_get_snmp_value(f"{IDRAC_OIDS['controller_cache_size']}.{controller_index}")
-                rebuild_rate = await self._async_get_snmp_value(f"{IDRAC_OIDS['controller_rebuild_rate']}.{controller_index}")
+                cache_size = await self._async_get_snmp_value(f"{IDRAC_OIDS['controller_cache_size']}.{controller_index}")  # Fixed OID from discovery
+                rebuild_rate = await self._async_get_snmp_value(f"{IDRAC_OIDS['controller_rebuild_rate']}.{controller_index}")  # Fixed OID from discovery
                 
                 # Debug logging to show actual numeric values and diagnostic info
                 _LOGGER.debug(

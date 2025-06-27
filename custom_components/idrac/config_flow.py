@@ -32,6 +32,9 @@ from .const import (
     CONF_DISCOVERED_VIRTUAL_DISKS,
     CONF_DISCOVERED_PHYSICAL_DISKS,
     CONF_DISCOVERED_STORAGE_CONTROLLERS,
+    CONF_DISCOVERED_DETAILED_MEMORY,
+    CONF_DISCOVERED_POWER_CONSUMPTION,
+    CONF_DISCOVERED_SYSTEM_VOLTAGES,
     CONF_SCAN_INTERVAL,
     DEFAULT_COMMUNITY,
     DEFAULT_PORT,
@@ -123,10 +126,16 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
         discovered_virtual_disks = await _discover_sensors(engine, community_data, transport_target, context_data, SNMP_WALK_OIDS["virtual_disks"])
         discovered_physical_disks = await _discover_sensors(engine, community_data, transport_target, context_data, SNMP_WALK_OIDS["physical_disks"])
         discovered_storage_controllers = await _discover_sensors(engine, community_data, transport_target, context_data, SNMP_WALK_OIDS["storage_controllers"])
+        
+        # Discover new sensor types (enhanced features from comprehensive OID discovery)
+        discovered_detailed_memory = await _discover_sensors(engine, community_data, transport_target, context_data, SNMP_WALK_OIDS["detailed_memory"])
+        discovered_system_voltages = await _discover_system_voltages(engine, community_data, transport_target, context_data, SNMP_WALK_OIDS["system_voltages"])
+        discovered_power_consumption = await _discover_power_consumption_sensors(engine, community_data, transport_target, context_data, SNMP_WALK_OIDS["power_consumption"])
 
-        _LOGGER.info("Discovered %d fans, %d CPU temperature sensors, %d PSU sensors, %d voltage probes, %d memory modules, %d virtual disks, %d physical disks, %d storage controllers", 
+        _LOGGER.info("Discovered %d fans, %d CPU temperature sensors, %d PSU sensors, %d voltage probes, %d memory modules, %d virtual disks, %d physical disks, %d storage controllers, %d detailed memory modules, %d system voltages, %d power consumption sensors", 
                      len(discovered_fans), len(discovered_cpus), len(discovered_psus), len(discovered_voltage_probes), len(discovered_memory),
-                     len(discovered_virtual_disks), len(discovered_physical_disks), len(discovered_storage_controllers))
+                     len(discovered_virtual_disks), len(discovered_physical_disks), len(discovered_storage_controllers),
+                     len(discovered_detailed_memory), len(discovered_system_voltages), len(discovered_power_consumption))
         _LOGGER.debug("Fan sensor IDs: %s", discovered_fans)
         _LOGGER.debug("CPU sensor IDs: %s", discovered_cpus)
         _LOGGER.debug("PSU sensor IDs: %s", discovered_psus)
@@ -135,6 +144,9 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
         _LOGGER.debug("Virtual disk IDs: %s", discovered_virtual_disks)
         _LOGGER.debug("Physical disk IDs: %s", discovered_physical_disks)
         _LOGGER.debug("Storage controller IDs: %s", discovered_storage_controllers)
+        _LOGGER.debug("Detailed memory module IDs: %s", discovered_detailed_memory)
+        _LOGGER.debug("System voltage sensor IDs: %s", discovered_system_voltages)
+        _LOGGER.debug("Power consumption sensor IDs: %s", discovered_power_consumption)
 
         return {
             "title": f"Dell iDRAC ({host})",
@@ -146,6 +158,9 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
             CONF_DISCOVERED_VIRTUAL_DISKS: discovered_virtual_disks,
             CONF_DISCOVERED_PHYSICAL_DISKS: discovered_physical_disks,
             CONF_DISCOVERED_STORAGE_CONTROLLERS: discovered_storage_controllers,
+            CONF_DISCOVERED_DETAILED_MEMORY: discovered_detailed_memory,
+            CONF_DISCOVERED_SYSTEM_VOLTAGES: discovered_system_voltages,
+            CONF_DISCOVERED_POWER_CONSUMPTION: discovered_power_consumption,
         }
 
     except Exception as exc:
@@ -165,8 +180,8 @@ async def _discover_sensors(
     try:
         _LOGGER.debug("Testing individual OIDs for base: %s", base_oid)
         
-        # Test up to 20 sensor indices (should be more than enough for any server)
-        for sensor_id in range(1, 21):
+        # Test up to 50 sensor indices to support enterprise configurations (up to 48 DIMMs, 4 CPUs)
+        for sensor_id in range(1, 51):
             test_oid = f"{base_oid}.{sensor_id}"
             try:
                 error_indication, error_status, error_index, var_binds = await getCmd(
@@ -565,3 +580,100 @@ class OptionsFlow(config_entries.OptionsFlow):
                 "memory": len(self._config_entry.data.get(CONF_DISCOVERED_MEMORY, [])),
             },
         )
+async def _discover_system_voltages(
+    engine: SnmpEngine,
+    community_data: CommunityData,
+    transport_target: UdpTransportTarget,
+    context_data: ContextData,
+    base_oid: str,
+) -> list[int]:
+    """Discover system voltage sensors."""
+    results = []
+    
+    try:
+        _LOGGER.debug("Testing system voltage sensors with base OID: %s", base_oid)
+        
+        # Test specific voltage sensors that we know exist from discovery
+        voltage_indices = [1, 2, 3]  # CPU1 VCORE, CPU2 VCORE, System 3.3V
+        
+        for i in voltage_indices:
+            oid = f"{base_oid}.{i}"
+            _LOGGER.debug("Testing voltage sensor OID: %s", oid)
+            
+            try:
+                error_indication, error_status, error_index, var_binds = await getCmd(
+                    engine,
+                    community_data,
+                    transport_target,
+                    context_data,
+                    ObjectType(ObjectIdentity(oid)),
+                )
+                
+                if not error_indication and not error_status and var_binds:
+                    value = str(var_binds[0][1]).strip()
+                    if value and "No Such" not in value and value != "":
+                        _LOGGER.debug("Found voltage sensor %d with value: %s", i, value)
+                        results.append(i)
+                
+            except Exception as exc:
+                _LOGGER.debug("Error testing voltage sensor OID %s: %s", oid, exc)
+                continue
+        
+        _LOGGER.info("System voltage discovery for %s found %d voltage sensors: %s", base_oid, len(results), results)
+        return results
+        
+    except Exception as exc:
+        _LOGGER.warning("Error discovering system voltage sensors for OID %s: %s", base_oid, exc)
+        return []
+
+
+async def _discover_power_consumption_sensors(
+    engine: SnmpEngine,
+    community_data: CommunityData,
+    transport_target: UdpTransportTarget,
+    context_data: ContextData,
+    base_oid: str,
+) -> list[int]:
+    """Discover power consumption sensors."""
+    results = []
+    
+    try:
+        _LOGGER.debug("Testing power consumption sensors with base OID: %s", base_oid)
+        
+        # Test specific power consumption sensors that we know exist from discovery
+        power_indices = [1, 2, 3]  # PSU1, PSU2, System current
+        
+        for i in power_indices:
+            oid = f"{base_oid}.{i}"
+            _LOGGER.debug("Testing power consumption sensor OID: %s", oid)
+            
+            try:
+                error_indication, error_status, error_index, var_binds = await getCmd(
+                    engine,
+                    community_data,
+                    transport_target,
+                    context_data,
+                    ObjectType(ObjectIdentity(oid)),
+                )
+                
+                if not error_indication and not error_status and var_binds:
+                    value = str(var_binds[0][1]).strip()
+                    if value and "No Such" not in value and value != "":
+                        try:
+                            # Validate it's a numeric value
+                            int(value)
+                            _LOGGER.debug("Found power consumption sensor %d with value: %s", i, value)
+                            results.append(i)
+                        except ValueError:
+                            _LOGGER.debug("Power consumption sensor %d returned non-numeric value: %s", i, value)
+                
+            except Exception as exc:
+                _LOGGER.debug("Error testing power consumption sensor OID %s: %s", oid, exc)
+                continue
+        
+        _LOGGER.info("Power consumption discovery for %s found %d power sensors: %s", base_oid, len(results), results)
+        return results
+        
+    except Exception as exc:
+        _LOGGER.warning("Error discovering power consumption sensors for OID %s: %s", base_oid, exc)
+        return []

@@ -16,6 +16,7 @@ from homeassistant.const import (
     UnitOfElectricCurrent,
     UnitOfElectricPotential,
     UnitOfFrequency,
+    UnitOfInformation,
     UnitOfPower,
     UnitOfTemperature,
 )
@@ -24,7 +25,15 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util.unit_conversion import TemperatureConverter
 
-from .const import CONF_DISCOVERED_CPUS, CONF_DISCOVERED_FANS, CONF_DISCOVERED_PSUS, CONF_DISCOVERED_VOLTAGE_PROBES, DOMAIN
+from .const import (
+    CONF_DISCOVERED_CPUS,
+    CONF_DISCOVERED_FANS,
+    CONF_DISCOVERED_PSUS,
+    CONF_DISCOVERED_VOLTAGE_PROBES,
+    CONF_DISCOVERED_DETAILED_MEMORY,
+    CONF_DISCOVERED_POWER_CONSUMPTION,
+    DOMAIN,
+)
 from .coordinator import IdracDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -93,7 +102,27 @@ async def async_setup_entry(
         entities.append(
             IdracPsuVoltageSensor(coordinator, config_entry, voltage_probe_index, i)
         )
-
+    
+    # Add detailed memory information sensors (new feature)
+    for memory_index in config_entry.data.get(CONF_DISCOVERED_DETAILED_MEMORY, []):
+        entities.extend([
+            IdracMemorySizeSensor(coordinator, config_entry, memory_index),
+            IdracMemorySpeedSensor(coordinator, config_entry, memory_index),
+            IdracMemoryManufacturerSensor(coordinator, config_entry, memory_index),
+            IdracMemoryPartNumberSensor(coordinator, config_entry, memory_index),
+            IdracMemoryLocationSensor(coordinator, config_entry, memory_index),
+        ])
+    
+    # Add power consumption sensors (new feature)
+    for power_index in config_entry.data.get(CONF_DISCOVERED_POWER_CONSUMPTION, []):
+        entities.extend([
+            IdracSystemPowerWattsSensor(coordinator, config_entry),
+            IdracPowerWarningThresholdSensor(coordinator, config_entry),
+            IdracPsu1CurrentSensor(coordinator, config_entry),
+            IdracPsu2CurrentSensor(coordinator, config_entry),
+            IdracSystemCurrentSensor(coordinator, config_entry),
+        ])
+        break  # Only add once since they're not indexed
 
     async_add_entities(entities)
 
@@ -885,3 +914,348 @@ class IdracMemoryHealthSensor(IdracSensor):
             and self._sensor_key in self.coordinator.data["memory_health"]
             and self.coordinator.data["memory_health"][self._sensor_key] is not None
         )
+class IdracMemorySizeSensor(IdracSensor):
+    """Dell iDRAC memory module size sensor."""
+
+    def __init__(
+        self,
+        coordinator: IdracDataUpdateCoordinator,
+        config_entry: ConfigEntry,
+        memory_index: int,
+    ) -> None:
+        """Initialize the memory size sensor."""
+        sensor_key = f"memory_detail_{memory_index}"
+        sensor_name = f"Memory Module {memory_index} Size"
+        super().__init__(
+            coordinator,
+            config_entry,
+            sensor_key,
+            sensor_name,
+            UnitOfInformation.MEGABYTES,
+            SensorDeviceClass.DATA_SIZE,
+        )
+        self._memory_index = memory_index
+
+    @property
+    def native_value(self) -> int | None:
+        """Return the memory size in MB."""
+        if self.coordinator.data is None or "detailed_memory" not in self.coordinator.data:
+            return None
+        
+        memory_data = self.coordinator.data["detailed_memory"].get(self._sensor_key)
+        if memory_data and memory_data.get("size_kb") is not None:
+            # Convert KB to MB
+            return memory_data["size_kb"] // 1024
+        return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, str] | None:
+        """Return additional state attributes."""
+        if self.coordinator.data is None or "detailed_memory" not in self.coordinator.data:
+            return None
+        
+        memory_data = self.coordinator.data["detailed_memory"].get(self._sensor_key)
+        if memory_data:
+            return {
+                "manufacturer": memory_data.get("manufacturer", "Unknown"),
+                "part_number": memory_data.get("part_number", "Unknown"),
+                "speed_mhz": memory_data.get("speed_mhz", "Unknown"),
+                "bank_location": memory_data.get("bank_location", "Unknown"),
+                "device_location": memory_data.get("device_location", "Unknown"),
+            }
+        return None
+
+
+class IdracMemorySpeedSensor(IdracSensor):
+    """Dell iDRAC memory module speed sensor."""
+
+    def __init__(
+        self,
+        coordinator: IdracDataUpdateCoordinator,
+        config_entry: ConfigEntry,
+        memory_index: int,
+    ) -> None:
+        """Initialize the memory speed sensor."""
+        sensor_key = f"memory_detail_{memory_index}"
+        sensor_name = f"Memory Module {memory_index} Speed"
+        super().__init__(
+            coordinator,
+            config_entry,
+            sensor_key,
+            sensor_name,
+            UnitOfFrequency.MEGAHERTZ,
+            SensorDeviceClass.FREQUENCY,
+        )
+        self._memory_index = memory_index
+
+    @property
+    def native_value(self) -> int | None:
+        """Return the memory speed in MHz."""
+        if self.coordinator.data is None or "detailed_memory" not in self.coordinator.data:
+            return None
+        
+        memory_data = self.coordinator.data["detailed_memory"].get(self._sensor_key)
+        if memory_data:
+            return memory_data.get("speed_mhz")
+        return None
+
+
+class IdracMemoryManufacturerSensor(IdracSensor):
+    """Dell iDRAC memory module manufacturer sensor."""
+
+    def __init__(
+        self,
+        coordinator: IdracDataUpdateCoordinator,
+        config_entry: ConfigEntry,
+        memory_index: int,
+    ) -> None:
+        """Initialize the memory manufacturer sensor."""
+        sensor_key = f"memory_detail_{memory_index}"
+        sensor_name = f"Memory Module {memory_index} Manufacturer"
+        super().__init__(
+            coordinator,
+            config_entry,
+            sensor_key,
+            sensor_name,
+        )
+        self._memory_index = memory_index
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the memory manufacturer."""
+        if self.coordinator.data is None or "detailed_memory" not in self.coordinator.data:
+            return None
+        
+        memory_data = self.coordinator.data["detailed_memory"].get(self._sensor_key)
+        if memory_data:
+            return memory_data.get("manufacturer")
+        return None
+
+
+class IdracMemoryPartNumberSensor(IdracSensor):
+    """Dell iDRAC memory module part number sensor."""
+
+    def __init__(
+        self,
+        coordinator: IdracDataUpdateCoordinator,
+        config_entry: ConfigEntry,
+        memory_index: int,
+    ) -> None:
+        """Initialize the memory part number sensor."""
+        sensor_key = f"memory_detail_{memory_index}"
+        sensor_name = f"Memory Module {memory_index} Part Number"
+        super().__init__(
+            coordinator,
+            config_entry,
+            sensor_key,
+            sensor_name,
+        )
+        self._memory_index = memory_index
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the memory part number."""
+        if self.coordinator.data is None or "detailed_memory" not in self.coordinator.data:
+            return None
+        
+        memory_data = self.coordinator.data["detailed_memory"].get(self._sensor_key)
+        if memory_data:
+            return memory_data.get("part_number")
+        return None
+
+
+class IdracMemoryLocationSensor(IdracSensor):
+    """Dell iDRAC memory module location sensor."""
+
+    def __init__(
+        self,
+        coordinator: IdracDataUpdateCoordinator,
+        config_entry: ConfigEntry,
+        memory_index: int,
+    ) -> None:
+        """Initialize the memory location sensor."""
+        sensor_key = f"memory_detail_{memory_index}"
+        sensor_name = f"Memory Module {memory_index} Location"
+        super().__init__(
+            coordinator,
+            config_entry,
+            sensor_key,
+            sensor_name,
+        )
+        self._memory_index = memory_index
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the memory device location."""
+        if self.coordinator.data is None or "detailed_memory" not in self.coordinator.data:
+            return None
+        
+        memory_data = self.coordinator.data["detailed_memory"].get(self._sensor_key)
+        if memory_data:
+            return memory_data.get("device_location")
+        return None
+
+
+class IdracSystemPowerWattsSensor(IdracSensor):
+    """Dell iDRAC system power consumption sensor."""
+
+    def __init__(
+        self,
+        coordinator: IdracDataUpdateCoordinator,
+        config_entry: ConfigEntry,
+    ) -> None:
+        """Initialize the system power sensor."""
+        sensor_key = "system_power_watts"
+        sensor_name = "System Power Consumption"
+        super().__init__(
+            coordinator,
+            config_entry,
+            sensor_key,
+            sensor_name,
+            UnitOfPower.WATT,
+            SensorDeviceClass.POWER,
+        )
+
+    @property
+    def native_value(self) -> int | None:
+        """Return the system power consumption in watts."""
+        if self.coordinator.data is None or "power_consumption" not in self.coordinator.data:
+            return None
+        
+        return self.coordinator.data["power_consumption"].get(self._sensor_key)
+
+    @property
+    def state_class(self) -> SensorStateClass:
+        """Return the state class."""
+        return SensorStateClass.MEASUREMENT
+
+
+class IdracPowerWarningThresholdSensor(IdracSensor):
+    """Dell iDRAC power warning threshold sensor."""
+
+    def __init__(
+        self,
+        coordinator: IdracDataUpdateCoordinator,
+        config_entry: ConfigEntry,
+    ) -> None:
+        """Initialize the power warning threshold sensor."""
+        sensor_key = "warning_threshold_watts"
+        sensor_name = "Power Warning Threshold"
+        super().__init__(
+            coordinator,
+            config_entry,
+            sensor_key,
+            sensor_name,
+            UnitOfPower.WATT,
+            SensorDeviceClass.POWER,
+        )
+
+    @property
+    def native_value(self) -> int | None:
+        """Return the power warning threshold in watts."""
+        if self.coordinator.data is None or "power_consumption" not in self.coordinator.data:
+            return None
+        
+        return self.coordinator.data["power_consumption"].get(self._sensor_key)
+
+
+class IdracPsu1CurrentSensor(IdracSensor):
+    """Dell iDRAC PSU1 current sensor."""
+
+    def __init__(
+        self,
+        coordinator: IdracDataUpdateCoordinator,
+        config_entry: ConfigEntry,
+    ) -> None:
+        """Initialize the PSU1 current sensor."""
+        sensor_key = "psu1_current_amps"
+        sensor_name = "PSU1 Current Draw"
+        super().__init__(
+            coordinator,
+            config_entry,
+            sensor_key,
+            sensor_name,
+            UnitOfElectricCurrent.AMPERE,
+            SensorDeviceClass.CURRENT,
+        )
+
+    @property
+    def native_value(self) -> int | None:
+        """Return the PSU1 current in amperes."""
+        if self.coordinator.data is None or "power_consumption" not in self.coordinator.data:
+            return None
+        
+        return self.coordinator.data["power_consumption"].get(self._sensor_key)
+
+    @property
+    def state_class(self) -> SensorStateClass:
+        """Return the state class."""
+        return SensorStateClass.MEASUREMENT
+
+
+class IdracPsu2CurrentSensor(IdracSensor):
+    """Dell iDRAC PSU2 current sensor."""
+
+    def __init__(
+        self,
+        coordinator: IdracDataUpdateCoordinator,
+        config_entry: ConfigEntry,
+    ) -> None:
+        """Initialize the PSU2 current sensor."""
+        sensor_key = "psu2_current_amps"
+        sensor_name = "PSU2 Current Draw"
+        super().__init__(
+            coordinator,
+            config_entry,
+            sensor_key,
+            sensor_name,
+            UnitOfElectricCurrent.AMPERE,
+            SensorDeviceClass.CURRENT,
+        )
+
+    @property
+    def native_value(self) -> int | None:
+        """Return the PSU2 current in amperes."""
+        if self.coordinator.data is None or "power_consumption" not in self.coordinator.data:
+            return None
+        
+        return self.coordinator.data["power_consumption"].get(self._sensor_key)
+
+    @property
+    def state_class(self) -> SensorStateClass:
+        """Return the state class."""
+        return SensorStateClass.MEASUREMENT
+
+
+class IdracSystemCurrentSensor(IdracSensor):
+    """Dell iDRAC system current consumption sensor."""
+
+    def __init__(
+        self,
+        coordinator: IdracDataUpdateCoordinator,
+        config_entry: ConfigEntry,
+    ) -> None:
+        """Initialize the system current sensor."""
+        sensor_key = "system_current_amps"
+        sensor_name = "System Current Draw"
+        super().__init__(
+            coordinator,
+            config_entry,
+            sensor_key,
+            sensor_name,
+            UnitOfElectricCurrent.AMPERE,
+            SensorDeviceClass.CURRENT,
+        )
+
+    @property
+    def native_value(self) -> int | None:
+        """Return the system current in amperes."""
+        if self.coordinator.data is None or "power_consumption" not in self.coordinator.data:
+            return None
+        
+        return self.coordinator.data["power_consumption"].get(self._sensor_key)
+
+    @property
+    def state_class(self) -> SensorStateClass:
+        """Return the state class."""
+        return SensorStateClass.MEASUREMENT

@@ -13,6 +13,9 @@ CONF_DISCOVERED_MEMORY: Final = "discovered_memory"
 CONF_DISCOVERED_VIRTUAL_DISKS: Final = "discovered_virtual_disks"
 CONF_DISCOVERED_PHYSICAL_DISKS: Final = "discovered_physical_disks"
 CONF_DISCOVERED_STORAGE_CONTROLLERS: Final = "discovered_storage_controllers"
+CONF_DISCOVERED_DETAILED_MEMORY: Final = "discovered_detailed_memory"
+CONF_DISCOVERED_POWER_CONSUMPTION: Final = "discovered_power_consumption"
+CONF_DISCOVERED_SYSTEM_VOLTAGES: Final = "discovered_system_voltages"
 CONF_SCAN_INTERVAL: Final = "scan_interval"
 
 # Default values
@@ -20,8 +23,9 @@ DEFAULT_PORT: Final = 161
 DEFAULT_COMMUNITY: Final = "public"
 DEFAULT_SCAN_INTERVAL: Final = 30
 
-# Dell iDRAC SNMP OIDs
+# Dell iDRAC SNMP OIDs - Updated with verified working OIDs from comprehensive discovery
 IDRAC_OIDS: Final = {
+    # Basic power and thermal monitoring (verified)
     "power": "1.3.6.1.4.1.674.10892.5.4.600.30.1.6.1.3",
     "temp_inlet": "1.3.6.1.4.1.674.10892.5.4.700.20.1.6.1.1",
     "temp_outlet": "1.3.6.1.4.1.674.10892.5.4.700.20.1.6.1.2",
@@ -78,11 +82,67 @@ IDRAC_OIDS: Final = {
     "controller_rollup_status": "1.3.6.1.4.1.674.10892.5.5.1.20.130.1.1.37", # Controller rollup status (combined health)
     "controller_name": "1.3.6.1.4.1.674.10892.5.5.1.20.130.1.1.2",           # Controller name/model
     "controller_firmware": "1.3.6.1.4.1.674.10892.5.5.1.20.130.1.1.8",       # Controller firmware version
-    "controller_cache_size": "1.3.6.1.4.1.674.10892.5.5.1.20.130.1.1.33",    # Controller cache memory size
-    "controller_rebuild_rate": "1.3.6.1.4.1.674.10892.5.5.1.20.130.1.1.43",  # Controller rebuild rate setting
+    "controller_cache_size": "1.3.6.1.4.1.674.10892.5.5.1.20.130.1.1.9",      # Controller cache memory size (verified: returns 2048)
+    "controller_rebuild_rate": "1.3.6.1.4.1.674.10892.5.5.1.20.130.1.1.48",    # Controller rebuild rate setting (verified)
+    
+    # Enhanced memory monitoring (verified from discovery)
+    "memory_device_type": "1.3.6.1.4.1.674.10892.5.4.1100.50.1.7.1",             # Memory device type (verified: returns 26)
+    "memory_device_size": "1.3.6.1.4.1.674.10892.5.4.1100.50.1.14.1",            # Memory device size (verified: returns 16777216 KB)
+    "memory_device_speed": "1.3.6.1.4.1.674.10892.5.4.1100.50.1.27.1",           # Memory device speed (verified: returns 1867 MHz)
+    "memory_device_manufacturer": "1.3.6.1.4.1.674.10892.5.4.1100.50.1.21.1",    # Memory manufacturer (verified: Hynix Semiconductor)
+    "memory_device_part_number": "1.3.6.1.4.1.674.10892.5.4.1100.50.1.22.1",     # Memory part number (verified: HMA82GR7MFR8N-UH)
+    "memory_device_serial": "1.3.6.1.4.1.674.10892.5.4.1100.50.1.23.1",          # Memory serial number (verified)
+    "memory_device_bank": "1.3.6.1.4.1.674.10892.5.4.1100.50.1.10.1",            # Memory bank location (verified: A/B)
+    "memory_device_location": "1.3.6.1.4.1.674.10892.5.4.1100.50.1.8.1",         # Memory device location (verified: DIMM.Socket.A1, etc.)
+    
+    # System voltage monitoring (verified from discovery)
+    "system_voltage_cpu1_vcore": "1.3.6.1.4.1.674.10892.5.4.600.20.1.16.1.1",    # CPU1 VCORE voltage status (verified: returns 1)
+    "system_voltage_cpu2_vcore": "1.3.6.1.4.1.674.10892.5.4.600.20.1.16.1.2",    # CPU2 VCORE voltage status (verified: returns 1)
+    "system_voltage_3v3": "1.3.6.1.4.1.674.10892.5.4.600.20.1.16.1.3",           # System Board 3.3V status (verified: returns 1)
+    "system_voltage_cpu1_name": "1.3.6.1.4.1.674.10892.5.4.600.20.1.8.1.1",      # CPU1 VCORE name (verified: "CPU1 VCORE PG")
+    "system_voltage_cpu2_name": "1.3.6.1.4.1.674.10892.5.4.600.20.1.8.1.2",      # CPU2 VCORE name (verified: "CPU2 VCORE PG")
+    "system_voltage_3v3_name": "1.3.6.1.4.1.674.10892.5.4.600.20.1.8.1.3",       # 3.3V rail name (verified: "System Board 3.3V PG")
+    
+    # Enhanced power consumption monitoring (verified from discovery)
+    "power_consumption_system": "1.3.6.1.4.1.674.10892.5.4.600.30.1.6.1.3",       # REAL-TIME system power consumption in watts (verified: ~140W)
+    "power_consumption_psu1": "1.3.6.1.4.1.674.10892.5.4.600.30.1.6.1.1",         # PSU1 current draw (verified: 12A)
+    "power_consumption_psu2": "1.3.6.1.4.1.674.10892.5.4.600.30.1.6.1.2",         # PSU2 current draw (verified: 2A)
+    "power_consumption_max_watts": "1.3.6.1.4.1.674.10892.5.4.600.30.1.10.1.3",    # Maximum/total system power capacity (verified: 644W)
+    "power_consumption_warning_threshold": "1.3.6.1.4.1.674.10892.5.4.600.30.1.11.1.3", # Power warning threshold (verified: 588W)
+    "power_psu1_name": "1.3.6.1.4.1.674.10892.5.4.600.30.1.8.1.1",                # PSU1 name (verified: "PS1 Current 1")
+    "power_psu2_name": "1.3.6.1.4.1.674.10892.5.4.600.30.1.8.1.2",                # PSU2 name (verified: "PS2 Current 2")
+    "power_system_name": "1.3.6.1.4.1.674.10892.5.4.600.30.1.8.1.3",              # System power name (verified: "System Board Pwr Consumption")
+    
+    # Fan monitoring with names (verified from discovery)
+    "fan_name_base": "1.3.6.1.4.1.674.10892.5.4.700.12.1.8.1",                    # Fan names (verified: "System Board Fan1", etc.)
+    "fan_fqdd_base": "1.3.6.1.4.1.674.10892.5.4.700.12.1.19.1",                   # Fan FQDD (verified: "Fan.Embedded.1", etc.)
+    "fan_min_warning": "1.3.6.1.4.1.674.10892.5.4.700.12.1.13.1",                 # Fan minimum warning threshold (verified: 360 RPM)
+    "fan_max_warning": "1.3.6.1.4.1.674.10892.5.4.700.12.1.12.1",                 # Fan maximum warning threshold (verified: 600 RPM)
+    
+    # Temperature monitoring with names (verified from discovery)
+    "temp_name_base": "1.3.6.1.4.1.674.10892.5.4.700.20.1.8.1",                   # Temperature probe names (verified: "System Board Inlet Temp", etc.)
+    "temp_upper_critical": "1.3.6.1.4.1.674.10892.5.4.700.20.1.10.1",             # Upper critical threshold (verified)
+    "temp_upper_warning": "1.3.6.1.4.1.674.10892.5.4.700.20.1.11.1",              # Upper warning threshold (verified)
+    "temp_lower_critical": "1.3.6.1.4.1.674.10892.5.4.700.20.1.13.1",             # Lower critical threshold (verified)
+    "temp_lower_warning": "1.3.6.1.4.1.674.10892.5.4.700.20.1.12.1",              # Lower warning threshold (verified)
+    
+    # Enhanced physical disk monitoring (verified from discovery)
+    "physical_disk_name": "1.3.6.1.4.1.674.10892.5.5.1.20.130.4.1.2",             # Physical disk name (verified: "Physical Disk 0:1:0")
+    "physical_disk_vendor": "1.3.6.1.4.1.674.10892.5.5.1.20.130.4.1.3",           # Physical disk vendor (verified: "TOSHIBA", "SEAGATE")
+    "physical_disk_product_id": "1.3.6.1.4.1.674.10892.5.5.1.20.130.4.1.6",       # Physical disk product ID (verified: "AL13SEB300")
+    "physical_disk_revision": "1.3.6.1.4.1.674.10892.5.5.1.20.130.4.1.8",         # Physical disk firmware revision (verified: "DE11")
+    "physical_disk_size_mb": "1.3.6.1.4.1.674.10892.5.5.1.20.130.4.1.11",         # Physical disk size in MB (verified: 285568, 571776)
+    "physical_disk_fqdd": "1.3.6.1.4.1.674.10892.5.5.1.20.130.4.1.27",            # Physical disk FQDD (verified)
+    
+    # PSU detailed monitoring (verified from discovery)
+    "psu_name_base": "1.3.6.1.4.1.674.10892.5.4.600.12.1.8.1",                    # PSU names (verified: "PS1 Status", "PS2 Status")
+    "psu_fqdd_base": "1.3.6.1.4.1.674.10892.5.4.600.12.1.15.1",                   # PSU FQDD (verified: "PSU.Slot.1", "PSU.Slot.2")
+    "psu_max_output_base": "1.3.6.1.4.1.674.10892.5.4.600.12.1.6.1",              # PSU maximum output (verified: 4950W)
+    "psu_input_voltage_base": "1.3.6.1.4.1.674.10892.5.4.600.12.1.4.1",           # PSU input voltage (verified: 242V)
+    "psu_rated_output_base": "1.3.6.1.4.1.674.10892.5.4.600.12.1.14.1",           # PSU rated output (verified: 5940W)
 }
 
-# SNMP base OIDs for discovery
+# SNMP base OIDs for discovery - Updated with verified working OIDs
 SNMP_WALK_OIDS: Final = {
     "fans": "1.3.6.1.4.1.674.10892.5.4.700.12.1.6.1",
     "cpu_temps": "1.3.6.1.4.1.674.10892.5.4.700.20.1.6.1",
@@ -94,4 +154,55 @@ SNMP_WALK_OIDS: Final = {
     "virtual_disks": "1.3.6.1.4.1.674.10892.5.5.1.20.140.1.1.4",
     "physical_disks": "1.3.6.1.4.1.674.10892.5.5.1.20.130.4.1.4",
     "storage_controllers": "1.3.6.1.4.1.674.10892.5.5.1.20.130.1.1.38",
+    # New discovery OIDs (verified from comprehensive discovery)
+    "detailed_memory": "1.3.6.1.4.1.674.10892.5.4.1100.50.1.14.1",               # Memory device size for discovery
+    "system_voltages": "1.3.6.1.4.1.674.10892.5.4.600.20.1.16.1",                # System voltage probes
+    "power_consumption": "1.3.6.1.4.1.674.10892.5.4.600.30.1.6.1",               # Power consumption sensors
+}
+
+# Memory health status mapping (verified from Dell documentation)
+MEMORY_HEALTH_STATUS: Final = {
+    1: "other",
+    2: "ready",      # Changed from "unknown" - this is actually ready/healthy state
+    3: "ok",         # Normal/healthy state  
+    4: "non_critical",
+    5: "critical",
+    6: "non_recoverable"
+}
+
+# PSU status mapping (verified from Dell documentation)
+PSU_STATUS: Final = {
+    1: "other",
+    2: "unknown", 
+    3: "ok",
+    4: "non_critical",
+    5: "critical",
+    6: "non_recoverable"
+}
+
+# Physical disk status mapping (verified from Dell documentation)
+PHYSICAL_DISK_STATUS: Final = {
+    1: "ready",
+    2: "failed",
+    3: "online",
+    4: "offline",
+    5: "degraded",
+    6: "verifying",
+    7: "incompatible",
+    8: "removed",
+    9: "clear",
+    10: "smart_alert_pending",
+    11: "foreign"
+}
+
+# Virtual disk status mapping (corrected based on user feedback)
+VIRTUAL_DISK_STATUS: Final = {
+    1: "ready",
+    2: "optimal",  # Fixed: was "failed" but user reported healthy disk shows state 2
+    3: "online",
+    4: "offline",
+    5: "degraded",
+    6: "verifying",
+    7: "background_init",
+    8: "resynching"
 }

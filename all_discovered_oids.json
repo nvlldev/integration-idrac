@@ -1,0 +1,73 @@
+{
+  "summary": {
+    "total_oids": 0,
+    "branches": {
+      "Dell Root": 0,
+      "iDRAC Base": 0,
+      "iDRAC v5": 0,
+      "System Info": 0,
+      "System Details": 0,
+      "Hardware": 0,
+      "System State": 0,
+      "Chassis": 0,
+      "Power Supply": 0,
+      "Cooling": 0,
+      "Processors": 0,
+      "Memory": 0,
+      "Storage": 0,
+      "Storage Details": 0,
+      "Network": 0,
+      "Remote Access": 0
+    },
+    "categories": {
+      "model_names": 0,
+      "versions": 0,
+      "temperatures": 0,
+      "fans": 0,
+      "power": 0,
+      "voltage": 0,
+      "current": 0,
+      "memory": 0,
+      "storage": 0,
+      "network": 0,
+      "status": 0,
+      "health": 0,
+      "control": 0,
+      "other": 0
+    }
+  },
+  "by_branch": {
+    "Dell Root": [],
+    "iDRAC Base": [],
+    "iDRAC v5": [],
+    "System Info": [],
+    "System Details": [],
+    "Hardware": [],
+    "System State": [],
+    "Chassis": [],
+    "Power Supply": [],
+    "Cooling": [],
+    "Processors": [],
+    "Memory": [],
+    "Storage": [],
+    "Storage Details": [],
+    "Network": [],
+    "Remote Access": []
+  },
+  "by_category": {
+    "model_names": [],
+    "versions": [],
+    "temperatures": [],
+    "fans": [],
+    "power": [],
+    "voltage": [],
+    "current": [],
+    "memory": [],
+    "storage": [],
+    "network": [],
+    "status": [],
+    "health": [],
+    "control": [],
+    "other": []
+  }
+}
