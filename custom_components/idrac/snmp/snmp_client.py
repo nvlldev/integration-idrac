@@ -171,8 +171,8 @@ class SNMPClient:
         def _init_snmp():
             self.engine = SnmpEngine()
             self.auth_data = _create_auth_data(self.entry)
-            # Optimize SNMP transport with faster timeouts and no retries for speed
-            self.transport_target = UdpTransportTarget((self.host, self.snmp_port), timeout=2, retries=0)
+            # Configure SNMP transport with reasonable timeouts and retries for reliability
+            self.transport_target = UdpTransportTarget((self.host, self.snmp_port), timeout=5, retries=2)
             self.context_data = ContextData()
         
         await loop.run_in_executor(None, _init_snmp)
@@ -463,8 +463,9 @@ class SNMPClient:
                         "status": PROCESSOR_STATUS.get(processor_status, "unknown"),
                     }
                     
-        except Exception:
+        except Exception as exc:
             # Fallback to individual sensor collection if bulk fails
+            _LOGGER.warning("Bulk SNMP operation failed, falling back to individual collection: %s", exc)
             await self._collect_remaining_sensors(data)
         
         return data
@@ -510,8 +511,8 @@ class SNMPClient:
                         "upper_threshold_non_critical": temp_upper_warning / 10.0 if temp_upper_warning and temp_upper_warning > 100 else temp_upper_warning,
                     }
                 }}
-        except Exception:
-            pass
+        except Exception as exc:
+            _LOGGER.debug("Failed to get sensor data: %s", exc)
         return {}
     
     async def _get_fan_data(self, fan_id: int) -> dict[str, Any]:
@@ -548,8 +549,8 @@ class SNMPClient:
                         "status": FAN_STATUS.get(fan_status, "unknown"),
                     }
                 }}
-        except Exception:
-            pass
+        except Exception as exc:
+            _LOGGER.debug("Failed to get sensor data: %s", exc)
         return {}
         
     async def _get_psu_data(self, psu_id: int) -> dict[str, Any]:
@@ -590,8 +591,8 @@ class SNMPClient:
                         "power_output_watts": psu_current_output,
                     }
                 }}
-        except Exception:
-            pass
+        except Exception as exc:
+            _LOGGER.debug("Failed to get sensor data: %s", exc)
         return {}
     
     async def _collect_remaining_sensors(self, data: dict[str, Any]) -> None:
@@ -638,8 +639,8 @@ class SNMPClient:
                         "status": "ok",
                     }
                 }}
-        except Exception:
-            pass
+        except Exception as exc:
+            _LOGGER.debug("Failed to get sensor data: %s", exc)
         return {}
     
     async def _get_memory_data(self, memory_id: int) -> dict[str, Any]:
@@ -661,8 +662,8 @@ class SNMPClient:
                         "size_kb": memory_size if not isinstance(memory_size, Exception) else None,
                     }
                 }}
-        except Exception:
-            pass
+        except Exception as exc:
+            _LOGGER.debug("Failed to get sensor data: %s", exc)
         return {}
     
     async def _get_power_consumption_data(self) -> dict[str, Any]:
@@ -679,8 +680,8 @@ class SNMPClient:
                     "consumed_watts": power_current,
                     "max_consumed_watts": power_peak if not isinstance(power_peak, Exception) else None,
                 }}
-        except Exception:
-            pass
+        except Exception as exc:
+            _LOGGER.debug("Failed to get sensor data: %s", exc)
         return {}
 
     async def get_value(self, oid: str) -> int | None:
@@ -705,7 +706,7 @@ class SNMPClient:
                 results = {}
                 sync_engine = SnmpEngine()
                 sync_auth = _create_auth_data(self.entry)
-                sync_target = UdpTransportTarget((self.host, self.snmp_port), timeout=1, retries=0)
+                sync_target = UdpTransportTarget((self.host, self.snmp_port), timeout=3, retries=1)
                 sync_context = ContextData()
                 
                 for oid in oids:
@@ -721,11 +722,12 @@ class SNMPClient:
                                         results[oid] = int(val)
                                     except (ValueError, TypeError):
                                         pass
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        _LOGGER.debug("Failed to get SNMP value for OID %s: %s", oid, exc)
                         
                 return results
-            except Exception:
+            except Exception as exc:
+                _LOGGER.debug("Failed to execute bulk SNMP operation: %s", exc)
                 return {}
         
         return await loop.run_in_executor(None, _sync_bulk_get)
@@ -742,7 +744,7 @@ class SNMPClient:
                 results = {}
                 sync_engine = SnmpEngine()
                 sync_auth = _create_auth_data(self.entry)
-                sync_target = UdpTransportTarget((self.host, self.snmp_port), timeout=1, retries=0)
+                sync_target = UdpTransportTarget((self.host, self.snmp_port), timeout=3, retries=1)
                 sync_context = ContextData()
                 
                 for oid in oids:
@@ -755,11 +757,12 @@ class SNMPClient:
                             for name, val in var_binds:
                                 if val is not None and str(val) != "No Such Object currently exists at this OID":
                                     results[oid] = str(val).strip()
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        _LOGGER.debug("Failed to get SNMP value for OID %s: %s", oid, exc)
                         
                 return results
-            except Exception:
+            except Exception as exc:
+                _LOGGER.debug("Failed to execute bulk SNMP operation: %s", exc)
                 return {}
         
         return await loop.run_in_executor(None, _sync_bulk_get)

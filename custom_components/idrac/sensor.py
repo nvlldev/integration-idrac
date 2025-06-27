@@ -38,6 +38,12 @@ async def async_setup_entry(
     coordinator: IdracDataUpdateCoordinator = hass.data[DOMAIN][config_entry.entry_id]
     
     entities: list[IdracSensor] = []
+    
+    # Log available data categories for debugging
+    if coordinator.data:
+        _LOGGER.debug("Available sensor data categories: %s", list(coordinator.data.keys()))
+    else:
+        _LOGGER.warning("No sensor data available from coordinator")
 
     # Add power consumption sensor
     if coordinator.data and "power_consumption" in coordinator.data:
@@ -45,11 +51,15 @@ async def async_setup_entry(
 
     # Add temperature sensors
     if coordinator.data and "temperatures" in coordinator.data:
+        temp_count = len(coordinator.data["temperatures"])
+        _LOGGER.debug("Adding %d temperature sensors", temp_count)
         for temp_id, temp_data in coordinator.data["temperatures"].items():
             entities.append(IdracTemperatureSensor(coordinator, config_entry, temp_id, temp_data))
 
     # Add fan sensors  
     if coordinator.data and "fans" in coordinator.data:
+        fan_count = len(coordinator.data["fans"])
+        _LOGGER.debug("Adding %d fan sensors", fan_count)
         for fan_id, fan_data in coordinator.data["fans"].items():
             entities.append(IdracFanSensor(coordinator, config_entry, fan_id, fan_data))
 
@@ -109,6 +119,7 @@ async def async_setup_entry(
     if coordinator.connection_type == "redfish" and coordinator.data and "system_health" in coordinator.data:
         entities.append(IdracSystemHealthSensor(coordinator, config_entry))
 
+    _LOGGER.debug("Created %d sensor entities", len(entities))
     async_add_entities(entities)
 
 
@@ -149,7 +160,42 @@ class IdracSensor(CoordinatorEntity[IdracDataUpdateCoordinator], SensorEntity):
     @property
     def available(self) -> bool:
         """Return if entity is available."""
-        return self.coordinator.last_update_success and self.coordinator.data is not None
+        # Individual sensor availability - check if this specific sensor has data
+        if not self.coordinator.data:
+            return False
+        
+        # For sensors with specific IDs, check if their data exists
+        if hasattr(self, 'temp_id'):
+            return self.coordinator.data.get("temperatures", {}).get(self.temp_id) is not None
+        elif hasattr(self, 'fan_id'):
+            return self.coordinator.data.get("fans", {}).get(self.fan_id) is not None
+        elif hasattr(self, 'voltage_id'):
+            return self.coordinator.data.get("voltages", {}).get(self.voltage_id) is not None
+        elif hasattr(self, 'memory_id'):
+            return self.coordinator.data.get("memory", {}).get(self.memory_id) is not None
+        elif hasattr(self, 'psu_id'):
+            return self.coordinator.data.get("power_supplies", {}).get(self.psu_id) is not None
+        elif hasattr(self, 'intrusion_id'):
+            return self.coordinator.data.get("intrusion_detection", {}).get(self.intrusion_id) is not None
+        elif hasattr(self, 'battery_id'):
+            return self.coordinator.data.get("battery", {}).get(self.battery_id) is not None
+        elif hasattr(self, 'processor_id'):
+            return self.coordinator.data.get("processors", {}).get(self.processor_id) is not None
+        
+        # For general sensors, check if their category exists and has data
+        if self.sensor_type == "power_consumption":
+            return "power_consumption" in self.coordinator.data and self.coordinator.data["power_consumption"]
+        elif self.sensor_type in ["memory_total", "processor_count", "power_state"]:
+            return "system_info" in self.coordinator.data and self.coordinator.data["system_info"]
+        elif self.sensor_type == "chassis_intrusion":
+            return "chassis_intrusion" in self.coordinator.data
+        elif self.sensor_type == "power_redundancy":
+            return "power_redundancy" in self.coordinator.data
+        elif self.sensor_type == "system_health":
+            return "system_health" in self.coordinator.data
+        
+        # Default: available if coordinator has any data
+        return self.coordinator.data is not None
 
 
 class IdracPowerConsumptionSensor(IdracSensor):
