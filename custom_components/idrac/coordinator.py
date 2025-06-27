@@ -263,7 +263,9 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
                 raise UpdateFailed(f"Error communicating with iDRAC {self._server_id}: {exc}") from exc
 
     async def _async_update_redfish_data(self) -> dict[str, Any]:
-        """Update data via Redfish API."""
+        """Update data via Redfish API with concurrent requests for better performance."""
+        import asyncio
+        
         data = {
             "temperatures": {},
             "fans": {},
@@ -276,8 +278,47 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
             "system_health": {},
         }
 
-        # Get system information
-        system_data = await self.client.get_system_info()
+        # Fetch all data concurrently to improve performance
+        try:
+            system_task = self.client.get_system_info()
+            thermal_task = self.client.get_thermal_info()
+            power_task = self.client.get_power_info()
+            manager_task = self.client.get_manager_info()
+            chassis_task = self.client.get_chassis_info()
+            
+            # Wait for all main API calls to complete concurrently
+            system_data, thermal_data, power_data, manager_data, chassis_data = await asyncio.gather(
+                system_task, thermal_task, power_task, manager_task, chassis_task,
+                return_exceptions=True
+            )
+            
+            # Handle any exceptions from the concurrent calls
+            if isinstance(system_data, Exception):
+                _LOGGER.warning("Failed to get system info: %s", system_data)
+                system_data = None
+            if isinstance(thermal_data, Exception):
+                _LOGGER.warning("Failed to get thermal info: %s", thermal_data)
+                thermal_data = None
+            if isinstance(power_data, Exception):
+                _LOGGER.warning("Failed to get power info: %s", power_data)
+                power_data = None
+            if isinstance(manager_data, Exception):
+                _LOGGER.warning("Failed to get manager info: %s", manager_data)
+                manager_data = None
+            if isinstance(chassis_data, Exception):
+                _LOGGER.warning("Failed to get chassis info: %s", chassis_data)
+                chassis_data = None
+                
+        except Exception as exc:
+            _LOGGER.error("Error during concurrent Redfish API calls: %s", exc)
+            # Fallback to sequential calls if concurrent fails
+            system_data = await self.client.get_system_info()
+            thermal_data = await self.client.get_thermal_info()
+            power_data = await self.client.get_power_info()
+            manager_data = await self.client.get_manager_info()
+            chassis_data = await self.client.get_chassis_info()
+
+        # Process system information
         if system_data:
             data["system_info"] = {
                 "power_state": system_data.get("PowerState"),
@@ -295,8 +336,7 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
             # Store LED state separately for easy access
             data["indicator_led_state"] = system_data.get("IndicatorLED")
 
-        # Get thermal information
-        thermal_data = await self.client.get_thermal_info()
+        # Process thermal information (already fetched concurrently)
         if thermal_data:
             # Process temperatures
             temperatures = thermal_data.get("Temperatures", [])
@@ -323,8 +363,7 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
                         "status": fan.get("Status", {}).get("Health"),
                     }
 
-        # Get power information
-        power_data = await self.client.get_power_info()
+        # Process power information (already fetched concurrently)
         if power_data:
             # Process power consumption
             power_control = power_data.get("PowerControl", [])
@@ -371,8 +410,7 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
                         "lower_threshold_non_critical": voltage.get("LowerThresholdNonCritical"),
                     }
 
-        # Get manager information
-        manager_data = await self.client.get_manager_info()
+        # Process manager information (already fetched concurrently)
         if manager_data:
             data["manager_info"] = {
                 "name": manager_data.get("Name"),
@@ -383,8 +421,7 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
                 "datetime": manager_data.get("DateTime"),
             }
 
-        # Get chassis information (includes intrusion detection)
-        chassis_data = await self.client.get_chassis_info()
+        # Process chassis information (already fetched concurrently)
         if chassis_data:
             # Extract intrusion detection status
             physical_security = chassis_data.get("PhysicalSecurity", {})
@@ -408,7 +445,7 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
                 "re_arm": physical_security.get("IntrusionSensorReArm"),
             }
 
-        # Try to get power subsystem for redundancy info
+        # Try to get power subsystem for redundancy info (separate async call)
         try:
             power_subsystem_data = await self.client.get_power_subsystem()
             if power_subsystem_data:

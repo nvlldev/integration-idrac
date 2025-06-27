@@ -56,7 +56,7 @@ class RedfishClient:
                     "Content-Type": "application/json",
                     "Accept": "application/json",
                 },
-                timeout=aiohttp.ClientTimeout(total=30),
+                timeout=aiohttp.ClientTimeout(total=15, connect=5),
             )
 
         return self._session
@@ -74,7 +74,7 @@ class RedfishClient:
 
         try:
             session = await self._get_session()
-            async with session.get(url, auth=auth, timeout=aiohttp.ClientTimeout(total=30)) as response:
+            async with session.get(url, auth=auth, timeout=aiohttp.ClientTimeout(total=10)) as response:
                 if response.status == 200:
                     return await response.json()
                 elif response.status == 401:
@@ -83,7 +83,7 @@ class RedfishClient:
                     _LOGGER.warning("GET %s failed: %s %s", path, response.status, response.reason)
                     return None
         except asyncio.TimeoutError:
-            _LOGGER.warning("GET %s timed out after 30 seconds", path)
+            _LOGGER.warning("GET %s timed out after 10 seconds", path)
             return None
         except Exception as e:
             _LOGGER.error("GET %s error: %s", path, e)
@@ -97,7 +97,7 @@ class RedfishClient:
         try:
             session = await self._get_session()
             async with session.post(
-                url, auth=auth, json=data, timeout=aiohttp.ClientTimeout(total=30)
+                url, auth=auth, json=data, timeout=aiohttp.ClientTimeout(total=10)
             ) as response:
                 if response.status in [200, 202, 204]:
                     if response.content_length and response.content_length > 0:
@@ -160,7 +160,7 @@ class RedfishClient:
         try:
             session = await self._get_session()
             async with session.patch(
-                url, auth=auth, json=data, timeout=aiohttp.ClientTimeout(total=30)
+                url, auth=auth, json=data, timeout=aiohttp.ClientTimeout(total=10)
             ) as response:
                 if response.status in [200, 202, 204]:
                     if response.content_length and response.content_length > 0:

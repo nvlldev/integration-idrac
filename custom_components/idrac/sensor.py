@@ -84,6 +84,15 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
+def _get_device_name_prefix(coordinator: IdracDataUpdateCoordinator) -> str:
+    """Get device name prefix for entity naming."""
+    device_info = coordinator.device_info
+    if device_info and "model" in device_info and device_info["model"] != "iDRAC":
+        return f"Dell {device_info['model']} ({coordinator.host})"
+    else:
+        return f"Dell iDRAC ({coordinator.host})"
+
+
 class IdracSensor(CoordinatorEntity[IdracDataUpdateCoordinator], SensorEntity):
     """Common base class for Dell iDRAC sensors."""
 
@@ -98,7 +107,10 @@ class IdracSensor(CoordinatorEntity[IdracDataUpdateCoordinator], SensorEntity):
         super().__init__(coordinator)
         self.config_entry = config_entry
         self.sensor_type = sensor_type
-        self._attr_name = name
+        
+        # Include device prefix in name for proper entity_id generation
+        device_prefix = _get_device_name_prefix(coordinator)
+        self._attr_name = f"{device_prefix} {name}"
         self._attr_unique_id = f"{config_entry.entry_id}_{sensor_type}"
 
     @property
