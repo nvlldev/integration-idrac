@@ -273,49 +273,48 @@ class SNMPClient:
                 all_string_oids.append(IDRAC_OIDS["processor_location"].format(index=processor_id))
                 
             # Get ALL data in just two bulk operations
-            try:
-                async def _empty_dict():
-                    return {}
-                    
-                values, strings = await asyncio.gather(
-                    self._bulk_get_values(all_value_oids) if all_value_oids else _empty_dict(),
-                    self._bulk_get_strings(all_string_oids) if all_string_oids else _empty_dict(),
-                    return_exceptions=True
-                )
+            async def _empty_dict():
+                return {}
                 
-                if isinstance(values, Exception):
-                    _LOGGER.warning("Bulk SNMP values collection failed: %s", values)
-                    values = {}
-                if isinstance(strings, Exception):
-                    _LOGGER.warning("Bulk SNMP strings collection failed: %s", strings)
-                    strings = {}
-                    
-                bulk_success = len(values) > 0 or len(strings) > 0
-                if bulk_success:
-                    _LOGGER.debug("Bulk SNMP collection successful: %d values, %d strings", len(values), len(strings))
-                else:
-                    _LOGGER.warning("Bulk SNMP collection returned no data - network or authentication issue?")
-                    
-                # Create data processor with discovered sensor indices
-                discovered_sensors = {
-                    'cpus': self.discovered_cpus,
-                    'fans': self.discovered_fans,
-                    'psus': self.discovered_psus,
-                    'voltage_probes': self.discovered_voltage_probes,
-                    'memory': self.discovered_memory,
-                    'virtual_disks': self.discovered_virtual_disks,
-                    'physical_disks': self.discovered_physical_disks,
-                    'storage_controllers': self.discovered_storage_controllers,
-                    'detailed_memory': self.discovered_detailed_memory,
-                    'system_voltages': self.discovered_system_voltages,
-                    'power_consumption': self.discovered_power_consumption,
-                    'intrusion': self.discovered_intrusion,
-                    'battery': self.discovered_battery,
-                    'processors': self.discovered_processors,
-                }
+            values, strings = await asyncio.gather(
+                self._bulk_get_values(all_value_oids) if all_value_oids else _empty_dict(),
+                self._bulk_get_strings(all_string_oids) if all_string_oids else _empty_dict(),
+                return_exceptions=True
+            )
+            
+            if isinstance(values, Exception):
+                _LOGGER.warning("Bulk SNMP values collection failed: %s", values)
+                values = {}
+            if isinstance(strings, Exception):
+                _LOGGER.warning("Bulk SNMP strings collection failed: %s", strings)
+                strings = {}
                 
-                processor = SNMPDataProcessor(discovered_sensors)
-                data = processor.process_snmp_data(values, strings)
+            bulk_success = len(values) > 0 or len(strings) > 0
+            if bulk_success:
+                _LOGGER.debug("Bulk SNMP collection successful: %d values, %d strings", len(values), len(strings))
+            else:
+                _LOGGER.warning("Bulk SNMP collection returned no data - network or authentication issue?")
+                
+            # Create data processor with discovered sensor indices
+            discovered_sensors = {
+                'cpus': self.discovered_cpus,
+                'fans': self.discovered_fans,
+                'psus': self.discovered_psus,
+                'voltage_probes': self.discovered_voltage_probes,
+                'memory': self.discovered_memory,
+                'virtual_disks': self.discovered_virtual_disks,
+                'physical_disks': self.discovered_physical_disks,
+                'storage_controllers': self.discovered_storage_controllers,
+                'detailed_memory': self.discovered_detailed_memory,
+                'system_voltages': self.discovered_system_voltages,
+                'power_consumption': self.discovered_power_consumption,
+                'intrusion': self.discovered_intrusion,
+                'battery': self.discovered_battery,
+                'processors': self.discovered_processors,
+            }
+            
+            processor = SNMPDataProcessor(discovered_sensors)
+            data = processor.process_snmp_data(values, strings)
                     
         except Exception as exc:
             _LOGGER.error("Critical SNMP error during bulk data collection: %s", exc)
