@@ -220,7 +220,7 @@ class SNMPClient:
                 _LOGGER.debug("Creating UdpTransportTarget with validated parameters: ('%s', %d)", self.host, self.port)
                 
                 try:
-                    self.transport_target = UdpTransportTarget((self.host, self.port), timeout=5.0, retries=1)
+                    self.transport_target = UdpTransportTarget((self.host, self.port), timeout=3.0, retries=2)
                     _LOGGER.debug("Transport target created successfully for %s:%d", self.host, self.port)
                 except Exception as transport_exc:
                     _LOGGER.error("Failed to create UdpTransportTarget: %s", transport_exc, exc_info=True)
@@ -467,29 +467,37 @@ class SNMPClient:
                 ])
                 all_string_oids.append(IDRAC_OIDS["processor_location"].format(index=processor_id))
                 
-            # Get ALL data in sequential operations to avoid SNMP concurrency issues
+            # Get ALL data using parallel bulk operations for improved performance
             _LOGGER.debug("Collecting %d value OIDs and %d string OIDs", len(all_value_oids), len(all_string_oids))
             
-            try:
-                if all_value_oids:
-                    _LOGGER.debug("Starting bulk value collection")
-                    values = await self._bulk_get_values(all_value_oids)
-                    _LOGGER.debug("Bulk value collection completed: %d results", len(values))
-                else:
-                    values = {}
-            except Exception as exc:
-                _LOGGER.warning("Bulk SNMP values collection failed: %s", exc)
-                values = {}
+            # Run both bulk operations in parallel to improve performance
+            tasks = []
+            if all_value_oids:
+                tasks.append(self._bulk_get_values(all_value_oids))
+            else:
+                tasks.append(asyncio.create_task(asyncio.sleep(0, result={})))
+                
+            if all_string_oids:
+                tasks.append(self._bulk_get_strings(all_string_oids))
+            else:
+                tasks.append(asyncio.create_task(asyncio.sleep(0, result={})))
             
             try:
-                if all_string_oids:
-                    _LOGGER.debug("Starting bulk string collection")
-                    strings = await self._bulk_get_strings(all_string_oids)
-                    _LOGGER.debug("Bulk string collection completed: %d results", len(strings))
-                else:
+                _LOGGER.debug("Starting parallel bulk collection")
+                values, strings = await asyncio.gather(*tasks, return_exceptions=True)
+                
+                # Handle any exceptions from parallel execution
+                if isinstance(values, Exception):
+                    _LOGGER.warning("Bulk SNMP values collection failed: %s", values)
+                    values = {}
+                if isinstance(strings, Exception):
+                    _LOGGER.warning("Bulk SNMP strings collection failed: %s", strings)
                     strings = {}
+                    
+                _LOGGER.debug("Parallel bulk collection completed: %d values, %d strings", len(values), len(strings))
             except Exception as exc:
-                _LOGGER.warning("Bulk SNMP strings collection failed: %s", exc)
+                _LOGGER.warning("Parallel bulk SNMP collection failed: %s", exc)
+                values = {}
                 strings = {}
                 
             bulk_success = len(values) > 0 or len(strings) > 0
@@ -576,119 +584,131 @@ class SNMPClient:
             return None
 
     async def _bulk_get_values(self, oids: list[str]) -> dict[str, int]:
-        """Get multiple SNMP values as integers using individual async calls."""
+        """Get multiple SNMP values as integers using bulk operations."""
         # Don't call _ensure_initialized again if already called
         if self.context_data is None:
             _LOGGER.error("SNMP context_data is None - initialization was not successful")
             return {}
         
+        if not oids:
+            return {}
+            
         results = {}
         
-        for oid in oids:
+        # Process OIDs in batches of 25 for better performance
+        batch_size = 25
+        total_batches = (len(oids) + batch_size - 1) // batch_size
+        _LOGGER.debug("Processing %d value OIDs in %d batches of %d", len(oids), total_batches, batch_size)
+        
+        for batch_num, i in enumerate(range(0, len(oids), batch_size), 1):
+            batch_oids = oids[i:i + batch_size]
+            _LOGGER.debug("Processing value batch %d/%d with %d OIDs", batch_num, total_batches, len(batch_oids))
+            
             try:
-                error_indication, error_status, error_index, var_binds = await getCmd(
-                    self.engine, self.auth_data, self.transport_target, self.context_data, ObjectType(ObjectIdentity(oid))
-                )
+                # Create ObjectType list for batch
+                object_types = []
+                for oid in batch_oids:
+                    try:
+                        object_types.append(ObjectType(ObjectIdentity(oid)))
+                    except Exception as oid_exc:
+                        _LOGGER.debug("Failed to create ObjectType for OID %s: %s", oid, oid_exc)
+                        continue
                 
-                if not error_indication and not error_status:
-                    for name, val in var_binds:
-                        if val is not None and str(val) != "No Such Object currently exists at this OID":
-                            try:
-                                results[oid] = int(val)
-                            except (ValueError, TypeError):
-                                pass  # Skip non-numeric values
+                if not object_types:
+                    continue
+                
+                # Execute batch SNMP GET with timing
+                batch_start = __import__('time').time()
+                error_indication, error_status, error_index, var_binds = await getCmd(
+                    self.engine, self.auth_data, self.transport_target, self.context_data, *object_types
+                )
+                batch_elapsed = __import__('time').time() - batch_start
+                _LOGGER.debug("Value batch %d/%d completed in %.2fs", batch_num, total_batches, batch_elapsed)
+                
+                if error_indication:
+                    _LOGGER.debug("SNMP batch error indication: %s", error_indication)
+                    continue
+                    
+                if error_status:
+                    _LOGGER.debug("SNMP batch error status: %s at index %s", error_status, error_index)
+                    continue
+                
+                # Process results
+                for name, val in var_binds:
+                    oid_str = str(name)
+                    if val is not None and str(val) != "No Such Object currently exists at this OID":
+                        try:
+                            results[oid_str] = int(val)
+                        except (ValueError, TypeError):
+                            pass  # Skip non-numeric values
+                            
             except Exception as exc:
-                _LOGGER.debug("Failed to get SNMP value for OID %s: %s", oid, exc)
+                _LOGGER.debug("Failed to get SNMP batch values: %s", exc)
                 
         return results
     
     async def _bulk_get_strings(self, oids: list[str]) -> dict[str, str]:
-        """Get multiple SNMP values as strings using individual async calls."""
+        """Get multiple SNMP values as strings using bulk operations."""
         # Don't call _ensure_initialized again if already called
         if self.context_data is None:
             _LOGGER.error("SNMP context_data is None - initialization was not successful")
             return {}
         
+        if not oids:
+            return {}
+            
         results = {}
         
-        for oid in oids:
+        # Process OIDs in batches of 25 for better performance
+        batch_size = 25
+        total_batches = (len(oids) + batch_size - 1) // batch_size
+        _LOGGER.debug("Processing %d string OIDs in %d batches of %d", len(oids), total_batches, batch_size)
+        
+        for batch_num, i in enumerate(range(0, len(oids), batch_size), 1):
+            batch_oids = oids[i:i + batch_size]
+            _LOGGER.debug("Processing string batch %d/%d with %d OIDs", batch_num, total_batches, len(batch_oids))
+            
             try:
-                _LOGGER.debug("Executing SNMP GET for OID: %s", oid)
-                
-                # Create ObjectIdentity with explicit error handling
-                try:
-                    # Try different ways to create ObjectIdentity - some pysnmp versions are picky
-                    if oid.startswith('.'):
-                        # Remove leading dot if present
-                        clean_oid = oid[1:]
-                    else:
-                        clean_oid = oid
-                        
-                    # Try to create ObjectIdentity with the cleaned OID
-                    object_identity = ObjectIdentity(clean_oid)
-                    object_type = ObjectType(object_identity)
-                    _LOGGER.debug("Created ObjectType for OID: %s", clean_oid)
-                except Exception as oid_exc:
-                    _LOGGER.error("Failed to create ObjectIdentity for OID %s: %s", oid, oid_exc, exc_info=True)
-                    # Try alternative format
+                # Create ObjectType list for batch
+                object_types = []
+                for oid in batch_oids:
                     try:
-                        # Split the OID and create ObjectIdentity with tuple
-                        oid_parts = [int(x) for x in oid.strip('.').split('.')]
-                        object_identity = ObjectIdentity(tuple(oid_parts))
-                        object_type = ObjectType(object_identity)
-                        _LOGGER.debug("Created ObjectType with tuple format for OID: %s", oid)
-                    except Exception as alt_exc:
-                        _LOGGER.error("Alternative ObjectIdentity creation also failed for OID %s: %s", oid, alt_exc)
+                        object_types.append(ObjectType(ObjectIdentity(oid)))
+                    except Exception as oid_exc:
+                        _LOGGER.debug("Failed to create ObjectType for OID %s: %s", oid, oid_exc)
                         continue
                 
-                # Verify all SNMP objects are properly initialized
-                if self.context_data is None:
-                    _LOGGER.error("SNMP context_data is None - initialization failed")
-                    continue
-                if self.engine is None:
-                    _LOGGER.error("SNMP engine is None - initialization failed")  
-                    continue
-                if self.auth_data is None:
-                    _LOGGER.error("SNMP auth_data is None - initialization failed")
-                    continue
-                if self.transport_target is None:
-                    _LOGGER.error("SNMP transport_target is None - initialization failed")
+                if not object_types:
                     continue
                 
-                # Execute SNMP command with detailed error handling  
-                try:
-                    error_indication, error_status, error_index, var_binds = await getCmd(
-                        self.engine, self.auth_data, self.transport_target, self.context_data, object_type
-                    )
-                except Exception as cmd_exc:
-                    _LOGGER.error("SNMP getCmd failed for OID %s: %s", oid, cmd_exc, exc_info=True)
-                    continue
+                # Execute batch SNMP GET with timing
+                batch_start = __import__('time').time()
+                error_indication, error_status, error_index, var_binds = await getCmd(
+                    self.engine, self.auth_data, self.transport_target, self.context_data, *object_types
+                )
+                batch_elapsed = __import__('time').time() - batch_start
+                _LOGGER.debug("String batch %d/%d completed in %.2fs", batch_num, total_batches, batch_elapsed)
                 
                 if error_indication:
-                    _LOGGER.debug("SNMP error indication for OID %s: %s", oid, error_indication)
+                    _LOGGER.debug("SNMP batch error indication: %s", error_indication)
                     continue
                     
                 if error_status:
-                    _LOGGER.debug("SNMP error status for OID %s: %s at index %s", oid, error_status, error_index)
+                    _LOGGER.debug("SNMP batch error status: %s at index %s", error_status, error_index)
                     continue
                 
-                _LOGGER.debug("SNMP response for OID %s: %d var_binds", oid, len(var_binds))
-                
+                # Process results
                 for name, val in var_binds:
-                    _LOGGER.debug("Processing var_bind: name=%s, value=%s (type: %s)", name, repr(val), type(val).__name__)
-                    
+                    oid_str = str(name)
                     if val is not None and str(val) != "No Such Object currently exists at this OID":
                         try:
-                            # Handle different data types that pysnmp might return
                             string_val = str(val).strip()
                             if string_val:  # Only add non-empty strings
-                                results[oid] = string_val
-                                _LOGGER.debug("Successfully retrieved string for OID %s: %s", oid, string_val)
+                                results[oid_str] = string_val
                         except Exception as val_exc:
-                            _LOGGER.error("Failed to convert SNMP value to string for OID %s (value type: %s, value: %s): %s", 
-                                          oid, type(val).__name__, repr(val), val_exc, exc_info=True)
+                            _LOGGER.debug("Failed to convert SNMP value to string for OID %s: %s", oid_str, val_exc)
                             
             except Exception as exc:
-                _LOGGER.error("Failed to get SNMP value for OID %s: %s", oid, exc, exc_info=True)
+                _LOGGER.debug("Failed to get SNMP batch strings: %s", exc)
                 
         return results
