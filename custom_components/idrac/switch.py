@@ -23,7 +23,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import CONF_COMMUNITY, DOMAIN, IDRAC_OIDS
+from .const import CONF_COMMUNITY, CONF_CONNECTION_TYPE, DOMAIN, IDRAC_OIDS
 from .coordinator import IdracDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -86,6 +86,10 @@ class IdracSwitch(CoordinatorEntity, SwitchEntity):
 
     async def _async_snmp_set(self, oid: str, value: int) -> bool:
         """Send SNMP SET command using coordinator's SNMP connection."""
+        if self.coordinator.connection_type != "snmp":
+            _LOGGER.error("SNMP commands only available when using SNMP connection")
+            return False
+            
         try:
             error_indication, error_status, error_index, var_binds = await setCmd(
                 self.coordinator.engine,
@@ -175,7 +179,13 @@ class IdracIdentifyLEDSwitch(IdracSwitch):
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn on the identify LED."""
-        success = await self._async_snmp_set(IDRAC_OIDS["identify_led"], 1)
+        if self.coordinator.connection_type == "redfish":
+            success = await self.coordinator.async_set_indicator_led("Lit")
+        else:
+            # LED control via SNMP is not typically available in Dell iDRAC SNMP MIB
+            _LOGGER.warning("LED control not available via SNMP")
+            success = False
+            
         if success:
             self._led_state = True
             self.async_write_ha_state()
@@ -184,7 +194,13 @@ class IdracIdentifyLEDSwitch(IdracSwitch):
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn off the identify LED."""
-        success = await self._async_snmp_set(IDRAC_OIDS["identify_led"], 0)
+        if self.coordinator.connection_type == "redfish":
+            success = await self.coordinator.async_set_indicator_led("Off")
+        else:
+            # LED control via SNMP is not typically available in Dell iDRAC SNMP MIB
+            _LOGGER.warning("LED control not available via SNMP")
+            success = False
+            
         if success:
             self._led_state = False
             self.async_write_ha_state()
@@ -201,4 +217,5 @@ class IdracIdentifyLEDSwitch(IdracSwitch):
     @property  
     def available(self) -> bool:
         """Return if entity is available."""
-        return True  # Always available since it's a control switch
+        # Only available via Redfish for LED control
+        return self.coordinator.connection_type == "redfish" and self.coordinator.last_update_success

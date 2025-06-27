@@ -22,7 +22,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import CONF_COMMUNITY, DOMAIN, IDRAC_OIDS
+from .const import CONF_COMMUNITY, CONF_CONNECTION_TYPE, DOMAIN, IDRAC_OIDS
 from .coordinator import IdracDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -88,6 +88,10 @@ class IdracButton(CoordinatorEntity, ButtonEntity):
 
     async def _async_snmp_set(self, oid: str, value: int) -> bool:
         """Send SNMP SET command using coordinator's SNMP connection."""
+        if self.coordinator.connection_type != "snmp":
+            _LOGGER.error("SNMP commands only available when using SNMP connection")
+            return False
+            
         try:
             error_indication, error_status, error_index, var_binds = await setCmd(
                 self.coordinator.engine,
@@ -163,13 +167,12 @@ class IdracPowerOnButton(IdracButton):
 
     async def async_press(self) -> None:
         """Power on the system."""
-        # Double-check power state before executing
-        power_state = self._get_current_power_state()
-        if power_state == 1:  # Already on
-            _LOGGER.warning("Cannot power on %s - server is already powered on", self._host)
-            return
+        if self.coordinator.connection_type == "redfish":
+            success = await self.coordinator.async_reset_system("On")
+        else:
+            # SNMP power control
+            success = await self._async_snmp_set(IDRAC_OIDS["power_button"], 1)
         
-        success = await self._async_snmp_set(IDRAC_OIDS["power_control"], 1)
         if success:
             # Request coordinator update to reflect the change
             await self.coordinator.async_request_refresh()
@@ -207,13 +210,12 @@ class IdracPowerOffButton(IdracButton):
 
     async def async_press(self) -> None:
         """Power off the system."""
-        # Double-check power state before executing
-        power_state = self._get_current_power_state()
-        if power_state == 2:  # Already off
-            _LOGGER.warning("Cannot power off %s - server is already powered off", self._host)
-            return
+        if self.coordinator.connection_type == "redfish":
+            success = await self.coordinator.async_reset_system("ForceOff")
+        else:
+            # SNMP power control
+            success = await self._async_snmp_set(IDRAC_OIDS["power_button"], 2)
         
-        success = await self._async_snmp_set(IDRAC_OIDS["power_control"], 2)
         if success:
             # Request coordinator update to reflect the change
             await self.coordinator.async_request_refresh()
@@ -251,13 +253,12 @@ class IdracRebootButton(IdracButton):
 
     async def async_press(self) -> None:
         """Reboot the system."""
-        # Double-check power state before executing
-        power_state = self._get_current_power_state()
-        if power_state == 2:  # Server is off
-            _LOGGER.warning("Cannot reboot %s - server is powered off", self._host)
-            return
+        if self.coordinator.connection_type == "redfish":
+            success = await self.coordinator.async_reset_system("GracefulRestart")
+        else:
+            # SNMP reset control
+            success = await self._async_snmp_set(IDRAC_OIDS["reset_button"], 1)
         
-        success = await self._async_snmp_set(IDRAC_OIDS["power_control"], 3)
         if success:
             # Request coordinator update to reflect the change
             await self.coordinator.async_request_refresh()
@@ -281,4 +282,8 @@ class IdracSafeModeButton(IdracButton):
 
     async def async_press(self) -> None:
         """Enter safe mode."""
-        await self._async_snmp_set(IDRAC_OIDS["safe_mode"], 1)
+        if self.coordinator.connection_type == "redfish":
+            _LOGGER.warning("Safe mode not available via Redfish API")
+        else:
+            # Safe mode only available via SNMP
+            await self._async_snmp_set(IDRAC_OIDS["reset_button"], 2)
