@@ -14,6 +14,7 @@ from pysnmp.hlapi.asyncio import (
     setCmd,
     getCmd,
 )
+from pysnmp.proto.rfc1902 import Integer
 
 from homeassistant.components.switch import SwitchEntity, SwitchDeviceClass
 from homeassistant.config_entries import ConfigEntry
@@ -97,7 +98,7 @@ class IdracSwitch(CoordinatorEntity, SwitchEntity):
                 community_data,
                 transport_target,
                 context_data,
-                ObjectType(ObjectIdentity(oid), value),
+                ObjectType(ObjectIdentity(oid), Integer(value)),
             )
 
             if error_indication:
