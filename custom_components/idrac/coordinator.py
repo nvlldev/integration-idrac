@@ -59,21 +59,13 @@ def _create_auth_data(entry: ConfigEntry) -> CommunityData | UsmUserData:
     
     if snmp_version == "v3":
         username = entry.data.get(CONF_USERNAME, "")
-        auth_protocol = entry.data.get(CONF_AUTH_PROTOCOL, "none")
         auth_password = entry.data.get(CONF_AUTH_PASSWORD, "")
-        priv_protocol = entry.data.get(CONF_PRIV_PROTOCOL, "none")
         priv_password = entry.data.get(CONF_PRIV_PASSWORD, "")
-        
-        # Use string protocol identifiers that pysnmp understands
-        auth_proto = auth_protocol if auth_protocol != "none" else None
-        priv_proto = priv_protocol if priv_protocol != "none" else None
         
         return UsmUserData(
             userName=username,
-            authKey=auth_password if auth_proto else None,
-            privKey=priv_password if priv_proto else None,
-            authProtocol=auth_proto,
-            privProtocol=priv_proto,
+            authKey=auth_password if auth_password else None,
+            privKey=priv_password if priv_password else None,
         )
     else:
         # SNMP v2c

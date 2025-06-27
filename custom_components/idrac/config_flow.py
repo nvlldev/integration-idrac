@@ -63,21 +63,13 @@ def _create_auth_data(data: dict[str, Any]) -> CommunityData | UsmUserData:
     
     if snmp_version == "v3":
         username = data.get(CONF_USERNAME, "")
-        auth_protocol = data.get(CONF_AUTH_PROTOCOL, "none")
         auth_password = data.get(CONF_AUTH_PASSWORD, "")
-        priv_protocol = data.get(CONF_PRIV_PROTOCOL, "none")
         priv_password = data.get(CONF_PRIV_PASSWORD, "")
-        
-        # Use string protocol identifiers that pysnmp understands
-        auth_proto = auth_protocol if auth_protocol != "none" else None
-        priv_proto = priv_protocol if priv_protocol != "none" else None
         
         return UsmUserData(
             userName=username,
-            authKey=auth_password if auth_proto else None,
-            privKey=priv_password if priv_proto else None,
-            authProtocol=auth_proto,
-            privProtocol=priv_proto,
+            authKey=auth_password if auth_password else None,
+            privKey=priv_password if priv_password else None,
         )
     else:
         # SNMP v2c
@@ -103,9 +95,7 @@ STEP_V2C_SCHEMA = vol.Schema(
 STEP_V3_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_USERNAME): str,
-        vol.Optional(CONF_AUTH_PROTOCOL, default="sha"): vol.In(list(SNMP_AUTH_PROTOCOLS.keys())),
         vol.Optional(CONF_AUTH_PASSWORD): str,
-        vol.Optional(CONF_PRIV_PROTOCOL, default="aes128"): vol.In(list(SNMP_PRIV_PROTOCOLS.keys())),
         vol.Optional(CONF_PRIV_PASSWORD): str,
     }
 )
@@ -579,10 +569,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             # Validate v3 specific requirements
             if not user_input.get(CONF_USERNAME):
                 errors["base"] = "missing_username"
-            elif user_input.get(CONF_AUTH_PROTOCOL) != "none" and not user_input.get(CONF_AUTH_PASSWORD):
-                errors["base"] = "missing_auth_password"
-            elif user_input.get(CONF_PRIV_PROTOCOL) != "none" and not user_input.get(CONF_PRIV_PASSWORD):
-                errors["base"] = "missing_priv_password"
             
             if not errors:
                 # Combine basic data with v3 auth data
