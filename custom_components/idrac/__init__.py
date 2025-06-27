@@ -15,7 +15,12 @@ from .coordinator import IdracDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BINARY_SENSOR, Platform.BUTTON, Platform.SWITCH]
+PLATFORMS: list[Platform] = [
+    Platform.SENSOR,
+    Platform.BINARY_SENSOR,
+    # Platform.SWITCH,    # Disabled - SNMP SET operations blocked by iDRAC firmware
+    # Platform.BUTTON,    # Disabled - SNMP SET operations blocked by iDRAC firmware
+]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
