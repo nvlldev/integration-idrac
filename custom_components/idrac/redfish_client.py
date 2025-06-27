@@ -7,7 +7,6 @@ import ssl
 from typing import Any, Dict, Optional
 
 import aiohttp
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -41,9 +40,9 @@ class RedfishClient:
     async def _get_session(self) -> aiohttp.ClientSession:
         """Get or create HTTP session."""
         if self._session is None:
-            # Use Home Assistant's session manager for better integration
+            # Create our own session since we need custom SSL settings
             if self.verify_ssl:
-                connector = None
+                connector = aiohttp.TCPConnector()
             else:
                 # Disable SSL verification for older iDRACs
                 ssl_context = ssl.create_default_context()
@@ -51,13 +50,13 @@ class RedfishClient:
                 ssl_context.verify_mode = ssl.CERT_NONE
                 connector = aiohttp.TCPConnector(ssl=ssl_context)
 
-            self._session = async_get_clientsession(
-                self.hass,
+            self._session = aiohttp.ClientSession(
                 connector=connector,
                 headers={
                     "Content-Type": "application/json",
                     "Accept": "application/json",
                 },
+                timeout=aiohttp.ClientTimeout(total=30),
             )
 
         return self._session
