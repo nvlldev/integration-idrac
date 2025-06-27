@@ -13,6 +13,7 @@ from pysnmp.hlapi.asyncio import (
     UdpTransportTarget,
     setCmd,
 )
+from pysnmp.proto.rfc1902 import Integer as SnmpInteger
 
 from homeassistant.components.button import ButtonEntity, ButtonDeviceClass
 from homeassistant.config_entries import ConfigEntry
@@ -99,7 +100,7 @@ class IdracButton(CoordinatorEntity, ButtonEntity):
                 community_data,
                 transport_target,
                 context_data,
-                ObjectType(ObjectIdentity(oid), value),
+                ObjectType(ObjectIdentity(oid), SnmpInteger(value)),
             )
 
             if error_indication:
