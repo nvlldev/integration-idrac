@@ -16,7 +16,8 @@ from pysnmp.hlapi.asyncio import (
     getCmd,
     nextCmd,
 )
-from pysnmp.proto import rfc1902
+from pysnmp.proto.rfc1902 import OctetString
+from pysnmp.proto import rfc1905, rfc3414
 
 from homeassistant import config_entries
 from homeassistant.const import CONF_HOST, CONF_PORT
@@ -72,11 +73,31 @@ def _create_auth_data(data: dict[str, Any]) -> CommunityData | UsmUserData:
         # Map protocol names to pysnmp protocol objects
         auth_proto = None
         if auth_protocol != "none":
-            auth_proto = getattr(rfc1902, SNMP_AUTH_PROTOCOLS[auth_protocol], None)
+            if auth_protocol == "md5":
+                auth_proto = rfc3414.usmHMACMD5AuthProtocol
+            elif auth_protocol == "sha":
+                auth_proto = rfc3414.usmHMACSHAAuthProtocol
+            elif auth_protocol == "sha224":
+                auth_proto = rfc3414.usmHMAC128SHA224AuthProtocol  
+            elif auth_protocol == "sha256":
+                auth_proto = rfc3414.usmHMAC192SHA256AuthProtocol
+            elif auth_protocol == "sha384":
+                auth_proto = rfc3414.usmHMAC256SHA384AuthProtocol
+            elif auth_protocol == "sha512":
+                auth_proto = rfc3414.usmHMAC384SHA512AuthProtocol
         
         priv_proto = None
         if priv_protocol != "none":
-            priv_proto = getattr(rfc1902, SNMP_PRIV_PROTOCOLS[priv_protocol], None)
+            if priv_protocol == "des":
+                priv_proto = rfc3414.usmDESPrivProtocol
+            elif priv_protocol == "3des":
+                priv_proto = rfc3414.usm3DESEDEPrivProtocol
+            elif priv_protocol == "aes128":
+                priv_proto = rfc3414.usmAesCfb128Protocol
+            elif priv_protocol == "aes192":
+                priv_proto = rfc3414.usmAesCfb192Protocol
+            elif priv_protocol == "aes256":
+                priv_proto = rfc3414.usmAesCfb256Protocol
         
         return UsmUserData(
             userName=username,
