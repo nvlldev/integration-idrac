@@ -56,7 +56,7 @@ class RedfishClient:
                     "Content-Type": "application/json",
                     "Accept": "application/json",
                 },
-                timeout=aiohttp.ClientTimeout(total=15, connect=5),
+                timeout=aiohttp.ClientTimeout(total=25, connect=10),
             )
 
         return self._session
@@ -74,7 +74,7 @@ class RedfishClient:
 
         try:
             session = await self._get_session()
-            async with session.get(url, auth=auth, timeout=aiohttp.ClientTimeout(total=10)) as response:
+            async with session.get(url, auth=auth, timeout=aiohttp.ClientTimeout(total=20)) as response:
                 if response.status == 200:
                     return await response.json()
                 elif response.status == 401:
@@ -83,7 +83,7 @@ class RedfishClient:
                     _LOGGER.warning("GET %s failed: %s %s", path, response.status, response.reason)
                     return None
         except asyncio.TimeoutError:
-            _LOGGER.warning("GET %s timed out after 10 seconds", path)
+            _LOGGER.warning("GET %s timed out after 20 seconds", path)
             return None
         except Exception as e:
             _LOGGER.error("GET %s error: %s", path, e)
