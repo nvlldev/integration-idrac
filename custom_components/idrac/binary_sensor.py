@@ -681,8 +681,9 @@ class IdracMemoryHealthBinarySensor(IdracBinarySensor):
         if health_value is not None:
             try:
                 health_int = int(health_value)
-                # Dell iDRAC memory health values: 3=ok, others indicate problems
-                return health_int != 3
+                # Dell iDRAC memory health values: 2=ready/normal, 3=ok are both healthy
+                # Only 1=other, 4=non_critical, 5=critical, 6=non_recoverable are problems
+                return health_int not in [2, 3]
             except (ValueError, TypeError):
                 return None
         return None
@@ -697,10 +698,10 @@ class IdracMemoryHealthBinarySensor(IdracBinarySensor):
         if health_value is not None:
             try:
                 health_int = int(health_value)
-                # Map Dell iDRAC health values to readable strings
+                # Map Dell iDRAC memory health values to readable strings
                 health_map = {
                     1: "other",
-                    2: "unknown", 
+                    2: "ready", 
                     3: "ok",
                     4: "non_critical",
                     5: "critical",

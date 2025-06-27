@@ -264,18 +264,19 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
                 else:
                     _LOGGER.debug("PSU amperage sensor %d returned invalid value: %s", psu_index, amperage_value)
 
-            # Get memory health data - try multiple OID bases if discovery found modules
+            # Get memory health data - memory OIDs require double indexing (.1.X format)
             for memory_index in self.discovered_memory:
-                # Try multiple memory health OID bases to find working ones
+                # Try multiple memory health OID bases with correct double indexing
                 memory_oid_bases = [
-                    IDRAC_OIDS['memory_health_base'],                 # Primary: 1.3.6.1.4.1.674.10892.5.4.1100.50.1.5
-                    "1.3.6.1.4.1.674.10892.5.4.1100.50.1.6",         # Alternative memory health status
-                    "1.3.6.1.4.1.674.10892.5.4.1100.50.1.20",        # Memory device status
-                    "1.3.6.1.4.1.674.10892.5.4.1100.50.1.7",         # Memory operational status
+                    IDRAC_OIDS['memory_health_base'],                 # Primary: 1.3.6.1.4.1.674.10892.5.4.1100.50.1.4.1 (requires .X)
+                    IDRAC_OIDS['memory_health_base_alt'],             # Alternative: 1.3.6.1.4.1.674.10892.5.4.1100.50.1.5.1 (requires .X)  
+                    "1.3.6.1.4.1.674.10892.5.4.1100.50.1.6.1",       # Alternative memory health status (double-indexed)
+                    "1.3.6.1.4.1.674.10892.5.4.1100.50.1.20.1",      # Memory device status (double-indexed)
                 ]
                 
                 health_value = None
                 for oid_base in memory_oid_bases:
+                    # Memory OIDs use double indexing: base_oid.{memory_index} where base already includes .1
                     memory_oid = f"{oid_base}.{memory_index}"
                     health_value = await self._async_get_snmp_value(memory_oid)
                     if health_value is not None:

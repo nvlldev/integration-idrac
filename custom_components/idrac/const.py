@@ -41,9 +41,9 @@ IDRAC_OIDS: Final = {
     # PSU redundancy - tested working OID
     "psu_redundancy": "1.3.6.1.4.1.674.10892.5.4.600.10.1.8.1.1",          # WORKING: returns 3 (redundancy status)
     "psu_redundancy_alt": "1.3.6.1.4.1.674.10892.5.4.600.10.1.9.1.1",      # Original (not working on test system)
-    # Memory health - tested working base (column 4 works, column 5 also works)
-    "memory_health_base": "1.3.6.1.4.1.674.10892.5.4.1100.50.1.4.1",       # WORKING: memoryDeviceStatus (with index)
-    "memory_health_base_alt": "1.3.6.1.4.1.674.10892.5.4.1100.50.1.5.1",   # WORKING: alternative status column
+    # Memory health - requires double indexing (.1.X format)  
+    "memory_health_base": "1.3.6.1.4.1.674.10892.5.4.1100.50.1.4.1",       # WORKING: memoryDeviceStatus (requires .1.X indexing)
+    "memory_health_base_alt": "1.3.6.1.4.1.674.10892.5.4.1100.50.1.5.1",   # WORKING: alternative status column (requires .1.X indexing)
     # Control OIDs (for switches) - updated with working alternatives
     "power_control": "1.3.6.1.4.1.674.10892.5.4.300.70.1.5.1.1",          # WORKING: power control (index 1 instead of 3)
     "identify_led": "1.3.6.1.4.1.674.10892.5.4.300.70.1.10.1.1",           # Updated index (1 instead of 3)
