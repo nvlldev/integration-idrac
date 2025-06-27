@@ -302,6 +302,29 @@ class SNMPClient:
                 IDRAC_OIDS["power_consumption_peak"],
             ])
             
+        # Intrusion detection OIDs
+        for intrusion_id in self.discovered_intrusion:
+            all_value_oids.extend([
+                IDRAC_OIDS["intrusion_reading"].format(index=intrusion_id),
+                IDRAC_OIDS["intrusion_status"].format(index=intrusion_id),
+            ])
+            all_string_oids.append(IDRAC_OIDS["intrusion_location"].format(index=intrusion_id))
+            
+        # Battery OIDs
+        for battery_id in self.discovered_battery:
+            all_value_oids.extend([
+                IDRAC_OIDS["battery_reading"].format(index=battery_id),
+                IDRAC_OIDS["battery_status"].format(index=battery_id),
+            ])
+            
+        # Processor OIDs
+        for processor_id in self.discovered_processors:
+            all_value_oids.extend([
+                IDRAC_OIDS["processor_reading"].format(index=processor_id),
+                IDRAC_OIDS["processor_status"].format(index=processor_id),
+            ])
+            all_string_oids.append(IDRAC_OIDS["processor_location"].format(index=processor_id))
+            
         # Get ALL data in just two bulk operations
         try:
             async def _empty_dict():
@@ -400,6 +423,44 @@ class SNMPClient:
                     data["power_consumption"] = {
                         "consumed_watts": power_current,
                         "max_consumed_watts": power_peak,
+                    }
+            
+            # Process intrusion detection sensors
+            for intrusion_id in self.discovered_intrusion:
+                intrusion_reading = values.get(IDRAC_OIDS["intrusion_reading"].format(index=intrusion_id))
+                intrusion_status = values.get(IDRAC_OIDS["intrusion_status"].format(index=intrusion_id))
+                intrusion_location = strings.get(IDRAC_OIDS["intrusion_location"].format(index=intrusion_id))
+                
+                if intrusion_reading is not None and intrusion_location:
+                    data["intrusion_detection"][f"intrusion_{intrusion_id}"] = {
+                        "name": intrusion_location,
+                        "reading": intrusion_reading,
+                        "status": INTRUSION_STATUS.get(intrusion_status, "unknown"),
+                    }
+            
+            # Process battery sensors
+            for battery_id in self.discovered_battery:
+                battery_reading = values.get(IDRAC_OIDS["battery_reading"].format(index=battery_id))
+                battery_status = values.get(IDRAC_OIDS["battery_status"].format(index=battery_id))
+                
+                if battery_reading is not None and battery_status is not None:
+                    data["battery"][f"battery_{battery_id}"] = {
+                        "name": f"System Battery {battery_id}",
+                        "reading": battery_reading,
+                        "status": BATTERY_STATUS.get(battery_status, "unknown"),
+                    }
+            
+            # Process processor sensors
+            for processor_id in self.discovered_processors:
+                processor_reading = values.get(IDRAC_OIDS["processor_reading"].format(index=processor_id))
+                processor_status = values.get(IDRAC_OIDS["processor_status"].format(index=processor_id))
+                processor_location = strings.get(IDRAC_OIDS["processor_location"].format(index=processor_id))
+                
+                if processor_reading is not None and processor_location:
+                    data["processors"][f"processor_{processor_id}"] = {
+                        "name": processor_location,
+                        "reading": processor_reading,
+                        "status": PROCESSOR_STATUS.get(processor_status, "unknown"),
                     }
                     
         except Exception:
