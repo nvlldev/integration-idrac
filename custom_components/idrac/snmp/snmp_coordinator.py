@@ -40,19 +40,31 @@ class SNMPCoordinator:
             hass: Home Assistant instance.
             entry: Configuration entry containing SNMP connection details.
         """
+        _LOGGER.debug("Initializing SNMPCoordinator")
+        
         self.hass = hass
         self.entry = entry
         self.host = entry.data[CONF_HOST]
         self.port = entry.data.get("port")
         
-        # Create SNMP client  
-        self.client = SNMPClient(entry)
+        _LOGGER.debug("SNMP coordinator host: %s, port: %s", self.host, self.port)
+        
+        # Create SNMP client with error handling
+        try:
+            _LOGGER.debug("Creating SNMPClient")
+            self.client = SNMPClient(entry)
+            _LOGGER.debug("SNMPClient created successfully")
+        except Exception as exc:
+            _LOGGER.error("Failed to create SNMPClient: %s", exc, exc_info=True)
+            raise
         
         # Store server identification for logging
         port = self.port
         if isinstance(port, (int, float)):
             port = int(port)
         self._server_id = f"{self.host}:{port}"
+        
+        _LOGGER.debug("SNMP coordinator server ID: %s", self._server_id)
         
         # System identification data for device info
         self._device_info = None
@@ -77,12 +89,18 @@ class SNMPCoordinator:
             "manufacturer": "Dell",
         }
         
-        # Get device info via SNMP client
-        snmp_device_info = await self.client.get_device_info()
-        device_info.update(snmp_device_info)
+        # Get device info via SNMP client with explicit error handling
+        try:
+            _LOGGER.debug("Calling SNMP client get_device_info()")
+            snmp_device_info = await self.client.get_device_info()
+            _LOGGER.debug("SNMP client returned device info: %s", snmp_device_info)
+            device_info.update(snmp_device_info)
+        except Exception as exc:
+            _LOGGER.error("Error getting device info from SNMP client: %s", exc, exc_info=True)
+            # Continue with basic device info
         
         self._device_info = device_info
-        _LOGGER.debug("Device info: %s", device_info)
+        _LOGGER.debug("Final device info: %s", device_info)
         return device_info
 
     async def get_sensor_data(self) -> dict[str, Any]:

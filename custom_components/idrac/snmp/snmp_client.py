@@ -59,34 +59,49 @@ _LOGGER = logging.getLogger(__name__)
 def _create_auth_data(entry: ConfigEntry) -> CommunityData | UsmUserData:
     """Create the appropriate authentication data for SNMP."""
     snmp_version = entry.data.get(CONF_SNMP_VERSION, DEFAULT_SNMP_VERSION)
+    _LOGGER.debug("Creating auth data for SNMP version: %s", snmp_version)
     
-    if snmp_version == "v3":
-        username = entry.data.get(CONF_USERNAME, "")
-        auth_protocol = entry.data.get(CONF_AUTH_PROTOCOL, "none")
-        auth_password = entry.data.get(CONF_AUTH_PASSWORD, "")
-        priv_protocol = entry.data.get(CONF_PRIV_PROTOCOL, "none")
-        priv_password = entry.data.get(CONF_PRIV_PASSWORD, "")
-        
-        # Map protocol names to pysnmp protocol objects
-        auth_proto = None
-        if auth_protocol != "none":
-            auth_proto = getattr(rfc1902, SNMP_AUTH_PROTOCOLS[auth_protocol], None)
-        
-        priv_proto = None
-        if priv_protocol != "none":
-            priv_proto = getattr(rfc1902, SNMP_PRIV_PROTOCOLS[priv_protocol], None)
-        
-        return UsmUserData(
-            userName=username,
-            authKey=auth_password if auth_proto else None,
-            privKey=priv_password if priv_proto else None,
-            authProtocol=auth_proto,
-            privProtocol=priv_proto,
-        )
-    else:
-        # SNMP v2c
-        community = entry.data.get(CONF_COMMUNITY, "public")
-        return CommunityData(community)
+    try:
+        if snmp_version == "v3":
+            username = entry.data.get(CONF_USERNAME, "")
+            auth_protocol = entry.data.get(CONF_AUTH_PROTOCOL, "none")
+            auth_password = entry.data.get(CONF_AUTH_PASSWORD, "")
+            priv_protocol = entry.data.get(CONF_PRIV_PROTOCOL, "none")
+            priv_password = entry.data.get(CONF_PRIV_PASSWORD, "")
+            
+            _LOGGER.debug("SNMPv3 parameters: username=%s, auth_protocol=%s, priv_protocol=%s", 
+                         username, auth_protocol, priv_protocol)
+            
+            # Map protocol names to pysnmp protocol objects
+            auth_proto = None
+            if auth_protocol != "none":
+                auth_proto = getattr(rfc1902, SNMP_AUTH_PROTOCOLS[auth_protocol], None)
+                _LOGGER.debug("Auth protocol mapped to: %s", auth_proto)
+            
+            priv_proto = None
+            if priv_protocol != "none":
+                priv_proto = getattr(rfc1902, SNMP_PRIV_PROTOCOLS[priv_protocol], None)
+                _LOGGER.debug("Priv protocol mapped to: %s", priv_proto)
+            
+            user_data = UsmUserData(
+                userName=username,
+                authKey=auth_password if auth_proto else None,
+                privKey=priv_password if priv_proto else None,
+                authProtocol=auth_proto,
+                privProtocol=priv_proto,
+            )
+            _LOGGER.debug("Created UsmUserData for user: %s", username)
+            return user_data
+        else:
+            # SNMP v2c
+            community = entry.data.get(CONF_COMMUNITY, "public")
+            _LOGGER.debug("Creating CommunityData for community: %s", community)
+            community_data = CommunityData(community)
+            _LOGGER.debug("Created CommunityData successfully")
+            return community_data
+    except Exception as exc:
+        _LOGGER.error("Error creating SNMP auth data: %s", exc, exc_info=True)
+        raise
 
 
 class SNMPClient:
@@ -114,9 +129,13 @@ class SNMPClient:
         Args:
             entry: Home Assistant configuration entry containing SNMP parameters
         """
+        _LOGGER.debug("Initializing SNMPClient")
+        
         self.entry = entry
         self.host = entry.data[CONF_HOST]
         self.port = entry.data.get(CONF_SNMP_PORT, DEFAULT_SNMP_PORT)
+        
+        _LOGGER.debug("SNMP client host: %s, port: %d", self.host, self.port)
         
         # SNMP connection objects (initialized on first use)
         self.engine = None
@@ -140,8 +159,14 @@ class SNMPClient:
         self.discovered_battery = entry.data.get(CONF_DISCOVERED_BATTERY, [])
         self.discovered_processors = entry.data.get(CONF_DISCOVERED_PROCESSORS, [])
         
+        sensor_count = self._count_discovered_sensors()
         _LOGGER.debug("SNMP client initialized for %s:%d with %d discovered sensor types", 
-                     self.host, self.port, self._count_discovered_sensors())
+                     self.host, self.port, sensor_count)
+        
+        # Log sensor breakdown for debugging
+        _LOGGER.debug("Discovered sensors breakdown: CPUs=%d, Fans=%d, PSUs=%d, Memory=%d, VoltageProbes=%d",
+                     len(self.discovered_cpus), len(self.discovered_fans), len(self.discovered_psus),
+                     len(self.discovered_memory), len(self.discovered_voltage_probes))
 
     def _count_discovered_sensors(self) -> int:
         """Count total discovered sensors across all categories."""
@@ -156,11 +181,25 @@ class SNMPClient:
     async def _ensure_initialized(self) -> None:
         """Ensure SNMP connection objects are initialized."""
         if self.engine is None:
-            self.engine = SnmpEngine()
-            self.auth_data = _create_auth_data(self.entry)
-            self.transport_target = UdpTransportTarget((self.host, self.port), timeout=5.0, retries=1)
-            self.context_data = ContextData()
-            _LOGGER.debug("SNMP engine initialized for %s:%d", self.host, self.port)
+            _LOGGER.debug("Initializing SNMP engine for %s:%d", self.host, self.port)
+            
+            try:
+                self.engine = SnmpEngine()
+                _LOGGER.debug("SnmpEngine created")
+                
+                self.auth_data = _create_auth_data(self.entry)
+                _LOGGER.debug("Auth data created: %s", type(self.auth_data).__name__)
+                
+                self.transport_target = UdpTransportTarget((self.host, self.port), timeout=5.0, retries=1)
+                _LOGGER.debug("Transport target created for %s:%d", self.host, self.port)
+                
+                self.context_data = ContextData()
+                _LOGGER.debug("Context data created")
+                
+                _LOGGER.debug("SNMP engine initialized successfully for %s:%d", self.host, self.port)
+            except Exception as exc:
+                _LOGGER.error("Failed to initialize SNMP components: %s", exc, exc_info=True)
+                raise
 
     async def close(self) -> None:
         """Close the SNMP client and cleanup resources."""
@@ -174,7 +213,14 @@ class SNMPClient:
         Returns:
             Dictionary containing device information like model, service tag, etc.
         """
-        await self._ensure_initialized()
+        _LOGGER.debug("SNMPClient.get_device_info() called for %s:%d", self.host, self.port)
+        
+        try:
+            await self._ensure_initialized()
+            _LOGGER.debug("SNMP client initialized successfully")
+        except Exception as exc:
+            _LOGGER.error("Failed to initialize SNMP client: %s", exc, exc_info=True)
+            return {"name": f"Dell iDRAC ({self.host})"}
         
         device_info = {}
         
@@ -185,7 +231,7 @@ class SNMPClient:
             system_model = await self.get_string(IDRAC_OIDS["system_model"])
             _LOGGER.debug("System model: %s", system_model)
         except Exception as exc:
-            _LOGGER.warning("Failed to get system model via SNMP: %s", exc)
+            _LOGGER.error("Failed to get system model via SNMP: %s", exc, exc_info=True)
             
         service_tag = None
         try:

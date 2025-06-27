@@ -48,27 +48,45 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
             hass: Home Assistant instance.
             entry: Configuration entry containing connection details.
         """
+        _LOGGER.debug("Initializing IdracDataUpdateCoordinator")
+        
         self.entry = entry
         self.host = entry.data[CONF_HOST]
         self.connection_type = entry.data.get(CONF_CONNECTION_TYPE, DEFAULT_CONNECTION_TYPE)
         
+        _LOGGER.debug("Host: %s, Connection type: %s", self.host, self.connection_type)
+        
         # Initialize protocol-specific coordinators
-        if self.connection_type == "redfish":
-            self.protocol_coordinator = RedfishCoordinator(hass, entry)
-        elif self.connection_type == "hybrid":
-            # Hybrid mode: SNMP for data, Redfish for controls
-            self.snmp_coordinator = SNMPCoordinator(hass, entry)
-            self.redfish_coordinator = RedfishCoordinator(hass, entry)
-            self.protocol_coordinator = self.snmp_coordinator  # Primary data source
-        else:
-            # SNMP only
-            self.protocol_coordinator = SNMPCoordinator(hass, entry)
+        try:
+            if self.connection_type == "redfish":
+                _LOGGER.debug("Creating RedfishCoordinator for redfish mode")
+                self.protocol_coordinator = RedfishCoordinator(hass, entry)
+            elif self.connection_type == "hybrid":
+                # Hybrid mode: SNMP for data, Redfish for controls
+                _LOGGER.debug("Creating coordinators for hybrid mode")
+                _LOGGER.debug("Creating SNMPCoordinator")
+                self.snmp_coordinator = SNMPCoordinator(hass, entry)
+                _LOGGER.debug("Creating RedfishCoordinator")
+                self.redfish_coordinator = RedfishCoordinator(hass, entry)
+                self.protocol_coordinator = self.snmp_coordinator  # Primary data source
+                _LOGGER.debug("Hybrid mode coordinators created successfully")
+            else:
+                # SNMP only
+                _LOGGER.debug("Creating SNMPCoordinator for snmp mode")
+                self.protocol_coordinator = SNMPCoordinator(hass, entry)
+            
+            _LOGGER.debug("Protocol coordinators created successfully")
+        except Exception as exc:
+            _LOGGER.error("Failed to create protocol coordinators: %s", exc, exc_info=True)
+            raise
         
         # Store server identification for logging
         port = self.entry.data.get('port', 'unknown')
         if isinstance(port, (int, float)):
             port = int(port)
         self._server_id = f"{self.host}:{port}"
+        
+        _LOGGER.debug("Server ID: %s", self._server_id)
         
         # System identification data for device info
         self._device_info = None
@@ -79,12 +97,19 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
             entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
         )
 
-        super().__init__(
-            hass,
-            _LOGGER,
-            name=DOMAIN,
-            update_interval=timedelta(seconds=scan_interval),
-        )
+        _LOGGER.debug("Scan interval: %d seconds", scan_interval)
+        
+        try:
+            super().__init__(
+                hass,
+                _LOGGER,
+                name=DOMAIN,
+                update_interval=timedelta(seconds=scan_interval),
+            )
+            _LOGGER.debug("DataUpdateCoordinator parent initialized successfully")
+        except Exception as exc:
+            _LOGGER.error("Failed to initialize DataUpdateCoordinator parent: %s", exc, exc_info=True)
+            raise
 
     async def _async_fetch_device_info(self) -> dict[str, Any]:
         """Fetch device information for device registry.

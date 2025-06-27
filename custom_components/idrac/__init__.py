@@ -25,25 +25,57 @@ PLATFORMS: list[Platform] = [
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Dell iDRAC from a config entry."""
+    _LOGGER.debug("Setting up Dell iDRAC integration for entry: %s", entry.entry_id)
+    _LOGGER.debug("Entry data: %s", entry.data)
+    _LOGGER.debug("Entry options: %s", entry.options)
+    
     hass.data.setdefault(DOMAIN, {})
 
-    coordinator = IdracDataUpdateCoordinator(hass, entry)
+    try:
+        _LOGGER.debug("Creating IdracDataUpdateCoordinator")
+        coordinator = IdracDataUpdateCoordinator(hass, entry)
+        _LOGGER.debug("Coordinator created successfully")
+    except Exception as exc:
+        _LOGGER.error("Failed to create IdracDataUpdateCoordinator: %s", exc, exc_info=True)
+        raise ConfigEntryNotReady from exc
 
-    await coordinator.async_config_entry_first_refresh()
+    try:
+        _LOGGER.debug("Performing first coordinator refresh")
+        await coordinator.async_config_entry_first_refresh()
+        _LOGGER.debug("First refresh completed, success: %s", coordinator.last_update_success)
+    except Exception as exc:
+        _LOGGER.error("Failed during first coordinator refresh: %s", exc, exc_info=True)
+        raise ConfigEntryNotReady from exc
 
     if not coordinator.last_update_success:
+        _LOGGER.error("Coordinator first refresh failed - marking entry as not ready")
         raise ConfigEntryNotReady
 
     hass.data[DOMAIN][entry.entry_id] = coordinator
+    _LOGGER.debug("Coordinator stored in hass.data")
 
     # Set up update listener for options changes
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
+    _LOGGER.debug("Update listener registered")
 
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    try:
+        _LOGGER.debug("Setting up platforms: %s", PLATFORMS)
+        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+        _LOGGER.debug("Platforms setup completed")
+    except Exception as exc:
+        _LOGGER.error("Failed to setup platforms: %s", exc, exc_info=True)
+        raise
 
     # Register services
-    await async_setup_services(hass)
+    try:
+        _LOGGER.debug("Setting up services")
+        await async_setup_services(hass)
+        _LOGGER.debug("Services setup completed")
+    except Exception as exc:
+        _LOGGER.error("Failed to setup services: %s", exc, exc_info=True)
+        # Don't fail setup for service registration issues
 
+    _LOGGER.info("Dell iDRAC integration setup completed successfully for %s", entry.title)
     return True
 
 
