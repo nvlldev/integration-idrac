@@ -671,7 +671,7 @@ class IdracMemoryHealthBinarySensor(IdracBinarySensor):
         memory_index: int,
     ) -> None:
         """Initialize the memory health binary sensor."""
-        sensor_key = f"memory_health_{memory_index}"
+        sensor_key = f"memory_{memory_index}"
         sensor_name = f"Memory {memory_index} Health"
         super().__init__(
             coordinator,
