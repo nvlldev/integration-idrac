@@ -178,8 +178,21 @@ class RedfishClient:
     async def set_indicator_led(
         self, state: str, system_id: str = "System.Embedded.1"
     ) -> Optional[Dict[str, Any]]:
-        """Set system indicator LED state."""
-        data = {"IndicatorLED": state}
+        """Set system indicator LED state.
+        
+        Common Dell iDRAC values: 'Blinking', 'Off'
+        Standard Redfish values: 'Lit', 'Blinking', 'Off'
+        """
+        # Map standard states to Dell-specific values
+        state_mapping = {
+            "Lit": "Blinking",  # Dell typically uses Blinking instead of Lit
+            "On": "Blinking",
+            "Blinking": "Blinking", 
+            "Off": "Off"
+        }
+        
+        mapped_state = state_mapping.get(state, state)
+        data = {"IndicatorLED": mapped_state}
         return await self.patch(f"/redfish/v1/Systems/{system_id}", data)
 
     async def reset_system(

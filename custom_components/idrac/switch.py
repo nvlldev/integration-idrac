@@ -180,7 +180,7 @@ class IdracIdentifyLEDSwitch(IdracSwitch):
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn on the identify LED."""
         if self.coordinator.connection_type == "redfish":
-            success = await self.coordinator.async_set_indicator_led("Lit")
+            success = await self.coordinator.async_set_indicator_led("Blinking")
         else:
             # LED control via SNMP is not typically available in Dell iDRAC SNMP MIB
             _LOGGER.warning("LED control not available via SNMP")
