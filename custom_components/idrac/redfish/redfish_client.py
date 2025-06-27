@@ -159,6 +159,14 @@ class RedfishClient:
             _LOGGER.warning("GET %s timed out after %d seconds (actual: %.2f)", 
                            path, self.request_timeout, request_time)
             return None
+        except aiohttp.ClientConnectorError as e:
+            request_time = time.time() - start_time
+            _LOGGER.warning("GET %s connection failed: %s (%.2f seconds)", path, e, request_time)
+            return None
+        except aiohttp.ClientSSLError as e:
+            request_time = time.time() - start_time
+            _LOGGER.warning("GET %s SSL error: %s (%.2f seconds)", path, e, request_time)
+            return None
         except ConnectionError as e:
             request_time = time.time() - start_time
             _LOGGER.warning("GET %s connection error: %s (%.2f seconds)", path, e, request_time)
@@ -292,13 +300,16 @@ class RedfishClient:
     async def test_connection(self) -> bool:
         """Test connection to iDRAC Redfish API."""
         try:
-            _LOGGER.debug("Testing connection to %s", self.base_url)
+            _LOGGER.debug("Testing connection to %s (SSL verify: %s)", self.base_url, self.verify_ssl)
             service_root = await self.get_service_root()
             success = service_root is not None
             if success:
                 _LOGGER.debug("Connection test successful to %s", self.base_url)
             else:
                 _LOGGER.error("Connection test failed - no service root returned from %s", self.base_url)
+                _LOGGER.error("Common solutions: 1) Check if iDRAC web interface is accessible at %s", self.base_url)
+                _LOGGER.error("                  2) Try port 443 instead of %d", self.port)
+                _LOGGER.error("                  3) Disable SSL verification if using self-signed certificates")
             return success
         except Exception as e:
             _LOGGER.error("Connection test failed to %s: %s", self.base_url, e)

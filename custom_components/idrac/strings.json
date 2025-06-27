@@ -194,9 +194,9 @@
       }
     },
     "error": {
-      "cannot_connect": "Failed to connect to iDRAC. Please check the hostname/IP address and network connectivity.",
-      "invalid_auth": "Invalid authentication credentials. Please check your username and password.", 
-      "unknown": "Unexpected error occurred during setup."
+      "cannot_connect": "Cannot connect to iDRAC. Check hostname/IP, port number, and network connectivity. For HTTPS connections, try disabling SSL verification.",
+      "invalid_auth": "Authentication failed. Verify your username and password are correct.", 
+      "unknown": "Setup failed due to an unexpected error. Check the logs for more details."
     },
     "abort": {
       "already_configured": "This iDRAC is already configured with the same connection type."

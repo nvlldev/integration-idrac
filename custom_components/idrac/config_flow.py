@@ -301,12 +301,12 @@ def _create_auth_data(data: dict[str, Any]) -> CommunityData | UsmUserData:
 async def validate_redfish_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
     """Validate Redfish connection."""
     host = data[CONF_HOST]
-    port = data[CONF_PORT]
+    port = int(data[CONF_PORT])  # Ensure port is an integer
     username = data[CONF_USERNAME]
     password = data[CONF_PASSWORD]
     verify_ssl = data[CONF_VERIFY_SSL]
-    request_timeout = data.get(CONF_REQUEST_TIMEOUT, DEFAULT_REQUEST_TIMEOUT)
-    session_timeout = data.get(CONF_SESSION_TIMEOUT, DEFAULT_SESSION_TIMEOUT)
+    request_timeout = int(data.get(CONF_REQUEST_TIMEOUT, DEFAULT_REQUEST_TIMEOUT))
+    session_timeout = int(data.get(CONF_SESSION_TIMEOUT, DEFAULT_SESSION_TIMEOUT))
 
     client = RedfishClient(hass, host, username, password, port, verify_ssl, request_timeout, session_timeout)
 
@@ -340,7 +340,7 @@ async def validate_redfish_input(hass: HomeAssistant, data: dict[str, Any]) -> d
         _LOGGER.error("Redfish authentication error for %s:%s: %s", host, port, exc)
         raise InvalidAuth
     except Exception as exc:
-        _LOGGER.exception("Unexpected exception during Redfish validation for %s:%s: %s", host, port, exc)
+        _LOGGER.error("Unexpected exception during Redfish validation for %s:%s: %s", host, port, exc)
         raise CannotConnect
     finally:
         await client.close()
