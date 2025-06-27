@@ -71,8 +71,6 @@ class RedfishClient:
                 keepalive_timeout=120,  # Much longer keep-alive to avoid SSL handshakes
                 enable_cleanup_closed=True,
                 force_close=False,  # Don't force close connections
-                # Optimize TCP settings for performance
-                sock_connect=15,  # TCP connect timeout
                 resolver=aiohttp.resolver.AsyncResolver(),  # Use async DNS resolver
             )
 
@@ -87,7 +85,6 @@ class RedfishClient:
                     total=self.session_timeout, 
                     connect=15, 
                     sock_read=self.request_timeout,
-                    sock_connect=10  # Shorter socket connect timeout
                 ),
             )
 
