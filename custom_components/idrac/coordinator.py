@@ -335,8 +335,8 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
                 _LOGGER.debug("Failed to get power subsystem info: %s", power_subsystem_data)
                 power_subsystem_data = None
         
-        api_end = time.time()
-        _LOGGER.debug("Redfish API calls completed in %.2f seconds", api_end - api_start)
+            api_end = time.time()
+            _LOGGER.debug("Redfish API calls completed in %.2f seconds", api_end - api_start)
                 
         except Exception as exc:
             _LOGGER.error("Error during concurrent Redfish API calls: %s", exc)
