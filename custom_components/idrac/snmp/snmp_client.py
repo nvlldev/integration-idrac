@@ -354,7 +354,9 @@ class SNMPClient:
                 
             # Process temperature data
             for cpu_id in self.discovered_cpus:
-                temp_reading = values.get(IDRAC_OIDS["temp_probe_reading"].format(index=cpu_id))
+                temp_oid = IDRAC_OIDS["temp_probe_reading"].format(index=cpu_id)
+                temp_reading = values.get(temp_oid)
+                _LOGGER.debug("Processing CPU %s - OID: %s, Reading: %s", cpu_id, temp_oid, temp_reading)
                 if temp_reading is not None:
                     temperature_celsius = temp_reading / 10.0 if temp_reading > 100 else temp_reading
                     temp_status = values.get(IDRAC_OIDS["temp_probe_status"].format(index=cpu_id))
@@ -362,13 +364,15 @@ class SNMPClient:
                     temp_upper_critical = values.get(IDRAC_OIDS["temp_probe_upper_critical"].format(index=cpu_id))
                     temp_upper_warning = values.get(IDRAC_OIDS["temp_probe_upper_warning"].format(index=cpu_id))
                     
-                    data["temperatures"][f"cpu_temp_{cpu_id}"] = {
+                    sensor_data = {
                         "name": temp_location or f"CPU {cpu_id} Temperature",
                         "temperature": temperature_celsius,
                         "status": TEMP_STATUS.get(temp_status, "unknown"),
                         "upper_threshold_critical": temp_upper_critical / 10.0 if temp_upper_critical and temp_upper_critical > 100 else temp_upper_critical,
                         "upper_threshold_non_critical": temp_upper_warning / 10.0 if temp_upper_warning and temp_upper_warning > 100 else temp_upper_warning,
                     }
+                    data["temperatures"][f"cpu_temp_{cpu_id}"] = sensor_data
+                    _LOGGER.debug("Added temperature sensor cpu_temp_%s: %s", cpu_id, sensor_data)
             
             # Process fan data
             for fan_id in self.discovered_fans:
@@ -493,6 +497,21 @@ class SNMPClient:
                 fan_data = await self._get_fan_data(fan_id)
                 if fan_data and "fan" in fan_data:
                     data["fans"].update(fan_data["fan"])
+        
+        # Log final sensor data summary for debugging
+        data_summary = {}
+        for category, sensors in data.items():
+            if sensors:
+                data_summary[category] = len(sensors) if isinstance(sensors, dict) else 1
+        _LOGGER.debug("Final SNMP sensor data summary: %s", data_summary)
+        
+        # Log sample sensor data for key categories
+        if data["temperatures"]:
+            sample_temp = next(iter(data["temperatures"].items()))
+            _LOGGER.debug("Sample temperature sensor: %s -> %s", sample_temp[0], sample_temp[1])
+        if data["fans"]:
+            sample_fan = next(iter(data["fans"].items()))
+            _LOGGER.debug("Sample fan sensor: %s -> %s", sample_fan[0], sample_fan[1])
         
         return data
     
