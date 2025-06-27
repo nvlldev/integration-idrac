@@ -453,8 +453,15 @@ class SNMPClient:
 
     async def get_string(self, oid: str) -> str | None:
         """Get an SNMP value and return as string."""
-        result = await self._bulk_get_strings([oid])
-        return result.get(oid)
+        _LOGGER.debug("Getting single SNMP string for OID: %s", oid)
+        try:
+            result = await self._bulk_get_strings([oid])
+            value = result.get(oid)
+            _LOGGER.debug("Retrieved string value for OID %s: %s", oid, repr(value))
+            return value
+        except Exception as exc:
+            _LOGGER.error("Error getting SNMP string for OID %s: %s", oid, exc, exc_info=True)
+            return None
 
     async def _bulk_get_values(self, oids: list[str]) -> dict[str, int]:
         """Get multiple SNMP values as integers using individual async calls."""
@@ -486,9 +493,42 @@ class SNMPClient:
         
         for oid in oids:
             try:
-                error_indication, error_status, error_index, var_binds = await getCmd(
-                    self.engine, self.auth_data, self.transport_target, self.context_data, ObjectType(ObjectIdentity(oid))
-                )
+                _LOGGER.debug("Executing SNMP GET for OID: %s", oid)
+                
+                # Create ObjectIdentity with explicit error handling
+                try:
+                    # Try different ways to create ObjectIdentity - some pysnmp versions are picky
+                    if oid.startswith('.'):
+                        # Remove leading dot if present
+                        clean_oid = oid[1:]
+                    else:
+                        clean_oid = oid
+                        
+                    # Try to create ObjectIdentity with the cleaned OID
+                    object_identity = ObjectIdentity(clean_oid)
+                    object_type = ObjectType(object_identity)
+                    _LOGGER.debug("Created ObjectType for OID: %s", clean_oid)
+                except Exception as oid_exc:
+                    _LOGGER.error("Failed to create ObjectIdentity for OID %s: %s", oid, oid_exc, exc_info=True)
+                    # Try alternative format
+                    try:
+                        # Split the OID and create ObjectIdentity with tuple
+                        oid_parts = [int(x) for x in oid.strip('.').split('.')]
+                        object_identity = ObjectIdentity(tuple(oid_parts))
+                        object_type = ObjectType(object_identity)
+                        _LOGGER.debug("Created ObjectType with tuple format for OID: %s", oid)
+                    except Exception as alt_exc:
+                        _LOGGER.error("Alternative ObjectIdentity creation also failed for OID %s: %s", oid, alt_exc)
+                        continue
+                
+                # Execute SNMP command with detailed error handling  
+                try:
+                    error_indication, error_status, error_index, var_binds = await getCmd(
+                        self.engine, self.auth_data, self.transport_target, self.context_data, object_type
+                    )
+                except Exception as cmd_exc:
+                    _LOGGER.error("SNMP getCmd failed for OID %s: %s", oid, cmd_exc, exc_info=True)
+                    continue
                 
                 if error_indication:
                     _LOGGER.debug("SNMP error indication for OID %s: %s", oid, error_indication)
@@ -498,7 +538,11 @@ class SNMPClient:
                     _LOGGER.debug("SNMP error status for OID %s: %s at index %s", oid, error_status, error_index)
                     continue
                 
+                _LOGGER.debug("SNMP response for OID %s: %d var_binds", oid, len(var_binds))
+                
                 for name, val in var_binds:
+                    _LOGGER.debug("Processing var_bind: name=%s, value=%s (type: %s)", name, repr(val), type(val).__name__)
+                    
                     if val is not None and str(val) != "No Such Object currently exists at this OID":
                         try:
                             # Handle different data types that pysnmp might return
@@ -507,10 +551,10 @@ class SNMPClient:
                                 results[oid] = string_val
                                 _LOGGER.debug("Successfully retrieved string for OID %s: %s", oid, string_val)
                         except Exception as val_exc:
-                            _LOGGER.warning("Failed to convert SNMP value to string for OID %s (value type: %s, value: %s): %s", 
-                                          oid, type(val).__name__, repr(val), val_exc)
+                            _LOGGER.error("Failed to convert SNMP value to string for OID %s (value type: %s, value: %s): %s", 
+                                          oid, type(val).__name__, repr(val), val_exc, exc_info=True)
                             
             except Exception as exc:
-                _LOGGER.warning("Failed to get SNMP value for OID %s: %s", oid, exc)
+                _LOGGER.error("Failed to get SNMP value for OID %s: %s", oid, exc, exc_info=True)
                 
         return results
