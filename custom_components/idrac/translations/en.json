@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Dell iDRAC Integration Setup",
-        "description": "Configure your Dell iDRAC connection. Choose the connection method that best fits your needs.",
+        "description": "Configure your Dell iDRAC connection. First, specify the host and choose your connection method.",
         "data": {
           "host": "Hostname or IP Address",
           "connection_type": "Connection Type",
@@ -16,8 +16,8 @@
         }
       },
       "redfish": {
-        "title": "Redfish API Configuration",
-        "description": "Configure Redfish API connection for {host}. This provides full control features including LED control and system resets.",
+        "title": "Redfish API Credentials",
+        "description": "Enter your Redfish API credentials for {host}. This provides full control features including LED control and system resets.",
         "data": {
           "port": "Redfish Port",
           "username": "Username",
@@ -35,33 +35,49 @@
           "session_timeout": "Timeout for the entire session (10-180 seconds)"
         }
       },
-      "snmp": {
-        "title": "SNMP Configuration",
-        "description": "Configure SNMP connection for {host}. This provides fast monitoring of sensors but no control features.",
+      "snmp_version": {
+        "title": "SNMP Version Selection",
+        "description": "Choose the SNMP version for {host}. SNMP v3 is more secure but requires additional authentication.",
         "data": {
-          "port": "SNMP Port",
-          "snmp_version": "SNMP Version",
-          "community": "Community String",
-          "username": "SNMP Username",
+          "snmp_port": "SNMP Port",
+          "snmp_version": "SNMP Version"
+        },
+        "data_description": {
+          "snmp_port": "SNMP port (usually 161)",
+          "snmp_version": "Choose SNMP protocol version:\n• **v2c**: Simple setup with community string\n• **v3**: Secure setup with username and authentication"
+        }
+      },
+      "snmp_v2c": {
+        "title": "SNMP v2c Credentials",
+        "description": "Enter your SNMP v2c community string for {host}.",
+        "data": {
+          "community": "Community String"
+        },
+        "data_description": {
+          "community": "SNMP community string (usually 'public' for read-only access)"
+        }
+      },
+      "snmp_v3": {
+        "title": "SNMP v3 Credentials",
+        "description": "Enter your SNMP v3 authentication details for {host}. All fields are required for secure communication.",
+        "data": {
+          "username": "Username",
           "auth_protocol": "Authentication Protocol",
           "auth_password": "Authentication Password",
           "priv_protocol": "Privacy Protocol",
           "priv_password": "Privacy Password"
         },
         "data_description": {
-          "port": "SNMP port (usually 161)",
-          "snmp_version": "SNMP protocol version (v2c for simple, v3 for secure)",
-          "community": "SNMP community string (only for v2c, usually 'public')",
-          "username": "SNMP v3 username (only for v3)",
-          "auth_protocol": "SNMP v3 authentication method (only for v3)",
-          "auth_password": "SNMP v3 authentication password (only for v3)",
-          "priv_protocol": "SNMP v3 encryption method (only for v3)",
-          "priv_password": "SNMP v3 encryption password (only for v3)"
+          "username": "SNMP v3 username",
+          "auth_protocol": "Authentication method (SHA recommended)",
+          "auth_password": "Authentication password",
+          "priv_protocol": "Encryption method (AES128 recommended)",
+          "priv_password": "Encryption password"
         }
       },
       "hybrid_redfish": {
         "title": "Hybrid Mode - Redfish Controls",
-        "description": "Step 1 of 2: Configure Redfish API for {host}.\n\n**{step}**\n{purpose}",
+        "description": "Step 1 of 2: Configure Redfish API for {host}. This will be used for control operations like LED and system resets.",
         "data": {
           "port": "Redfish Port",
           "username": "Username",
@@ -79,26 +95,44 @@
           "session_timeout": "Session timeout for control operations (10-180 seconds)"
         }
       },
-      "hybrid_snmp": {
-        "title": "Hybrid Mode - SNMP Data Collection",
-        "description": "Step 2 of 2: Configure SNMP for {host}.\n\n**{step}**\n{purpose}",
+      "hybrid_snmp_version": {
+        "title": "Hybrid Mode - SNMP Version",
+        "description": "Step 2 of 2: Choose SNMP version for data collection from {host}.",
         "data": {
-          "snmp_port": "SNMP Port",
-          "snmp_version": "SNMP Version",
-          "community": "Community String",
+          "snmp_port": "SNMP Port", 
+          "snmp_version": "SNMP Version"
+        },
+        "data_description": {
+          "snmp_port": "SNMP port for data collection (usually 161)",
+          "snmp_version": "Choose SNMP protocol version:\n• **v2c**: Simple setup with community string\n• **v3**: Secure setup with username and authentication"
+        }
+      },
+      "hybrid_snmp_v2c": {
+        "title": "Hybrid Mode - SNMP v2c Credentials",
+        "description": "Enter your SNMP v2c community string for data collection from {host}.",
+        "data": {
+          "community": "Community String"
+        },
+        "data_description": {
+          "community": "SNMP community string for data collection (usually 'public')"
+        }
+      },
+      "hybrid_snmp_v3": {
+        "title": "Hybrid Mode - SNMP v3 Credentials", 
+        "description": "Enter your SNMP v3 authentication details for data collection from {host}.",
+        "data": {
+          "username": "Username",
           "auth_protocol": "Authentication Protocol",
           "auth_password": "Authentication Password",
           "priv_protocol": "Privacy Protocol",
           "priv_password": "Privacy Password"
         },
         "data_description": {
-          "snmp_port": "SNMP port for data collection (usually 161)",
-          "snmp_version": "SNMP protocol version (v2c for simple, v3 for secure)",
-          "community": "SNMP community string (only for v2c, usually 'public')",
-          "auth_protocol": "SNMP v3 authentication method (only for v3)",
-          "auth_password": "SNMP v3 authentication password (only for v3)",
-          "priv_protocol": "SNMP v3 encryption method (only for v3)",
-          "priv_password": "SNMP v3 encryption password (only for v3)"
+          "username": "SNMP v3 username for data collection",
+          "auth_protocol": "Authentication method (SHA recommended)",
+          "auth_password": "Authentication password",
+          "priv_protocol": "Encryption method (AES128 recommended)",
+          "priv_password": "Encryption password"
         }
       }
     },
@@ -155,7 +189,7 @@
         "none": "None",
         "des": "DES",
         "3des": "3DES",
-        "aes": "AES-128",
+        "aes128": "AES-128",
         "aes192": "AES-192",
         "aes256": "AES-256"
       }

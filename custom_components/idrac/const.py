@@ -1,4 +1,6 @@
 """Constants for the Dell iDRAC integration."""
+from __future__ import annotations
+
 from typing import Final
 
 DOMAIN: Final = "idrac"
@@ -47,7 +49,7 @@ CONNECTION_TYPES: Final = ["redfish", "snmp", "hybrid"]
 SNMP_VERSIONS: Final = ["v2c", "v3"]
 
 # SNMP v3 authentication protocols
-SNMP_AUTH_PROTOCOLS: Final = {
+SNMP_AUTH_PROTOCOLS: Final[dict[str, str]] = {
     "none": "usmNoAuthProtocol",
     "md5": "usmHMACMD5AuthProtocol", 
     "sha": "usmHMACSHAAuthProtocol",
@@ -58,7 +60,7 @@ SNMP_AUTH_PROTOCOLS: Final = {
 }
 
 # SNMP v3 privacy protocols  
-SNMP_PRIV_PROTOCOLS: Final = {
+SNMP_PRIV_PROTOCOLS: Final[dict[str, str]] = {
     "none": "usmNoPrivProtocol",
     "des": "usmDESPrivProtocol",
     "3des": "usm3DESEDEPrivProtocol", 
@@ -68,7 +70,7 @@ SNMP_PRIV_PROTOCOLS: Final = {
 }
 
 # Redfish status mappings for Health values
-REDFISH_HEALTH_STATUS: Final = {
+REDFISH_HEALTH_STATUS: Final[dict[str | None, str]] = {
     "OK": "ok",
     "Warning": "warning", 
     "Critical": "critical",
@@ -76,7 +78,7 @@ REDFISH_HEALTH_STATUS: Final = {
 }
 
 # Redfish state mappings for State values
-REDFISH_STATE_STATUS: Final = {
+REDFISH_STATE_STATUS: Final[dict[str | None, str]] = {
     "Enabled": "enabled",
     "Disabled": "disabled",
     "StandbyOffline": "standby",
@@ -89,7 +91,7 @@ REDFISH_STATE_STATUS: Final = {
 }
 
 # Power state mappings
-POWER_STATE_STATUS: Final = {
+POWER_STATE_STATUS: Final[dict[str | None, str]] = {
     "On": "on",
     "Off": "off",
     "PoweringOn": "powering_on",

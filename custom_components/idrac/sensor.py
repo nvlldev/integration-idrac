@@ -2,12 +2,15 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
+    SensorEntityDescription,
     SensorStateClass,
 )
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     REVOLUTIONS_PER_MINUTE,
@@ -118,6 +121,11 @@ class IdracSensor(CoordinatorEntity[IdracDataUpdateCoordinator], SensorEntity):
         """Return device information."""
         return self.coordinator.device_info
 
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        return self.coordinator.last_update_success and self.coordinator.data is not None
+
 
 class IdracPowerConsumptionSensor(IdracSensor):
     """Power consumption sensor."""
@@ -132,6 +140,7 @@ class IdracPowerConsumptionSensor(IdracSensor):
         self._attr_native_unit_of_measurement = UnitOfPower.WATT
         self._attr_device_class = SensorDeviceClass.POWER
         self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
     @property
     def native_value(self) -> float | None:
@@ -142,7 +151,7 @@ class IdracPowerConsumptionSensor(IdracSensor):
         return power_data.get("consumed_watts")
 
     @property
-    def extra_state_attributes(self) -> dict[str, any] | None:
+    def extra_state_attributes(self) -> dict[str, Any] | None:
         """Return additional state attributes."""
         if not self.coordinator.data:
             return None
@@ -172,6 +181,7 @@ class IdracTemperatureSensor(IdracSensor):
         self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
         self._attr_device_class = SensorDeviceClass.TEMPERATURE
         self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
     @property
     def native_value(self) -> float | None:
@@ -182,7 +192,7 @@ class IdracTemperatureSensor(IdracSensor):
         return temp_data.get("temperature")
 
     @property
-    def extra_state_attributes(self) -> dict[str, any] | None:
+    def extra_state_attributes(self) -> dict[str, Any] | None:
         """Return additional state attributes."""
         if not self.coordinator.data:
             return None
@@ -209,6 +219,7 @@ class IdracFanSensor(IdracSensor):
         super().__init__(coordinator, config_entry, f"fan_{fan_id}", name)
         self.fan_id = fan_id
         self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
     @property
     def native_value(self) -> float | None:
@@ -234,7 +245,7 @@ class IdracFanSensor(IdracSensor):
         return PERCENTAGE
 
     @property
-    def extra_state_attributes(self) -> dict[str, any] | None:
+    def extra_state_attributes(self) -> dict[str, Any] | None:
         """Return additional state attributes."""
         if not self.coordinator.data:
             return None
@@ -263,6 +274,7 @@ class IdracVoltageSensor(IdracSensor):
         self._attr_native_unit_of_measurement = UnitOfElectricPotential.VOLT
         self._attr_device_class = SensorDeviceClass.VOLTAGE
         self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
     @property
     def native_value(self) -> float | None:
@@ -273,7 +285,7 @@ class IdracVoltageSensor(IdracSensor):
         return voltage_data.get("reading_volts")
 
     @property
-    def extra_state_attributes(self) -> dict[str, any] | None:
+    def extra_state_attributes(self) -> dict[str, Any] | None:
         """Return additional state attributes."""
         if not self.coordinator.data:
             return None
@@ -300,6 +312,7 @@ class IdracMemorySensor(IdracSensor):
         self._attr_native_unit_of_measurement = "GB"
         self._attr_device_class = SensorDeviceClass.DATA_SIZE
         self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_entity_category = EntityCategory.CONFIG
 
     @property
     def native_value(self) -> float | None:
@@ -321,6 +334,7 @@ class IdracProcessorCountSensor(IdracSensor):
         """Initialize the processor count sensor."""
         super().__init__(coordinator, config_entry, "processor_count", "Processor Count")
         self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_entity_category = EntityCategory.CONFIG
 
     @property
     def native_value(self) -> int | None:
@@ -331,7 +345,7 @@ class IdracProcessorCountSensor(IdracSensor):
         return system_info.get("processor_count")
 
     @property
-    def extra_state_attributes(self) -> dict[str, any] | None:
+    def extra_state_attributes(self) -> dict[str, Any] | None:
         """Return additional state attributes."""
         if not self.coordinator.data:
             return None
@@ -351,6 +365,7 @@ class IdracPowerStateSensor(IdracSensor):
     ) -> None:
         """Initialize the power state sensor."""
         super().__init__(coordinator, config_entry, "power_state", "Power State")
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
     @property
     def native_value(self) -> str | None:
@@ -382,6 +397,7 @@ class IdracChassisIntrusionSensor(IdracSensor):
     ) -> None:
         """Initialize the chassis intrusion sensor."""
         super().__init__(coordinator, config_entry, "chassis_intrusion", "Chassis Intrusion")
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
     @property
     def native_value(self) -> str | None:
@@ -403,7 +419,7 @@ class IdracChassisIntrusionSensor(IdracSensor):
             return "mdi:shield"
 
     @property
-    def extra_state_attributes(self) -> dict[str, any] | None:
+    def extra_state_attributes(self) -> dict[str, Any] | None:
         """Return additional state attributes."""
         if not self.coordinator.data:
             return None
@@ -424,6 +440,7 @@ class IdracPowerRedundancySensor(IdracSensor):
     ) -> None:
         """Initialize the power redundancy sensor."""
         super().__init__(coordinator, config_entry, "power_redundancy", "Power Redundancy")
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
     @property
     def native_value(self) -> str | None:
@@ -447,7 +464,7 @@ class IdracPowerRedundancySensor(IdracSensor):
             return "mdi:power-socket"
 
     @property
-    def extra_state_attributes(self) -> dict[str, any] | None:
+    def extra_state_attributes(self) -> dict[str, Any] | None:
         """Return additional state attributes."""
         if not self.coordinator.data:
             return None
@@ -471,6 +488,7 @@ class IdracSystemHealthSensor(IdracSensor):
     ) -> None:
         """Initialize the system health sensor."""
         super().__init__(coordinator, config_entry, "system_health", "System Health")
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
     @property
     def native_value(self) -> str | None:
@@ -494,7 +512,7 @@ class IdracSystemHealthSensor(IdracSensor):
             return "mdi:help-circle"
 
     @property
-    def extra_state_attributes(self) -> dict[str, any] | None:
+    def extra_state_attributes(self) -> dict[str, Any] | None:
         """Return additional state attributes."""
         if not self.coordinator.data:
             return None

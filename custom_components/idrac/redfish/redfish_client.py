@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import ssl
-from typing import Any, Dict, Optional
+from typing import Any
 
 import aiohttp
 
@@ -39,10 +39,10 @@ class RedfishClient:
         self.request_timeout = request_timeout
         self.session_timeout = session_timeout
         self.base_url = f"https://{host}:{port}"
-        self._session: Optional[aiohttp.ClientSession] = None
-        self._ssl_context: Optional[ssl.SSLContext] = None
+        self._session: aiohttp.ClientSession | None = None
+        self._ssl_context: ssl.SSLContext | None = None
 
-    async def _get_ssl_context(self) -> Optional[ssl.SSLContext]:
+    async def _get_ssl_context(self) -> ssl.SSLContext | None:
         """Get or create SSL context once and cache it."""
         if not self.verify_ssl and self._ssl_context is None:
             # Create SSL context once and cache it to avoid repeated SSL handshake overhead
@@ -120,7 +120,7 @@ class RedfishClient:
             _LOGGER.debug("SSL connection warm-up failed: %s", exc)
             return False
 
-    async def get(self, path: str) -> Optional[Dict[str, Any]]:
+    async def get(self, path: str) -> dict[str, Any] | None:
         """Make GET request to Redfish API."""
         import time
         start_time = time.time()
@@ -138,20 +138,37 @@ class RedfishClient:
                     return result
                 elif response.status == 401:
                     raise RedfishError("Authentication failed - check credentials")
+                elif response.status == 403:
+                    _LOGGER.warning("GET %s forbidden: insufficient privileges", path)
+                    return None
+                elif response.status == 404:
+                    _LOGGER.debug("GET %s not found: endpoint may not be supported", path)
+                    return None
+                elif response.status >= 500:
+                    request_time = time.time() - start_time
+                    _LOGGER.warning("GET %s server error: %s %s (%.2f seconds)", 
+                                   path, response.status, response.reason, request_time)
+                    return None
                 else:
                     request_time = time.time() - start_time
-                    _LOGGER.warning("GET %s failed: %s %s (%.2f seconds)", path, response.status, response.reason, request_time)
+                    _LOGGER.warning("GET %s failed: %s %s (%.2f seconds)", 
+                                   path, response.status, response.reason, request_time)
                     return None
         except asyncio.TimeoutError:
             request_time = time.time() - start_time
-            _LOGGER.warning("GET %s timed out after %d seconds (actual: %.2f)", path, self.request_timeout, request_time)
+            _LOGGER.warning("GET %s timed out after %d seconds (actual: %.2f)", 
+                           path, self.request_timeout, request_time)
+            return None
+        except ConnectionError as e:
+            request_time = time.time() - start_time
+            _LOGGER.warning("GET %s connection error: %s (%.2f seconds)", path, e, request_time)
             return None
         except Exception as e:
             request_time = time.time() - start_time
-            _LOGGER.error("GET %s error: %s (%.2f seconds)", path, e, request_time)
+            _LOGGER.error("GET %s unexpected error: %s (%.2f seconds)", path, e, request_time)
             return None
 
-    async def post(self, path: str, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    async def post(self, path: str, data: dict[str, Any]) -> dict[str, Any] | None:
         """Make POST request to Redfish API."""
         url = f"{self.base_url}{path}"
         auth = aiohttp.BasicAuth(self.username, self.password)
@@ -182,7 +199,7 @@ class RedfishClient:
             _LOGGER.error("POST %s error: %s", path, e)
             return None
 
-    async def get_service_root(self) -> Optional[Dict[str, Any]]:
+    async def get_service_root(self) -> dict[str, Any] | None:
         """Get Redfish service root information."""
         # Try without trailing slash first, then with trailing slash
         result = await self.get("/redfish/v1")
@@ -190,31 +207,31 @@ class RedfishClient:
             result = await self.get("/redfish/v1/")
         return result
 
-    async def get_system_info(self, system_id: str = "System.Embedded.1") -> Optional[Dict[str, Any]]:
+    async def get_system_info(self, system_id: str = "System.Embedded.1") -> dict[str, Any] | None:
         """Get system information."""
         return await self.get(f"/redfish/v1/Systems/{system_id}")
 
-    async def get_thermal_info(self, system_id: str = "System.Embedded.1") -> Optional[Dict[str, Any]]:
+    async def get_thermal_info(self, system_id: str = "System.Embedded.1") -> dict[str, Any] | None:
         """Get thermal information (temperatures and fans)."""
         return await self.get(f"/redfish/v1/Chassis/{system_id}/Thermal")
 
-    async def get_power_info(self, system_id: str = "System.Embedded.1") -> Optional[Dict[str, Any]]:
+    async def get_power_info(self, system_id: str = "System.Embedded.1") -> dict[str, Any] | None:
         """Get power information."""
         return await self.get(f"/redfish/v1/Chassis/{system_id}/Power")
 
-    async def get_manager_info(self, manager_id: str = "iDRAC.Embedded.1") -> Optional[Dict[str, Any]]:
+    async def get_manager_info(self, manager_id: str = "iDRAC.Embedded.1") -> dict[str, Any] | None:
         """Get iDRAC manager information."""
         return await self.get(f"/redfish/v1/Managers/{manager_id}")
 
-    async def get_chassis_info(self, system_id: str = "System.Embedded.1") -> Optional[Dict[str, Any]]:
+    async def get_chassis_info(self, system_id: str = "System.Embedded.1") -> dict[str, Any] | None:
         """Get chassis information."""
         return await self.get(f"/redfish/v1/Chassis/{system_id}")
 
-    async def get_power_subsystem(self, system_id: str = "System.Embedded.1") -> Optional[Dict[str, Any]]:
+    async def get_power_subsystem(self, system_id: str = "System.Embedded.1") -> dict[str, Any] | None:
         """Get power subsystem information including redundancy."""
         return await self.get(f"/redfish/v1/Chassis/{system_id}/PowerSubsystem")
 
-    async def patch(self, path: str, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    async def patch(self, path: str, data: dict[str, Any]) -> dict[str, Any] | None:
         """Make PATCH request to Redfish API."""
         url = f"{self.base_url}{path}"
         auth = aiohttp.BasicAuth(self.username, self.password)
@@ -247,7 +264,7 @@ class RedfishClient:
 
     async def set_indicator_led(
         self, state: str, system_id: str = "System.Embedded.1"
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Set system indicator LED state.
         
         Common Dell iDRAC values: 'Blinking', 'Off'
@@ -267,7 +284,7 @@ class RedfishClient:
 
     async def reset_system(
         self, reset_type: str, system_id: str = "System.Embedded.1"
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Reset system with specified type."""
         data = {"ResetType": reset_type}
         return await self.post(f"/redfish/v1/Systems/{system_id}/Actions/ComputerSystem.Reset", data)
