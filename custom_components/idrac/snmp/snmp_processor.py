@@ -1,0 +1,399 @@
+"""SNMP data processor for Dell iDRAC integration.
+
+This module handles the processing of raw SNMP data into structured sensor information.
+It contains all the logic for interpreting SNMP values, applying unit conversions,
+checking status codes, and organizing data into sensor categories.
+"""
+from __future__ import annotations
+
+import logging
+from typing import Any, Dict
+
+from ..const import (
+    IDRAC_OIDS,
+    PSU_STATUS,
+    FAN_STATUS,
+    TEMP_STATUS,
+    MEMORY_HEALTH_STATUS,
+    INTRUSION_STATUS,
+    BATTERY_STATUS,
+    PROCESSOR_STATUS,
+)
+
+_LOGGER = logging.getLogger(__name__)
+
+
+class SNMPDataProcessor:
+    """Processes raw SNMP data into structured sensor information.
+    
+    This class handles the conversion of SNMP OID values and strings into
+    properly formatted sensor data dictionaries. It includes logic for:
+    - Temperature unit conversion and threshold processing
+    - Fan speed and status interpretation
+    - PSU power calculations and status mapping
+    - Memory module information processing
+    - Voltage probe data formatting
+    - Status code mapping for all sensor types
+    """
+    
+    def __init__(self, discovered_sensors: Dict[str, list]):
+        """Initialize the processor with discovered sensor indices.
+        
+        Args:
+            discovered_sensors: Dictionary containing lists of discovered sensor
+                               indices for each sensor type (cpus, fans, psus, etc.)
+        """
+        self.discovered_cpus = discovered_sensors.get('cpus', [])
+        self.discovered_fans = discovered_sensors.get('fans', [])
+        self.discovered_psus = discovered_sensors.get('psus', [])
+        self.discovered_voltage_probes = discovered_sensors.get('voltage_probes', [])
+        self.discovered_memory = discovered_sensors.get('memory', [])
+        self.discovered_virtual_disks = discovered_sensors.get('virtual_disks', [])
+        self.discovered_physical_disks = discovered_sensors.get('physical_disks', [])
+        self.discovered_storage_controllers = discovered_sensors.get('storage_controllers', [])
+        self.discovered_detailed_memory = discovered_sensors.get('detailed_memory', [])
+        self.discovered_system_voltages = discovered_sensors.get('system_voltages', [])
+        self.discovered_power_consumption = discovered_sensors.get('power_consumption', [])
+        self.discovered_intrusion = discovered_sensors.get('intrusion', [])
+        self.discovered_battery = discovered_sensors.get('battery', [])
+        self.discovered_processors = discovered_sensors.get('processors', [])
+        
+    def process_snmp_data(self, values: Dict[str, int], strings: Dict[str, str]) -> Dict[str, Any]:
+        """Process raw SNMP data into organized sensor information.
+        
+        Args:
+            values: Dictionary of OID -> integer value mappings from SNMP
+            strings: Dictionary of OID -> string value mappings from SNMP
+            
+        Returns:
+            Dictionary containing organized sensor data by category
+        """
+        data = {
+            "temperatures": {},
+            "fans": {},
+            "power_supplies": {},
+            "voltages": {},
+            "memory": {},
+            "virtual_disks": {},
+            "physical_disks": {},
+            "storage_controllers": {},
+            "system_voltages": {},
+            "power_consumption": {},
+            "intrusion_detection": {},
+            "battery": {},
+            "processors": {},
+        }
+        
+        # Process each sensor category
+        self._process_temperature_sensors(data, values, strings)
+        self._process_fan_sensors(data, values, strings)
+        self._process_psu_sensors(data, values, strings)
+        self._process_memory_sensors(data, values, strings)
+        self._process_voltage_sensors(data, values, strings)
+        self._process_power_consumption(data, values, strings)
+        self._process_intrusion_sensors(data, values, strings)
+        self._process_battery_sensors(data, values, strings)
+        self._process_processor_sensors(data, values, strings)
+        
+        return data
+    
+    def _process_temperature_sensors(self, data: Dict[str, Any], values: Dict[str, int], strings: Dict[str, str]) -> None:
+        """Process temperature sensor data from SNMP values."""
+        processed_count = 0
+        
+        for cpu_id in self.discovered_cpus:
+            temp_oid = IDRAC_OIDS["temp_probe_reading"].format(index=cpu_id)
+            temp_reading = values.get(temp_oid)
+            
+            if temp_reading is not None:
+                # Convert temperature value (Dell reports in tenths of degrees Celsius)
+                temperature_celsius = self._convert_temperature(temp_reading)
+                
+                # Get additional temperature data
+                temp_status = values.get(IDRAC_OIDS["temp_probe_status"].format(index=cpu_id))
+                temp_location = strings.get(IDRAC_OIDS["temp_probe_location"].format(index=cpu_id))
+                temp_upper_critical = values.get(IDRAC_OIDS["temp_probe_upper_critical"].format(index=cpu_id))
+                temp_upper_warning = values.get(IDRAC_OIDS["temp_probe_upper_warning"].format(index=cpu_id))
+                
+                sensor_data = {
+                    "name": temp_location or f"CPU {cpu_id} Temperature",
+                    "temperature": temperature_celsius,
+                    "status": TEMP_STATUS.get(temp_status, "unknown"),
+                    "upper_threshold_critical": self._convert_temperature(temp_upper_critical) if temp_upper_critical else None,
+                    "upper_threshold_non_critical": self._convert_temperature(temp_upper_warning) if temp_upper_warning else None,
+                }
+                
+                data["temperatures"][f"cpu_temp_{cpu_id}"] = sensor_data
+                processed_count += 1
+                
+                # Log temperature anomalies
+                self._check_temperature_anomalies(sensor_data, cpu_id)
+            else:
+                _LOGGER.debug("No temperature reading for discovered CPU sensor %d", cpu_id)
+        
+        if processed_count > 0:
+            _LOGGER.debug("Processed %d temperature sensors", processed_count)
+    
+    def _process_fan_sensors(self, data: Dict[str, Any], values: Dict[str, int], strings: Dict[str, str]) -> None:
+        """Process fan sensor data from SNMP values."""
+        processed_count = 0
+        
+        for fan_id in self.discovered_fans:
+            fan_reading = values.get(IDRAC_OIDS["cooling_device_reading"].format(index=fan_id))
+            
+            if fan_reading is not None:
+                fan_status = values.get(IDRAC_OIDS["cooling_device_status"].format(index=fan_id))
+                fan_location = strings.get(IDRAC_OIDS["cooling_device_location"].format(index=fan_id))
+                
+                sensor_data = {
+                    "name": fan_location or f"Fan {fan_id}",
+                    "speed_rpm": fan_reading,
+                    "status": FAN_STATUS.get(fan_status, "unknown"),
+                }
+                
+                data["fans"][f"fan_{fan_id}"] = sensor_data
+                processed_count += 1
+                
+                # Log fan anomalies
+                self._check_fan_anomalies(sensor_data, fan_id)
+            else:
+                _LOGGER.debug("No fan reading for discovered cooling sensor %d", fan_id)
+        
+        if processed_count > 0:
+            _LOGGER.debug("Processed %d fan sensors", processed_count)
+    
+    def _process_psu_sensors(self, data: Dict[str, Any], values: Dict[str, int], strings: Dict[str, str]) -> None:
+        """Process PSU sensor data from SNMP values."""
+        processed_count = 0
+        
+        for psu_id in self.discovered_psus:
+            psu_status = values.get(IDRAC_OIDS["psu_status"].format(index=psu_id))
+            psu_location = strings.get(IDRAC_OIDS["psu_location"].format(index=psu_id))
+            
+            if psu_status is not None and psu_location:
+                psu_max_output = values.get(IDRAC_OIDS["psu_max_output"].format(index=psu_id))
+                psu_current_output = values.get(IDRAC_OIDS["psu_current_output"].format(index=psu_id))
+                
+                sensor_data = {
+                    "name": psu_location,
+                    "status": PSU_STATUS.get(psu_status, "unknown"),
+                    "power_capacity_watts": psu_max_output,
+                    "power_output_watts": psu_current_output,
+                }
+                
+                data["power_supplies"][f"psu_{psu_id}"] = sensor_data
+                processed_count += 1
+                
+                # Log PSU anomalies
+                self._check_psu_anomalies(sensor_data, psu_id)
+            else:
+                _LOGGER.debug("Incomplete PSU data for sensor %d (status: %s, location: %s)", 
+                             psu_id, psu_status, psu_location)
+        
+        if processed_count > 0:
+            _LOGGER.debug("Processed %d PSU sensors", processed_count)
+    
+    def _process_memory_sensors(self, data: Dict[str, Any], values: Dict[str, int], strings: Dict[str, str]) -> None:
+        """Process memory sensor data from SNMP values."""
+        processed_count = 0
+        
+        for memory_id in self.discovered_memory:
+            memory_status = values.get(IDRAC_OIDS["memory_status"].format(index=memory_id))
+            memory_location = strings.get(IDRAC_OIDS["memory_location"].format(index=memory_id))
+            
+            if memory_status is not None and memory_location:
+                memory_size = values.get(IDRAC_OIDS["memory_size"].format(index=memory_id))
+                
+                sensor_data = {
+                    "name": memory_location,
+                    "status": MEMORY_HEALTH_STATUS.get(memory_status, "unknown"),
+                    "size_kb": memory_size,
+                }
+                
+                data["memory"][f"memory_{memory_id}"] = sensor_data
+                processed_count += 1
+                
+                # Log memory anomalies
+                self._check_memory_anomalies(sensor_data, memory_id)
+            else:
+                _LOGGER.debug("Incomplete memory data for sensor %d", memory_id)
+        
+        if processed_count > 0:
+            _LOGGER.debug("Processed %d memory sensors", processed_count)
+    
+    def _process_voltage_sensors(self, data: Dict[str, Any], values: Dict[str, int], strings: Dict[str, str]) -> None:
+        """Process voltage sensor data from SNMP values."""
+        processed_count = 0
+        
+        for voltage_id in self.discovered_voltage_probes:
+            voltage_reading = values.get(IDRAC_OIDS["psu_input_voltage"].format(index=voltage_id))
+            
+            if voltage_reading is not None:
+                # Convert voltage reading (typically in millivolts)
+                voltage_volts = self._convert_voltage(voltage_reading)
+                voltage_location = strings.get(IDRAC_OIDS["psu_location"].format(index=voltage_id))
+                
+                sensor_data = {
+                    "name": f"{voltage_location} Voltage" if voltage_location else f"PSU {voltage_id} Voltage",
+                    "reading_volts": voltage_volts,
+                    "status": "ok",  # Voltage probes typically don't have explicit status
+                }
+                
+                data["voltages"][f"psu_voltage_{voltage_id}"] = sensor_data
+                processed_count += 1
+            else:
+                _LOGGER.debug("No voltage reading for sensor %d", voltage_id)
+        
+        if processed_count > 0:
+            _LOGGER.debug("Processed %d voltage sensors", processed_count)
+    
+    def _process_power_consumption(self, data: Dict[str, Any], values: Dict[str, int], strings: Dict[str, str]) -> None:
+        """Process system power consumption data."""
+        if self.discovered_power_consumption:
+            power_current = values.get(IDRAC_OIDS["power_consumption_current"])
+            if power_current is not None:
+                power_peak = values.get(IDRAC_OIDS["power_consumption_peak"])
+                data["power_consumption"] = {
+                    "consumed_watts": power_current,
+                    "max_consumed_watts": power_peak,
+                }
+                _LOGGER.debug("Processed power consumption data")
+    
+    def _process_intrusion_sensors(self, data: Dict[str, Any], values: Dict[str, int], strings: Dict[str, str]) -> None:
+        """Process chassis intrusion sensor data."""
+        processed_count = 0
+        
+        for intrusion_id in self.discovered_intrusion:
+            intrusion_reading = values.get(IDRAC_OIDS["intrusion_reading"].format(index=intrusion_id))
+            intrusion_status = values.get(IDRAC_OIDS["intrusion_status"].format(index=intrusion_id))
+            intrusion_location = strings.get(IDRAC_OIDS["intrusion_location"].format(index=intrusion_id))
+            
+            if intrusion_reading is not None and intrusion_location:
+                sensor_data = {
+                    "name": intrusion_location,
+                    "reading": intrusion_reading,
+                    "status": INTRUSION_STATUS.get(intrusion_status, "unknown"),
+                }
+                
+                data["intrusion_detection"][f"intrusion_{intrusion_id}"] = sensor_data
+                processed_count += 1
+                
+                # Log intrusion events
+                if intrusion_status and intrusion_status != 3:  # 3 = ok
+                    _LOGGER.warning("Intrusion detected: %s (status: %s)", 
+                                  intrusion_location, INTRUSION_STATUS.get(intrusion_status, intrusion_status))
+        
+        if processed_count > 0:
+            _LOGGER.debug("Processed %d intrusion sensors", processed_count)
+    
+    def _process_battery_sensors(self, data: Dict[str, Any], values: Dict[str, int], strings: Dict[str, str]) -> None:
+        """Process system battery sensor data."""
+        processed_count = 0
+        
+        for battery_id in self.discovered_battery:
+            battery_reading = values.get(IDRAC_OIDS["battery_reading"].format(index=battery_id))
+            battery_status = values.get(IDRAC_OIDS["battery_status"].format(index=battery_id))
+            
+            if battery_reading is not None and battery_status is not None:
+                sensor_data = {
+                    "name": f"System Battery {battery_id}",
+                    "reading": battery_reading,
+                    "status": BATTERY_STATUS.get(battery_status, "unknown"),
+                }
+                
+                data["battery"][f"battery_{battery_id}"] = sensor_data
+                processed_count += 1
+                
+                # Log battery issues
+                if battery_status and battery_status != 3:  # 3 = ok
+                    _LOGGER.warning("Battery issue detected: Battery %d (status: %s)", 
+                                  battery_id, BATTERY_STATUS.get(battery_status, battery_status))
+        
+        if processed_count > 0:
+            _LOGGER.debug("Processed %d battery sensors", processed_count)
+    
+    def _process_processor_sensors(self, data: Dict[str, Any], values: Dict[str, int], strings: Dict[str, str]) -> None:
+        """Process processor sensor data."""
+        processed_count = 0
+        
+        for processor_id in self.discovered_processors:
+            processor_reading = values.get(IDRAC_OIDS["processor_reading"].format(index=processor_id))
+            processor_status = values.get(IDRAC_OIDS["processor_status"].format(index=processor_id))
+            processor_location = strings.get(IDRAC_OIDS["processor_location"].format(index=processor_id))
+            
+            if processor_reading is not None and processor_location:
+                sensor_data = {
+                    "name": processor_location,
+                    "reading": processor_reading,
+                    "status": PROCESSOR_STATUS.get(processor_status, "unknown"),
+                }
+                
+                data["processors"][f"processor_{processor_id}"] = sensor_data
+                processed_count += 1
+                
+                # Log processor issues
+                if processor_status and processor_status != 3:  # 3 = ok
+                    _LOGGER.warning("Processor issue detected: %s (status: %s)", 
+                                  processor_location, PROCESSOR_STATUS.get(processor_status, processor_status))
+        
+        if processed_count > 0:
+            _LOGGER.debug("Processed %d processor sensors", processed_count)
+    
+    # Utility methods for data conversion and anomaly detection
+    
+    def _convert_temperature(self, raw_value: int | None) -> float | None:
+        """Convert raw temperature value to Celsius.
+        
+        Dell iDRAC typically reports temperatures in tenths of degrees Celsius.
+        Values > 100 are assumed to be in tenths (e.g., 580 = 58.0°C).
+        Values <= 100 are assumed to be direct Celsius values.
+        """
+        if raw_value is None:
+            return None
+        return raw_value / 10.0 if raw_value > 100 else float(raw_value)
+    
+    def _convert_voltage(self, raw_value: int) -> float:
+        """Convert raw voltage value to volts.
+        
+        Dell iDRAC typically reports voltages in millivolts.
+        Values > 1000 are assumed to be in millivolts and converted to volts.
+        """
+        return raw_value / 1000.0 if raw_value > 1000 else float(raw_value)
+    
+    def _check_temperature_anomalies(self, sensor_data: Dict[str, Any], sensor_id: int) -> None:
+        """Check for temperature anomalies and log warnings."""
+        temp = sensor_data.get("temperature")
+        status = sensor_data.get("status")
+        name = sensor_data.get("name", f"CPU {sensor_id}")
+        
+        if temp and temp > 80:
+            _LOGGER.warning("High temperature detected: %s = %.1f°C", name, temp)
+        elif status and status not in ["ok", "unknown"]:
+            _LOGGER.warning("Temperature sensor status issue: %s status = %s", name, status)
+    
+    def _check_fan_anomalies(self, sensor_data: Dict[str, Any], sensor_id: int) -> None:
+        """Check for fan anomalies and log warnings."""
+        speed = sensor_data.get("speed_rpm")
+        status = sensor_data.get("status")
+        name = sensor_data.get("name", f"Fan {sensor_id}")
+        
+        if speed and speed < 500:
+            _LOGGER.warning("Low fan speed detected: %s = %d RPM", name, speed)
+        elif status and status not in ["ok", "unknown"]:
+            _LOGGER.warning("Fan status issue: %s status = %s", name, status)
+    
+    def _check_psu_anomalies(self, sensor_data: Dict[str, Any], sensor_id: int) -> None:
+        """Check for PSU anomalies and log warnings."""
+        status = sensor_data.get("status")
+        name = sensor_data.get("name", f"PSU {sensor_id}")
+        
+        if status and status not in ["ok", "unknown"]:
+            _LOGGER.warning("PSU status issue: %s status = %s", name, status)
+    
+    def _check_memory_anomalies(self, sensor_data: Dict[str, Any], sensor_id: int) -> None:
+        """Check for memory anomalies and log warnings."""
+        status = sensor_data.get("status")
+        name = sensor_data.get("name", f"Memory {sensor_id}")
+        
+        if status and status not in ["ok", "unknown"]:
+            _LOGGER.warning("Memory status issue: %s status = %s", name, status)

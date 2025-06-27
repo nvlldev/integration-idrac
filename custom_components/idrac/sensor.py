@@ -39,11 +39,13 @@ async def async_setup_entry(
     
     entities: list[IdracSensor] = []
     
-    # Log available data categories for debugging
+    # Log sensor setup progress
     if coordinator.data:
-        _LOGGER.debug("Available sensor data categories: %s", list(coordinator.data.keys()))
+        categories_with_data = [k for k, v in coordinator.data.items() if v]
+        _LOGGER.debug("Setting up sensors from %d data categories: %s", 
+                     len(categories_with_data), ", ".join(categories_with_data))
     else:
-        _LOGGER.warning("No sensor data available from coordinator")
+        _LOGGER.error("Cannot set up sensors - no data available from coordinator")
 
     # Add power consumption sensor
     if coordinator.data and "power_consumption" in coordinator.data:
@@ -52,16 +54,22 @@ async def async_setup_entry(
     # Add temperature sensors
     if coordinator.data and "temperatures" in coordinator.data:
         temp_count = len(coordinator.data["temperatures"])
-        _LOGGER.debug("Adding %d temperature sensors", temp_count)
-        for temp_id, temp_data in coordinator.data["temperatures"].items():
-            entities.append(IdracTemperatureSensor(coordinator, config_entry, temp_id, temp_data))
+        if temp_count > 0:
+            _LOGGER.info("Creating %d temperature sensors", temp_count)
+            for temp_id, temp_data in coordinator.data["temperatures"].items():
+                entities.append(IdracTemperatureSensor(coordinator, config_entry, temp_id, temp_data))
+        else:
+            _LOGGER.warning("Temperature data category exists but contains no sensors")
 
     # Add fan sensors  
     if coordinator.data and "fans" in coordinator.data:
         fan_count = len(coordinator.data["fans"])
-        _LOGGER.debug("Adding %d fan sensors", fan_count)
-        for fan_id, fan_data in coordinator.data["fans"].items():
-            entities.append(IdracFanSensor(coordinator, config_entry, fan_id, fan_data))
+        if fan_count > 0:
+            _LOGGER.info("Creating %d fan sensors", fan_count) 
+            for fan_id, fan_data in coordinator.data["fans"].items():
+                entities.append(IdracFanSensor(coordinator, config_entry, fan_id, fan_data))
+        else:
+            _LOGGER.warning("Fan data category exists but contains no sensors")
 
     # Add voltage sensors (filter out status sensors that show ~1v)
     if coordinator.data and "voltages" in coordinator.data:
@@ -119,7 +127,12 @@ async def async_setup_entry(
     if coordinator.connection_type == "redfish" and coordinator.data and "system_health" in coordinator.data:
         entities.append(IdracSystemHealthSensor(coordinator, config_entry))
 
-    _LOGGER.debug("Created %d sensor entities", len(entities))
+    if entities:
+        _LOGGER.info("Successfully created %d sensor entities for iDRAC %s", 
+                    len(entities), coordinator.host)
+    else:
+        _LOGGER.error("No sensor entities created - check SNMP connectivity and sensor discovery")
+    
     async_add_entities(entities)
 
 

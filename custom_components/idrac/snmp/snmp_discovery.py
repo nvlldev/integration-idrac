@@ -18,7 +18,7 @@ from pysnmp.hlapi.asyncio import (
 _LOGGER = logging.getLogger(__name__)
 
 
-async def _discover_sensors(
+async def discover_sensors(
     engine: SnmpEngine,
     auth_data: CommunityData | UsmUserData,
     transport_target: UdpTransportTarget,
@@ -69,7 +69,7 @@ async def _discover_sensors(
     return discovered_sensors
 
 
-async def _discover_cpu_sensors(
+async def discover_cpu_sensors(
     engine: SnmpEngine,
     auth_data: CommunityData | UsmUserData,
     transport_target: UdpTransportTarget,
@@ -113,7 +113,7 @@ async def _discover_cpu_sensors(
     return discovered_sensors
 
 
-async def _discover_fan_sensors(
+async def discover_fan_sensors(
     engine: SnmpEngine,
     auth_data: CommunityData | UsmUserData,
     transport_target: UdpTransportTarget,
@@ -157,7 +157,7 @@ async def _discover_fan_sensors(
     return discovered_sensors
 
 
-async def _discover_psu_sensors(
+async def discover_psu_sensors(
     engine: SnmpEngine,
     auth_data: CommunityData | UsmUserData,
     transport_target: UdpTransportTarget,
@@ -205,7 +205,7 @@ async def _discover_psu_sensors(
     return discovered_psus
 
 
-async def _discover_voltage_probes(
+async def discover_voltage_probes(
     engine: SnmpEngine,
     auth_data: CommunityData | UsmUserData,
     transport_target: UdpTransportTarget,
@@ -249,7 +249,7 @@ async def _discover_voltage_probes(
     return discovered_sensors
 
 
-async def _discover_memory_sensors(
+async def discover_memory_sensors(
     engine: SnmpEngine,
     auth_data: CommunityData | UsmUserData,
     transport_target: UdpTransportTarget,
@@ -293,7 +293,7 @@ async def _discover_memory_sensors(
     return discovered_sensors
 
 
-async def _discover_system_voltages(
+async def discover_system_voltages(
     engine: SnmpEngine,
     auth_data: CommunityData | UsmUserData,
     transport_target: UdpTransportTarget,
@@ -301,10 +301,10 @@ async def _discover_system_voltages(
     base_oid: str,
 ) -> list[int]:
     """Discover system voltage sensors."""
-    return await _discover_sensors(engine, auth_data, transport_target, context_data, base_oid)
+    return await discover_sensors(engine, auth_data, transport_target, context_data, base_oid)
 
 
-async def _discover_power_consumption_sensors(
+async def discover_power_consumption_sensors(
     engine: SnmpEngine,
     auth_data: CommunityData | UsmUserData,
     transport_target: UdpTransportTarget,
@@ -355,7 +355,7 @@ async def _discover_power_consumption_sensors(
     return discovered_sensors
 
 
-async def _discover_intrusion_sensors(
+async def discover_intrusion_sensors(
     engine: SnmpEngine,
     auth_data: CommunityData | UsmUserData,
     transport_target: UdpTransportTarget,
@@ -399,7 +399,7 @@ async def _discover_intrusion_sensors(
     return discovered_sensors
 
 
-async def _discover_battery_sensors(
+async def discover_battery_sensors(
     engine: SnmpEngine,
     auth_data: CommunityData | UsmUserData,
     transport_target: UdpTransportTarget,
@@ -443,7 +443,7 @@ async def _discover_battery_sensors(
     return discovered_sensors
 
 
-async def _discover_processor_sensors(
+async def discover_processor_sensors(
     engine: SnmpEngine,
     auth_data: CommunityData | UsmUserData,
     transport_target: UdpTransportTarget,

@@ -140,9 +140,15 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
         try:
             # Fetch device info on first run
             if self._device_info is None:
+                _LOGGER.debug("Fetching device information for %s", self._server_id)
                 await self._async_fetch_device_info()
+                _LOGGER.info("Connected to %s: %s", 
+                           self._device_info.get("name", "Unknown Device"),
+                           f"{self._device_info.get('model', 'Unknown Model')} "
+                           f"(Serial: {self._device_info.get('serial_number', 'Unknown')})")
             
             # Get sensor data from protocol coordinator
+            _LOGGER.debug("Updating sensor data via %s protocol", self.connection_type)
             data = await self.protocol_coordinator.get_sensor_data()
             
             # In hybrid mode, LED state will be fetched on-demand by the switch entity

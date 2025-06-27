@@ -389,25 +389,25 @@ async def validate_snmp_input(hass: HomeAssistant, data: dict[str, Any]) -> dict
 
         _LOGGER.info("Successfully connected to iDRAC via SNMP, discovering sensors...")
 
-        # Import discovery functions
-        from .discovery import (
-            _discover_sensors,
-            _discover_cpu_sensors,
-            _discover_fan_sensors,
-            _discover_psu_sensors,
-            _discover_voltage_probes,
-            _discover_memory_sensors,
-            _discover_system_voltages,
-            _discover_power_consumption_sensors,
-            _discover_intrusion_sensors,
-            _discover_battery_sensors,
-            _discover_processor_sensors,
+        # Import SNMP discovery functions
+        from .snmp.snmp_discovery import (
+            discover_sensors,
+            discover_cpu_sensors,
+            discover_fan_sensors,
+            discover_psu_sensors,
+            discover_voltage_probes,
+            discover_memory_sensors,
+            discover_system_voltages,
+            discover_power_consumption_sensors,
+            discover_intrusion_sensors,
+            discover_battery_sensors,
+            discover_processor_sensors,
         )
         
-        discovered_fans = await _discover_fan_sensors(engine, auth_data, transport_target, context_data, SNMP_WALK_OIDS["fans"])
-        discovered_cpus = await _discover_cpu_sensors(engine, auth_data, transport_target, context_data, SNMP_WALK_OIDS["cpu_temps"])
-        discovered_psus = await _discover_psu_sensors(engine, auth_data, transport_target, context_data, SNMP_WALK_OIDS["psu_status"])
-        discovered_voltage_probes = await _discover_voltage_probes(engine, auth_data, transport_target, context_data, SNMP_WALK_OIDS["psu_voltage"])
+        discovered_fans = await discover_fan_sensors(engine, auth_data, transport_target, context_data, SNMP_WALK_OIDS["fans"])
+        discovered_cpus = await discover_cpu_sensors(engine, auth_data, transport_target, context_data, SNMP_WALK_OIDS["cpu_temps"])
+        discovered_psus = await discover_psu_sensors(engine, auth_data, transport_target, context_data, SNMP_WALK_OIDS["psu_status"])
+        discovered_voltage_probes = await discover_voltage_probes(engine, auth_data, transport_target, context_data, SNMP_WALK_OIDS["psu_voltage"])
         
         # Try multiple memory health OID bases
         discovered_memory = []
@@ -419,7 +419,7 @@ async def validate_snmp_input(hass: HomeAssistant, data: dict[str, Any]) -> dict
         
         for oid_base in memory_oid_bases:
             _LOGGER.debug("Trying memory discovery with OID base: %s", oid_base)
-            memory_results = await _discover_memory_sensors(engine, auth_data, transport_target, context_data, oid_base)
+            memory_results = await discover_memory_sensors(engine, auth_data, transport_target, context_data, oid_base)
             if memory_results:
                 discovered_memory.extend(memory_results)
                 _LOGGER.info("Found %d memory modules with OID base %s", len(memory_results), oid_base)
@@ -429,19 +429,19 @@ async def validate_snmp_input(hass: HomeAssistant, data: dict[str, Any]) -> dict
         discovered_memory = sorted(list(set(discovered_memory)))
         
         # Discover storage components
-        discovered_virtual_disks = await _discover_sensors(engine, auth_data, transport_target, context_data, SNMP_WALK_OIDS["virtual_disks"])
-        discovered_physical_disks = await _discover_sensors(engine, auth_data, transport_target, context_data, SNMP_WALK_OIDS["physical_disks"])
-        discovered_storage_controllers = await _discover_sensors(engine, auth_data, transport_target, context_data, SNMP_WALK_OIDS["storage_controllers"])
+        discovered_virtual_disks = await discover_sensors(engine, auth_data, transport_target, context_data, SNMP_WALK_OIDS["virtual_disks"])
+        discovered_physical_disks = await discover_sensors(engine, auth_data, transport_target, context_data, SNMP_WALK_OIDS["physical_disks"])
+        discovered_storage_controllers = await discover_sensors(engine, auth_data, transport_target, context_data, SNMP_WALK_OIDS["storage_controllers"])
         
         # Discover new sensor types
-        discovered_detailed_memory = await _discover_sensors(engine, auth_data, transport_target, context_data, SNMP_WALK_OIDS["detailed_memory"])
-        discovered_system_voltages = await _discover_system_voltages(engine, auth_data, transport_target, context_data, SNMP_WALK_OIDS["system_voltages"])
-        discovered_power_consumption = await _discover_power_consumption_sensors(engine, auth_data, transport_target, context_data, SNMP_WALK_OIDS["power_consumption"])
+        discovered_detailed_memory = await discover_sensors(engine, auth_data, transport_target, context_data, SNMP_WALK_OIDS["detailed_memory"])
+        discovered_system_voltages = await discover_system_voltages(engine, auth_data, transport_target, context_data, SNMP_WALK_OIDS["system_voltages"])
+        discovered_power_consumption = await discover_power_consumption_sensors(engine, auth_data, transport_target, context_data, SNMP_WALK_OIDS["power_consumption"])
         
         # Discover newly added sensor types
-        discovered_intrusion = await _discover_intrusion_sensors(engine, auth_data, transport_target, context_data, SNMP_WALK_OIDS["intrusion_detection"])
-        discovered_battery = await _discover_battery_sensors(engine, auth_data, transport_target, context_data, SNMP_WALK_OIDS["system_battery"])
-        discovered_processors = await _discover_processor_sensors(engine, auth_data, transport_target, context_data, SNMP_WALK_OIDS["processors"])
+        discovered_intrusion = await discover_intrusion_sensors(engine, auth_data, transport_target, context_data, SNMP_WALK_OIDS["intrusion_detection"])
+        discovered_battery = await discover_battery_sensors(engine, auth_data, transport_target, context_data, SNMP_WALK_OIDS["system_battery"])
+        discovered_processors = await discover_processor_sensors(engine, auth_data, transport_target, context_data, SNMP_WALK_OIDS["processors"])
 
         _LOGGER.info("Discovered %d fans, %d CPU temperature sensors, %d PSU sensors, %d voltage probes, %d memory modules, %d virtual disks, %d physical disks, %d storage controllers, %d detailed memory modules, %d system voltages, %d power consumption sensors, %d intrusion sensors, %d battery sensors, %d processor sensors", 
                      len(discovered_fans), len(discovered_cpus), len(discovered_psus), len(discovered_voltage_probes), len(discovered_memory),
