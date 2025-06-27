@@ -255,6 +255,9 @@ class SNMPClient:
         all_value_oids = []
         all_string_oids = []
         
+        _LOGGER.debug("SNMP client discovered sensors - CPUs: %s, Fans: %s, PSUs: %s", 
+                     self.discovered_cpus, self.discovered_fans, self.discovered_psus)
+        
         # Temperature sensor OIDs
         for cpu_id in self.discovered_cpus:
             all_value_oids.extend([
@@ -337,9 +340,17 @@ class SNMPClient:
             )
             
             if isinstance(values, Exception):
+                _LOGGER.warning("Bulk values operation failed: %s", values)
                 values = {}
             if isinstance(strings, Exception):
+                _LOGGER.warning("Bulk strings operation failed: %s", strings)
                 strings = {}
+                
+            _LOGGER.debug("Bulk SNMP results: %d values, %d strings", len(values), len(strings))
+            if values:
+                _LOGGER.debug("Sample values: %s", dict(list(values.items())[:3]))
+            if strings:
+                _LOGGER.debug("Sample strings: %s", dict(list(strings.items())[:3]))
                 
             # Process temperature data
             for cpu_id in self.discovered_cpus:
@@ -467,6 +478,21 @@ class SNMPClient:
             # Fallback to individual sensor collection if bulk fails
             _LOGGER.warning("Bulk SNMP operation failed, falling back to individual collection: %s", exc)
             await self._collect_remaining_sensors(data)
+        
+        # If we got no temperature or fan data from bulk, try individual collection as fallback
+        if not data["temperatures"] and self.discovered_cpus:
+            _LOGGER.debug("No temperature data from bulk operation, trying individual collection")
+            for cpu_id in self.discovered_cpus:
+                temp_data = await self._get_temperature_data(cpu_id)
+                if temp_data and "temperature" in temp_data:
+                    data["temperatures"].update(temp_data["temperature"])
+        
+        if not data["fans"] and self.discovered_fans:
+            _LOGGER.debug("No fan data from bulk operation, trying individual collection")
+            for fan_id in self.discovered_fans:
+                fan_data = await self._get_fan_data(fan_id)
+                if fan_data and "fan" in fan_data:
+                    data["fans"].update(fan_data["fan"])
         
         return data
     
@@ -695,74 +721,44 @@ class SNMPClient:
         return result.get(oid)
     
     async def _bulk_get_values(self, oids: list[str]) -> dict[str, int]:
-        """Get multiple SNMP values as integers in a single executor call."""
+        """Get multiple SNMP values as integers using individual async calls."""
         await self._ensure_initialized()
-        loop = asyncio.get_event_loop()
+        results = {}
         
-        def _sync_bulk_get():
+        for oid in oids:
             try:
-                from pysnmp.hlapi import getCmd as sync_getCmd, SnmpEngine, CommunityData, UdpTransportTarget, ContextData, ObjectType, ObjectIdentity
+                error_indication, error_status, error_index, var_binds = await getCmd(
+                    self.engine, self.auth_data, self.transport_target, self.context_data, ObjectType(ObjectIdentity(oid))
+                )
                 
-                results = {}
-                sync_engine = SnmpEngine()
-                sync_auth = _create_auth_data(self.entry)
-                sync_target = UdpTransportTarget((self.host, self.snmp_port), timeout=3, retries=1)
-                sync_context = ContextData()
-                
-                for oid in oids:
-                    try:
-                        error_indication, error_status, error_index, var_binds = next(
-                            sync_getCmd(sync_engine, sync_auth, sync_target, sync_context, ObjectType(ObjectIdentity(oid)))
-                        )
-                        
-                        if not error_indication and not error_status:
-                            for name, val in var_binds:
-                                if val is not None and str(val) != "No Such Object currently exists at this OID":
-                                    try:
-                                        results[oid] = int(val)
-                                    except (ValueError, TypeError):
-                                        pass
-                    except Exception as exc:
-                        _LOGGER.debug("Failed to get SNMP value for OID %s: %s", oid, exc)
-                        
-                return results
+                if not error_indication and not error_status:
+                    for name, val in var_binds:
+                        if val is not None and str(val) != "No Such Object currently exists at this OID":
+                            try:
+                                results[oid] = int(val)
+                            except (ValueError, TypeError):
+                                pass
             except Exception as exc:
-                _LOGGER.debug("Failed to execute bulk SNMP operation: %s", exc)
-                return {}
-        
-        return await loop.run_in_executor(None, _sync_bulk_get)
+                _LOGGER.debug("Failed to get SNMP value for OID %s: %s", oid, exc)
+                
+        return results
     
     async def _bulk_get_strings(self, oids: list[str]) -> dict[str, str]:
-        """Get multiple SNMP values as strings in a single executor call."""
+        """Get multiple SNMP values as strings using individual async calls."""
         await self._ensure_initialized()
-        loop = asyncio.get_event_loop()
+        results = {}
         
-        def _sync_bulk_get():
+        for oid in oids:
             try:
-                from pysnmp.hlapi import getCmd as sync_getCmd, SnmpEngine, CommunityData, UdpTransportTarget, ContextData, ObjectType, ObjectIdentity
+                error_indication, error_status, error_index, var_binds = await getCmd(
+                    self.engine, self.auth_data, self.transport_target, self.context_data, ObjectType(ObjectIdentity(oid))
+                )
                 
-                results = {}
-                sync_engine = SnmpEngine()
-                sync_auth = _create_auth_data(self.entry)
-                sync_target = UdpTransportTarget((self.host, self.snmp_port), timeout=3, retries=1)
-                sync_context = ContextData()
-                
-                for oid in oids:
-                    try:
-                        error_indication, error_status, error_index, var_binds = next(
-                            sync_getCmd(sync_engine, sync_auth, sync_target, sync_context, ObjectType(ObjectIdentity(oid)))
-                        )
-                        
-                        if not error_indication and not error_status:
-                            for name, val in var_binds:
-                                if val is not None and str(val) != "No Such Object currently exists at this OID":
-                                    results[oid] = str(val).strip()
-                    except Exception as exc:
-                        _LOGGER.debug("Failed to get SNMP value for OID %s: %s", oid, exc)
-                        
-                return results
+                if not error_indication and not error_status:
+                    for name, val in var_binds:
+                        if val is not None and str(val) != "No Such Object currently exists at this OID":
+                            results[oid] = str(val).strip()
             except Exception as exc:
-                _LOGGER.debug("Failed to execute bulk SNMP operation: %s", exc)
-                return {}
-        
-        return await loop.run_in_executor(None, _sync_bulk_get)
+                _LOGGER.debug("Failed to get SNMP value for OID %s: %s", oid, exc)
+                
+        return results
