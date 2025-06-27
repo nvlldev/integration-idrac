@@ -227,17 +227,11 @@ class SNMPClient:
     async def get_sensor_data(self) -> dict[str, Any]:
         """Collect all sensor data via SNMP using discovered sensor indices.
         
-        Uses concurrent SNMP requests to optimize performance and reduce
-        update times. Collects data for all sensor types in parallel.
+        Uses a single bulk SNMP operation to collect all sensor data for
+        maximum performance and minimal blocking operations.
         
         Returns:
-            Dictionary containing organized sensor data with keys:
-            - temperatures: CPU temperature readings with status
-            - fans: Fan RPM readings with status
-            - power_supplies: PSU status and power metrics
-            - voltages: Voltage probe readings (filtered)
-            - memory: Memory module status and size
-            - power_consumption: System power consumption data
+            Dictionary containing organized sensor data.
         """
         await self._ensure_initialized()
         
@@ -257,70 +251,202 @@ class SNMPClient:
             "processors": {},
         }
 
-        # Collect all SNMP requests concurrently for better performance
+        # Collect ALL OIDs for all sensors at once
+        all_value_oids = []
+        all_string_oids = []
         
-        # Build concurrent tasks for all sensors
-        tasks = []
-        
-        # Temperature sensor tasks
+        # Temperature sensor OIDs
         for cpu_id in self.discovered_cpus:
-            tasks.extend([
-                self._get_temperature_data(cpu_id),
+            all_value_oids.extend([
+                IDRAC_OIDS["temp_probe_reading"].format(index=cpu_id),
+                IDRAC_OIDS["temp_probe_status"].format(index=cpu_id),
+                IDRAC_OIDS["temp_probe_upper_critical"].format(index=cpu_id),
+                IDRAC_OIDS["temp_probe_upper_warning"].format(index=cpu_id),
             ])
+            all_string_oids.append(IDRAC_OIDS["temp_probe_location"].format(index=cpu_id))
         
-        # Fan sensor tasks  
+        # Fan sensor OIDs
         for fan_id in self.discovered_fans:
-            tasks.extend([
-                self._get_fan_data(fan_id),
+            all_value_oids.extend([
+                IDRAC_OIDS["cooling_device_reading"].format(index=fan_id),
+                IDRAC_OIDS["cooling_device_status"].format(index=fan_id),
             ])
+            all_string_oids.append(IDRAC_OIDS["cooling_device_location"].format(index=fan_id))
             
-        # PSU sensor tasks
+        # PSU sensor OIDs
         for psu_id in self.discovered_psus:
-            tasks.extend([
-                self._get_psu_data(psu_id),
+            all_value_oids.extend([
+                IDRAC_OIDS["psu_status"].format(index=psu_id),
+                IDRAC_OIDS["psu_max_output"].format(index=psu_id),
+                IDRAC_OIDS["psu_current_output"].format(index=psu_id),
+            ])
+            all_string_oids.append(IDRAC_OIDS["psu_location"].format(index=psu_id))
+            
+        # Memory sensor OIDs
+        for memory_id in self.discovered_memory:
+            all_value_oids.extend([
+                IDRAC_OIDS["memory_status"].format(index=memory_id),
+                IDRAC_OIDS["memory_size"].format(index=memory_id),
+            ])
+            all_string_oids.append(IDRAC_OIDS["memory_location"].format(index=memory_id))
+            
+        # Voltage probe OIDs
+        for voltage_id in self.discovered_voltage_probes:
+            all_value_oids.append(IDRAC_OIDS["psu_input_voltage"].format(index=voltage_id))
+            all_string_oids.append(IDRAC_OIDS["psu_location"].format(index=voltage_id))
+            
+        # Power consumption OIDs
+        if self.discovered_power_consumption:
+            all_value_oids.extend([
+                IDRAC_OIDS["power_consumption_current"],
+                IDRAC_OIDS["power_consumption_peak"],
             ])
             
-        # Execute all requests concurrently
-        if tasks:
-            results = await asyncio.gather(*tasks, return_exceptions=True)
+        # Get ALL data in just two bulk operations
+        try:
+            async def _empty_dict():
+                return {}
+                
+            values, strings = await asyncio.gather(
+                self._bulk_get_values(all_value_oids) if all_value_oids else _empty_dict(),
+                self._bulk_get_strings(all_string_oids) if all_string_oids else _empty_dict(),
+                return_exceptions=True
+            )
             
-            # Process results
-            for result in results:
-                if isinstance(result, dict) and not isinstance(result, Exception):
-                    if "temperature" in result:
-                        data["temperatures"].update(result["temperature"])
-                    elif "fan" in result:
-                        data["fans"].update(result["fan"])
-                    elif "psu" in result:
-                        data["power_supplies"].update(result["psu"])
-        
-        # Handle remaining sensors sequentially for now (can be optimized later)
-        await self._collect_remaining_sensors(data)
+            if isinstance(values, Exception):
+                values = {}
+            if isinstance(strings, Exception):
+                strings = {}
+                
+            # Process temperature data
+            for cpu_id in self.discovered_cpus:
+                temp_reading = values.get(IDRAC_OIDS["temp_probe_reading"].format(index=cpu_id))
+                if temp_reading is not None:
+                    temperature_celsius = temp_reading / 10.0 if temp_reading > 100 else temp_reading
+                    temp_status = values.get(IDRAC_OIDS["temp_probe_status"].format(index=cpu_id))
+                    temp_location = strings.get(IDRAC_OIDS["temp_probe_location"].format(index=cpu_id))
+                    temp_upper_critical = values.get(IDRAC_OIDS["temp_probe_upper_critical"].format(index=cpu_id))
+                    temp_upper_warning = values.get(IDRAC_OIDS["temp_probe_upper_warning"].format(index=cpu_id))
+                    
+                    data["temperatures"][f"cpu_temp_{cpu_id}"] = {
+                        "name": temp_location or f"CPU {cpu_id} Temperature",
+                        "temperature": temperature_celsius,
+                        "status": TEMP_STATUS.get(temp_status, "unknown"),
+                        "upper_threshold_critical": temp_upper_critical / 10.0 if temp_upper_critical and temp_upper_critical > 100 else temp_upper_critical,
+                        "upper_threshold_non_critical": temp_upper_warning / 10.0 if temp_upper_warning and temp_upper_warning > 100 else temp_upper_warning,
+                    }
+            
+            # Process fan data
+            for fan_id in self.discovered_fans:
+                fan_reading = values.get(IDRAC_OIDS["cooling_device_reading"].format(index=fan_id))
+                if fan_reading is not None:
+                    fan_status = values.get(IDRAC_OIDS["cooling_device_status"].format(index=fan_id))
+                    fan_location = strings.get(IDRAC_OIDS["cooling_device_location"].format(index=fan_id))
+                    
+                    data["fans"][f"fan_{fan_id}"] = {
+                        "name": fan_location or f"Fan {fan_id}",
+                        "speed_rpm": fan_reading,
+                        "status": FAN_STATUS.get(fan_status, "unknown"),
+                    }
+            
+            # Process PSU data
+            for psu_id in self.discovered_psus:
+                psu_status = values.get(IDRAC_OIDS["psu_status"].format(index=psu_id))
+                psu_location = strings.get(IDRAC_OIDS["psu_location"].format(index=psu_id))
+                
+                if psu_status is not None and psu_location:
+                    psu_max_output = values.get(IDRAC_OIDS["psu_max_output"].format(index=psu_id))
+                    psu_current_output = values.get(IDRAC_OIDS["psu_current_output"].format(index=psu_id))
+                    
+                    data["power_supplies"][f"psu_{psu_id}"] = {
+                        "name": psu_location,
+                        "status": PSU_STATUS.get(psu_status, "unknown"),
+                        "power_capacity_watts": psu_max_output,
+                        "power_output_watts": psu_current_output,
+                    }
+            
+            # Process memory data
+            for memory_id in self.discovered_memory:
+                memory_status = values.get(IDRAC_OIDS["memory_status"].format(index=memory_id))
+                memory_location = strings.get(IDRAC_OIDS["memory_location"].format(index=memory_id))
+                
+                if memory_status is not None and memory_location:
+                    memory_size = values.get(IDRAC_OIDS["memory_size"].format(index=memory_id))
+                    
+                    data["memory"][f"memory_{memory_id}"] = {
+                        "name": memory_location,
+                        "status": MEMORY_HEALTH_STATUS.get(memory_status, "unknown"),
+                        "size_kb": memory_size,
+                    }
+            
+            # Process voltage data
+            for voltage_id in self.discovered_voltage_probes:
+                voltage_reading = values.get(IDRAC_OIDS["psu_input_voltage"].format(index=voltage_id))
+                if voltage_reading is not None:
+                    voltage_volts = voltage_reading / 1000.0 if voltage_reading > 1000 else voltage_reading
+                    voltage_location = strings.get(IDRAC_OIDS["psu_location"].format(index=voltage_id))
+                    
+                    data["voltages"][f"psu_voltage_{voltage_id}"] = {
+                        "name": f"{voltage_location} Voltage" if voltage_location else f"PSU {voltage_id} Voltage",
+                        "reading_volts": voltage_volts,
+                        "status": "ok",
+                    }
+            
+            # Process power consumption
+            if self.discovered_power_consumption:
+                power_current = values.get(IDRAC_OIDS["power_consumption_current"])
+                if power_current is not None:
+                    power_peak = values.get(IDRAC_OIDS["power_consumption_peak"])
+                    data["power_consumption"] = {
+                        "consumed_watts": power_current,
+                        "max_consumed_watts": power_peak,
+                    }
+                    
+        except Exception:
+            # Fallback to individual sensor collection if bulk fails
+            await self._collect_remaining_sensors(data)
         
         return data
     
     async def _get_temperature_data(self, cpu_id: int) -> dict[str, Any]:
-        """Get temperature data for a specific CPU concurrently."""
+        """Get temperature data for a specific CPU using bulk operations."""
         try:
-            temp_reading, temp_status, temp_location, temp_upper_critical, temp_upper_warning = await asyncio.gather(
-                self.get_value(IDRAC_OIDS["temp_probe_reading"].format(index=cpu_id)),
-                self.get_value(IDRAC_OIDS["temp_probe_status"].format(index=cpu_id)),
-                self.get_string(IDRAC_OIDS["temp_probe_location"].format(index=cpu_id)),
-                self.get_value(IDRAC_OIDS["temp_probe_upper_critical"].format(index=cpu_id)),
-                self.get_value(IDRAC_OIDS["temp_probe_upper_warning"].format(index=cpu_id)),
+            # Collect all OIDs for this temperature sensor
+            value_oids = [
+                IDRAC_OIDS["temp_probe_reading"].format(index=cpu_id),
+                IDRAC_OIDS["temp_probe_status"].format(index=cpu_id),
+                IDRAC_OIDS["temp_probe_upper_critical"].format(index=cpu_id),
+                IDRAC_OIDS["temp_probe_upper_warning"].format(index=cpu_id),
+            ]
+            string_oids = [
+                IDRAC_OIDS["temp_probe_location"].format(index=cpu_id),
+            ]
+            
+            # Get all values in bulk
+            values, strings = await asyncio.gather(
+                self._bulk_get_values(value_oids),
+                self._bulk_get_strings(string_oids),
                 return_exceptions=True
             )
             
-            if temp_reading is not None and not isinstance(temp_reading, Exception):
+            if isinstance(values, Exception) or isinstance(strings, Exception):
+                return {}
+                
+            temp_reading = values.get(IDRAC_OIDS["temp_probe_reading"].format(index=cpu_id))
+            if temp_reading is not None:
                 temperature_celsius = temp_reading / 10.0 if temp_reading > 100 else temp_reading
+                temp_status = values.get(IDRAC_OIDS["temp_probe_status"].format(index=cpu_id))
+                temp_location = strings.get(IDRAC_OIDS["temp_probe_location"].format(index=cpu_id))
+                temp_upper_critical = values.get(IDRAC_OIDS["temp_probe_upper_critical"].format(index=cpu_id))
+                temp_upper_warning = values.get(IDRAC_OIDS["temp_probe_upper_warning"].format(index=cpu_id))
                 
                 return {"temperature": {
                     f"cpu_temp_{cpu_id}": {
-                        "name": temp_location if not isinstance(temp_location, Exception) else f"CPU {cpu_id} Temperature",
+                        "name": temp_location or f"CPU {cpu_id} Temperature",
                         "temperature": temperature_celsius,
-                        "status": TEMP_STATUS.get(temp_status if not isinstance(temp_status, Exception) else None, "unknown"),
-                        "upper_threshold_critical": temp_upper_critical / 10.0 if temp_upper_critical and temp_upper_critical > 100 and not isinstance(temp_upper_critical, Exception) else temp_upper_critical,
-                        "upper_threshold_non_critical": temp_upper_warning / 10.0 if temp_upper_warning and temp_upper_warning > 100 and not isinstance(temp_upper_warning, Exception) else temp_upper_warning,
+                        "status": TEMP_STATUS.get(temp_status, "unknown"),
+                        "upper_threshold_critical": temp_upper_critical / 10.0 if temp_upper_critical and temp_upper_critical > 100 else temp_upper_critical,
+                        "upper_threshold_non_critical": temp_upper_warning / 10.0 if temp_upper_warning and temp_upper_warning > 100 else temp_upper_warning,
                     }
                 }}
         except Exception:
@@ -328,21 +454,37 @@ class SNMPClient:
         return {}
     
     async def _get_fan_data(self, fan_id: int) -> dict[str, Any]:
-        """Get fan data for a specific fan concurrently."""
+        """Get fan data for a specific fan using bulk operations."""
         try:
-            fan_reading, fan_status, fan_location = await asyncio.gather(
-                self.get_value(IDRAC_OIDS["cooling_device_reading"].format(index=fan_id)),
-                self.get_value(IDRAC_OIDS["cooling_device_status"].format(index=fan_id)),
-                self.get_string(IDRAC_OIDS["cooling_device_location"].format(index=fan_id)),
+            # Collect all OIDs for this fan sensor
+            value_oids = [
+                IDRAC_OIDS["cooling_device_reading"].format(index=fan_id),
+                IDRAC_OIDS["cooling_device_status"].format(index=fan_id),
+            ]
+            string_oids = [
+                IDRAC_OIDS["cooling_device_location"].format(index=fan_id),
+            ]
+            
+            # Get all values in bulk
+            values, strings = await asyncio.gather(
+                self._bulk_get_values(value_oids),
+                self._bulk_get_strings(string_oids),
                 return_exceptions=True
             )
             
-            if fan_reading is not None and not isinstance(fan_reading, Exception):
+            if isinstance(values, Exception) or isinstance(strings, Exception):
+                return {}
+                
+            fan_reading = values.get(IDRAC_OIDS["cooling_device_reading"].format(index=fan_id))
+            if fan_reading is not None:
+                fan_status = values.get(IDRAC_OIDS["cooling_device_status"].format(index=fan_id))
+                fan_location = strings.get(IDRAC_OIDS["cooling_device_location"].format(index=fan_id))
+                
                 return {"fan": {
                     f"fan_{fan_id}": {
-                        "name": fan_location if not isinstance(fan_location, Exception) else f"Fan {fan_id}",
+                        "name": fan_location or f"Fan {fan_id}",
                         "speed_rpm": fan_reading,
-                        "status": FAN_STATUS.get(fan_status if not isinstance(fan_status, Exception) else None, "unknown"),
+                        "status": FAN_STATUS.get(fan_status, "unknown"),
                     }
                 }}
         except Exception:
@@ -350,23 +492,41 @@ class SNMPClient:
         return {}
         
     async def _get_psu_data(self, psu_id: int) -> dict[str, Any]:
-        """Get PSU data for a specific PSU concurrently."""
+        """Get PSU data for a specific PSU using bulk operations."""
         try:
-            psu_status, psu_location, psu_max_output, psu_current_output = await asyncio.gather(
-                self.get_value(IDRAC_OIDS["psu_status"].format(index=psu_id)),
-                self.get_string(IDRAC_OIDS["psu_location"].format(index=psu_id)),
-                self.get_value(IDRAC_OIDS["psu_max_output"].format(index=psu_id)),
-                self.get_value(IDRAC_OIDS["psu_current_output"].format(index=psu_id)),
+            # Collect all OIDs for this PSU sensor
+            value_oids = [
+                IDRAC_OIDS["psu_status"].format(index=psu_id),
+                IDRAC_OIDS["psu_max_output"].format(index=psu_id),
+                IDRAC_OIDS["psu_current_output"].format(index=psu_id),
+            ]
+            string_oids = [
+                IDRAC_OIDS["psu_location"].format(index=psu_id),
+            ]
+            
+            # Get all values in bulk
+            values, strings = await asyncio.gather(
+                self._bulk_get_values(value_oids),
+                self._bulk_get_strings(string_oids),
                 return_exceptions=True
             )
             
-            if psu_status is not None and not isinstance(psu_status, Exception) and psu_location and not isinstance(psu_location, Exception):
+            if isinstance(values, Exception) or isinstance(strings, Exception):
+                return {}
+                
+            psu_status = values.get(IDRAC_OIDS["psu_status"].format(index=psu_id))
+            psu_location = strings.get(IDRAC_OIDS["psu_location"].format(index=psu_id))
+            
+            if psu_status is not None and psu_location:
+                psu_max_output = values.get(IDRAC_OIDS["psu_max_output"].format(index=psu_id))
+                psu_current_output = values.get(IDRAC_OIDS["psu_current_output"].format(index=psu_id))
+                
                 return {"psu": {
                     f"psu_{psu_id}": {
                         "name": psu_location,
                         "status": PSU_STATUS.get(psu_status, "unknown"),
-                        "power_capacity_watts": psu_max_output if not isinstance(psu_max_output, Exception) else None,
-                        "power_output_watts": psu_current_output if not isinstance(psu_current_output, Exception) else None,
+                        "power_capacity_watts": psu_max_output,
+                        "power_output_watts": psu_current_output,
                     }
                 }}
         except Exception:
@@ -463,70 +623,82 @@ class SNMPClient:
         return {}
 
     async def get_value(self, oid: str) -> int | None:
-        """Get an SNMP value and return as integer.
-        
-        Optimized for performance with minimal logging overhead.
-        
-        Args:
-            oid: SNMP Object Identifier string.
-            
-        Returns:
-            Integer value from SNMP or None if retrieval/conversion fails.
-        """
-        await self._ensure_initialized()
-        
-        try:
-            error_indication, error_status, error_index, var_binds = await getCmd(
-                self.engine,
-                self.auth_data,
-                self.transport_target,
-                self.context_data,
-                ObjectType(ObjectIdentity(oid)),
-            )
-
-            if error_indication or error_status:
-                return None
-
-            for name, val in var_binds:
-                if val is not None and str(val) != "No Such Object currently exists at this OID":
-                    try:
-                        return int(val)
-                    except (ValueError, TypeError):
-                        return None
-            return None
-
-        except Exception:
-            return None
+        """Get an SNMP value and return as integer."""
+        result = await self._bulk_get_values([oid])
+        return result.get(oid)
 
     async def get_string(self, oid: str) -> str | None:
-        """Get an SNMP value and return as string.
-        
-        Optimized for performance with minimal logging overhead.
-        
-        Args:
-            oid: SNMP Object Identifier string.
-            
-        Returns:
-            String value from SNMP or None if retrieval fails.
-        """
+        """Get an SNMP value and return as string."""
+        result = await self._bulk_get_strings([oid])
+        return result.get(oid)
+    
+    async def _bulk_get_values(self, oids: list[str]) -> dict[str, int]:
+        """Get multiple SNMP values as integers in a single executor call."""
         await self._ensure_initialized()
+        loop = asyncio.get_event_loop()
         
-        try:
-            error_indication, error_status, error_index, var_binds = await getCmd(
-                self.engine,
-                self.auth_data,
-                self.transport_target,
-                self.context_data,
-                ObjectType(ObjectIdentity(oid)),
-            )
-
-            if error_indication or error_status:
-                return None
-
-            for name, val in var_binds:
-                if val is not None and str(val) != "No Such Object currently exists at this OID":
-                    return str(val).strip()
-            return None
-
-        except Exception:
-            return None
+        def _sync_bulk_get():
+            try:
+                from pysnmp.hlapi import getCmd as sync_getCmd, SnmpEngine, CommunityData, UdpTransportTarget, ContextData, ObjectType, ObjectIdentity
+                
+                results = {}
+                sync_engine = SnmpEngine()
+                sync_auth = _create_auth_data(self.entry)
+                sync_target = UdpTransportTarget((self.host, self.snmp_port), timeout=1, retries=0)
+                sync_context = ContextData()
+                
+                for oid in oids:
+                    try:
+                        error_indication, error_status, error_index, var_binds = next(
+                            sync_getCmd(sync_engine, sync_auth, sync_target, sync_context, ObjectType(ObjectIdentity(oid)))
+                        )
+                        
+                        if not error_indication and not error_status:
+                            for name, val in var_binds:
+                                if val is not None and str(val) != "No Such Object currently exists at this OID":
+                                    try:
+                                        results[oid] = int(val)
+                                    except (ValueError, TypeError):
+                                        pass
+                    except Exception:
+                        pass
+                        
+                return results
+            except Exception:
+                return {}
+        
+        return await loop.run_in_executor(None, _sync_bulk_get)
+    
+    async def _bulk_get_strings(self, oids: list[str]) -> dict[str, str]:
+        """Get multiple SNMP values as strings in a single executor call."""
+        await self._ensure_initialized()
+        loop = asyncio.get_event_loop()
+        
+        def _sync_bulk_get():
+            try:
+                from pysnmp.hlapi import getCmd as sync_getCmd, SnmpEngine, CommunityData, UdpTransportTarget, ContextData, ObjectType, ObjectIdentity
+                
+                results = {}
+                sync_engine = SnmpEngine()
+                sync_auth = _create_auth_data(self.entry)
+                sync_target = UdpTransportTarget((self.host, self.snmp_port), timeout=1, retries=0)
+                sync_context = ContextData()
+                
+                for oid in oids:
+                    try:
+                        error_indication, error_status, error_index, var_binds = next(
+                            sync_getCmd(sync_engine, sync_auth, sync_target, sync_context, ObjectType(ObjectIdentity(oid)))
+                        )
+                        
+                        if not error_indication and not error_status:
+                            for name, val in var_binds:
+                                if val is not None and str(val) != "No Such Object currently exists at this OID":
+                                    results[oid] = str(val).strip()
+                    except Exception:
+                        pass
+                        
+                return results
+            except Exception:
+                return {}
+        
+        return await loop.run_in_executor(None, _sync_bulk_get)
