@@ -30,6 +30,7 @@ from .const import (
     CONF_PRIV_PROTOCOL,
     CONF_PRIV_PASSWORD,
     CONF_PORT,
+    CONF_SNMP_PORT,
     CONF_VERIFY_SSL,
     CONF_SCAN_INTERVAL,
     CONF_CONNECTION_TYPE,
@@ -123,8 +124,46 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
                 self.request_timeout, self.session_timeout
             )
             self._ssl_warmed_up = False
+        elif self.connection_type == "hybrid":
+            # Hybrid mode: SNMP for data, Redfish for controls
+            self.username = entry.data[CONF_USERNAME]
+            self.password = entry.data[CONF_PASSWORD]
+            self.verify_ssl = entry.data.get(CONF_VERIFY_SSL, False)
+            self.request_timeout = entry.data.get(CONF_REQUEST_TIMEOUT, DEFAULT_REQUEST_TIMEOUT)
+            self.session_timeout = entry.data.get(CONF_SESSION_TIMEOUT, DEFAULT_SESSION_TIMEOUT)
+            
+            # Create Redfish client for controls
+            self.client = RedfishClient(
+                hass, self.host, self.username, self.password, self.port, self.verify_ssl, 
+                self.request_timeout, self.session_timeout
+            )
+            self._ssl_warmed_up = False
+            
+            # SNMP configuration for data collection
+            self.snmp_port = entry.data.get(CONF_SNMP_PORT, DEFAULT_SNMP_PORT)
+            self.snmp_version = entry.data.get(CONF_SNMP_VERSION, DEFAULT_SNMP_VERSION)
+            self.community = entry.data.get(CONF_COMMUNITY, "public")
+            
+            # Store discovered sensors
+            self.discovered_fans = entry.data.get(CONF_DISCOVERED_FANS, [])
+            self.discovered_cpus = entry.data.get(CONF_DISCOVERED_CPUS, [])
+            self.discovered_psus = entry.data.get(CONF_DISCOVERED_PSUS, [])
+            self.discovered_voltage_probes = entry.data.get(CONF_DISCOVERED_VOLTAGE_PROBES, [])
+            self.discovered_memory = entry.data.get(CONF_DISCOVERED_MEMORY, [])
+            self.discovered_virtual_disks = entry.data.get(CONF_DISCOVERED_VIRTUAL_DISKS, [])
+            self.discovered_physical_disks = entry.data.get(CONF_DISCOVERED_PHYSICAL_DISKS, [])
+            self.discovered_storage_controllers = entry.data.get(CONF_DISCOVERED_STORAGE_CONTROLLERS, [])
+            self.discovered_detailed_memory = entry.data.get(CONF_DISCOVERED_DETAILED_MEMORY, [])
+            self.discovered_system_voltages = entry.data.get(CONF_DISCOVERED_SYSTEM_VOLTAGES, [])
+            self.discovered_power_consumption = entry.data.get(CONF_DISCOVERED_POWER_CONSUMPTION, [])
+
+            # Create isolated SNMP engine for this coordinator instance
+            self.engine = SnmpEngine()
+            self.auth_data = _create_auth_data(entry)
+            self.transport_target = UdpTransportTarget((self.host, self.snmp_port), timeout=5, retries=1)
+            self.context_data = ContextData()
         else:
-            # SNMP configuration
+            # SNMP only configuration
             self.snmp_version = entry.data.get(CONF_SNMP_VERSION, DEFAULT_SNMP_VERSION)
             self.community = entry.data.get(CONF_COMMUNITY, "public")
             
@@ -260,6 +299,8 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
             
             if self.connection_type == "redfish":
                 return await self._async_update_redfish_data()
+            elif self.connection_type == "hybrid":
+                return await self._async_update_snmp_data()  # Use SNMP for data collection in hybrid mode
             else:
                 return await self._async_update_snmp_data()
 
@@ -268,6 +309,8 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
                 if isinstance(exc, RedfishError):
                     raise UpdateFailed(f"Authentication failed for iDRAC {self._server_id}: {exc}") from exc
                 raise UpdateFailed(f"Error communicating with iDRAC {self._server_id}: {exc}") from exc
+            elif self.connection_type == "hybrid":
+                raise UpdateFailed(f"Error communicating with iDRAC {self._server_id} (hybrid mode): {exc}") from exc
             else:
                 raise UpdateFailed(f"Error communicating with iDRAC {self._server_id}: {exc}") from exc
 
@@ -755,8 +798,8 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
 
     async def async_reset_system(self, reset_type: str = "GracefulRestart") -> bool:
         """Reset system via Redfish API."""
-        if self.connection_type != "redfish":
-            _LOGGER.error("System reset only available via Redfish API")
+        if self.connection_type not in ["redfish", "hybrid"]:
+            _LOGGER.error("System reset only available via Redfish API or hybrid mode")
             return False
             
         try:
@@ -768,8 +811,8 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
 
     async def async_set_indicator_led(self, state: str) -> bool:
         """Set indicator LED state via Redfish API."""
-        if self.connection_type != "redfish":
-            _LOGGER.error("LED control only available via Redfish API")
+        if self.connection_type not in ["redfish", "hybrid"]:
+            _LOGGER.error("LED control only available via Redfish API or hybrid mode")
             return False
             
         try:

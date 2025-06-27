@@ -32,6 +32,7 @@ from .const import (
     CONF_PRIV_PROTOCOL,
     CONF_PRIV_PASSWORD,
     CONF_PORT,
+    CONF_SNMP_PORT,
     CONF_VERIFY_SSL,
     CONF_SCAN_INTERVAL,
     CONF_CONNECTION_TYPE,
@@ -101,45 +102,65 @@ def _create_auth_data(data: dict[str, Any]) -> CommunityData | UsmUserData:
         return CommunityData(community)
 
 
-def _get_dynamic_schema(connection_type: str = DEFAULT_CONNECTION_TYPE) -> vol.Schema:
-    """Get schema based on connection type."""
-    base_schema = {
-        vol.Required(CONF_HOST): str,
-        vol.Optional(CONF_CONNECTION_TYPE, default=DEFAULT_CONNECTION_TYPE): vol.In(CONNECTION_TYPES),
-        vol.Optional(CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL): vol.All(
-            vol.Coerce(int), vol.Range(min=10, max=300)
-        ),
-    }
-    
-    if connection_type == "redfish":
-        base_schema.update({
-            vol.Optional(CONF_PORT, default=DEFAULT_PORT): int,
-            vol.Required(CONF_USERNAME, default="root"): str,
-            vol.Required(CONF_PASSWORD): str,
-            vol.Optional(CONF_VERIFY_SSL, default=False): bool,
-            vol.Optional(CONF_REQUEST_TIMEOUT, default=DEFAULT_REQUEST_TIMEOUT): vol.All(
-                vol.Coerce(int), vol.Range(min=5, max=120)
-            ),
-            vol.Optional(CONF_SESSION_TIMEOUT, default=DEFAULT_SESSION_TIMEOUT): vol.All(
-                vol.Coerce(int), vol.Range(min=10, max=180)
-            ),
-        })
-    else:  # SNMP
-        base_schema.update({
-            vol.Optional(CONF_PORT, default=DEFAULT_SNMP_PORT): int,
-            vol.Optional(CONF_SNMP_VERSION, default=DEFAULT_SNMP_VERSION): vol.In(SNMP_VERSIONS),
-            vol.Optional(CONF_COMMUNITY, default=DEFAULT_COMMUNITY): str,
-            vol.Optional(CONF_USERNAME): str,
-            vol.Optional(CONF_AUTH_PROTOCOL, default="none"): vol.In(list(SNMP_AUTH_PROTOCOLS.keys())),
-            vol.Optional(CONF_AUTH_PASSWORD): str,
-            vol.Optional(CONF_PRIV_PROTOCOL, default="none"): vol.In(list(SNMP_PRIV_PROTOCOLS.keys())),
-            vol.Optional(CONF_PRIV_PASSWORD): str,
-        })
-    
-    return vol.Schema(base_schema)
+# Step 1: Connection method selection
+STEP_CONNECTION_TYPE_SCHEMA = vol.Schema({
+    vol.Required(CONF_HOST): str,
+    vol.Required(CONF_CONNECTION_TYPE, default=DEFAULT_CONNECTION_TYPE): vol.In(CONNECTION_TYPES),
+    vol.Optional(CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL): vol.All(
+        vol.Coerce(int), vol.Range(min=10, max=300)
+    ),
+})
 
+# Step 2a: Redfish configuration
+STEP_REDFISH_SCHEMA = vol.Schema({
+    vol.Optional(CONF_PORT, default=DEFAULT_PORT): int,
+    vol.Required(CONF_USERNAME, default="root"): str,
+    vol.Required(CONF_PASSWORD): str,
+    vol.Optional(CONF_VERIFY_SSL, default=False): bool,
+    vol.Optional(CONF_REQUEST_TIMEOUT, default=DEFAULT_REQUEST_TIMEOUT): vol.All(
+        vol.Coerce(int), vol.Range(min=5, max=120)
+    ),
+    vol.Optional(CONF_SESSION_TIMEOUT, default=DEFAULT_SESSION_TIMEOUT): vol.All(
+        vol.Coerce(int), vol.Range(min=10, max=180)
+    ),
+})
 
-STEP_USER_DATA_SCHEMA = _get_dynamic_schema()
+# Step 2b: SNMP configuration  
+STEP_SNMP_SCHEMA = vol.Schema({
+    vol.Optional(CONF_PORT, default=DEFAULT_SNMP_PORT): int,
+    vol.Optional(CONF_SNMP_VERSION, default=DEFAULT_SNMP_VERSION): vol.In(SNMP_VERSIONS),
+    vol.Optional(CONF_COMMUNITY, default=DEFAULT_COMMUNITY): str,
+    vol.Optional(CONF_USERNAME): str,
+    vol.Optional(CONF_AUTH_PROTOCOL, default="none"): vol.In(list(SNMP_AUTH_PROTOCOLS.keys())),
+    vol.Optional(CONF_AUTH_PASSWORD): str,
+    vol.Optional(CONF_PRIV_PROTOCOL, default="none"): vol.In(list(SNMP_PRIV_PROTOCOLS.keys())),
+    vol.Optional(CONF_PRIV_PASSWORD): str,
+})
+
+# Step 2c: Hybrid Redfish configuration
+STEP_HYBRID_REDFISH_SCHEMA = vol.Schema({
+    vol.Optional(CONF_PORT, default=DEFAULT_PORT): int,
+    vol.Required(CONF_USERNAME, default="root"): str,
+    vol.Required(CONF_PASSWORD): str,
+    vol.Optional(CONF_VERIFY_SSL, default=False): bool,
+    vol.Optional(CONF_REQUEST_TIMEOUT, default=DEFAULT_REQUEST_TIMEOUT): vol.All(
+        vol.Coerce(int), vol.Range(min=5, max=120)
+    ),
+    vol.Optional(CONF_SESSION_TIMEOUT, default=DEFAULT_SESSION_TIMEOUT): vol.All(
+        vol.Coerce(int), vol.Range(min=10, max=180)
+    ),
+})
+
+# Step 3: Hybrid SNMP configuration
+STEP_HYBRID_SNMP_SCHEMA = vol.Schema({
+    vol.Optional(CONF_SNMP_PORT, default=DEFAULT_SNMP_PORT): int,
+    vol.Optional(CONF_SNMP_VERSION, default=DEFAULT_SNMP_VERSION): vol.In(SNMP_VERSIONS),
+    vol.Optional(CONF_COMMUNITY, default=DEFAULT_COMMUNITY): str,
+    vol.Optional(CONF_AUTH_PROTOCOL, default="none"): vol.In(list(SNMP_AUTH_PROTOCOLS.keys())),
+    vol.Optional(CONF_AUTH_PASSWORD): str,
+    vol.Optional(CONF_PRIV_PROTOCOL, default="none"): vol.In(list(SNMP_PRIV_PROTOCOLS.keys())),
+    vol.Optional(CONF_PRIV_PASSWORD): str,
+})
 
 
 async def validate_redfish_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
@@ -288,12 +309,94 @@ async def validate_snmp_input(hass: HomeAssistant, data: dict[str, Any]) -> dict
         raise CannotConnect
 
 
+async def validate_hybrid_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
+    """Validate hybrid connection (SNMP for data, Redfish for controls)."""
+    host = data[CONF_HOST]
+    
+    # Validate Redfish connection for controls
+    redfish_port = data.get(CONF_PORT, DEFAULT_PORT)
+    username = data[CONF_USERNAME]
+    password = data[CONF_PASSWORD]
+    verify_ssl = data.get(CONF_VERIFY_SSL, False)
+    request_timeout = data.get(CONF_REQUEST_TIMEOUT, DEFAULT_REQUEST_TIMEOUT)
+    session_timeout = data.get(CONF_SESSION_TIMEOUT, DEFAULT_SESSION_TIMEOUT)
+
+    redfish_client = RedfishClient(hass, host, username, password, redfish_port, verify_ssl, request_timeout, session_timeout)
+
+    try:
+        # Test Redfish connection
+        _LOGGER.debug("Testing Redfish connection for hybrid mode to %s:%s", host, redfish_port)
+        if not await redfish_client.test_connection():
+            raise CannotConnect("Failed to connect to Redfish API")
+
+        redfish_info = await redfish_client.get_service_root()
+        if not redfish_info:
+            raise CannotConnect("Failed to get Redfish service root")
+
+    finally:
+        await redfish_client.close()
+
+    # Validate SNMP connection for data collection
+    snmp_port = data.get(CONF_SNMP_PORT, DEFAULT_SNMP_PORT)
+    snmp_version = data.get(CONF_SNMP_VERSION, DEFAULT_SNMP_VERSION)
+    
+    # Create SNMP auth data for testing
+    snmp_auth_data = _create_auth_data(data)
+    
+    # Test SNMP connection
+    engine = SnmpEngine()
+    transport_target = UdpTransportTarget((host, snmp_port), timeout=5, retries=1)
+    context_data = ContextData()
+
+    try:
+        _LOGGER.debug("Testing SNMP connection for hybrid mode to %s:%s", host, snmp_port)
+        
+        # Try to get system uptime as a basic connectivity test
+        error_indication, error_status, error_index, var_binds = await getCmd(
+            engine,
+            snmp_auth_data,
+            transport_target,
+            context_data,
+            ObjectType(ObjectIdentity("1.3.6.1.2.1.1.3.0")),  # sysUpTime
+        )
+
+        if error_indication:
+            raise CannotConnect(f"SNMP connection failed: {error_indication}")
+        elif error_status:
+            raise CannotConnect(f"SNMP error: {error_status.prettyPrint()}")
+
+        _LOGGER.debug("SNMP test successful for hybrid mode")
+
+    except Exception as exc:
+        _LOGGER.error("SNMP test failed for hybrid mode: %s", exc)
+        raise CannotConnect(f"SNMP connection failed: {exc}") from exc
+    finally:
+        engine.close()
+
+    # Get device name from Redfish for title  
+    device_name = "Dell iDRAC"
+    system_info = await redfish_client.get_system_info()
+    if system_info:
+        model = system_info.get("Model")
+        if model:
+            device_name = f"Dell {model}"
+
+    _LOGGER.info("Successfully validated hybrid connection to %s", host)
+    return {
+        "title": f"{device_name} ({host}) - Hybrid Mode",
+        "redfish_info": redfish_info,
+        "snmp_version": snmp_version,
+    }
+
+
 async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
     """Validate the user input allows us to connect."""
     connection_type = data.get(CONF_CONNECTION_TYPE, DEFAULT_CONNECTION_TYPE)
     
     if connection_type == "redfish":
         return await validate_redfish_input(hass, data)
+    elif connection_type == "hybrid":
+        return await validate_hybrid_input(hass, data)
     else:
         return await validate_snmp_input(hass, data)
 
@@ -458,34 +561,56 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     def __init__(self) -> None:
         """Initialize the config flow."""
-        self._connection_type = DEFAULT_CONNECTION_TYPE
+        self._config_data = {}
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Handle the initial step."""
+        """Handle the initial step - connection type selection."""
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            # Update connection type and schema if changed
-            if CONF_CONNECTION_TYPE in user_input:
-                new_connection_type = user_input[CONF_CONNECTION_TYPE]
-                if new_connection_type != self._connection_type:
-                    self._connection_type = new_connection_type
-                    # Show form again with updated schema
-                    return self.async_show_form(
-                        step_id="user", 
-                        data_schema=_get_dynamic_schema(self._connection_type),
-                        errors=errors
-                    )
+            # Store basic configuration
+            self._config_data.update(user_input)
             
             # Set unique ID based on host and connection type
-            unique_id = f"{user_input[CONF_HOST]}_{user_input.get(CONF_CONNECTION_TYPE, DEFAULT_CONNECTION_TYPE)}"
+            unique_id = f"{user_input[CONF_HOST]}_{user_input[CONF_CONNECTION_TYPE]}"
             await self.async_set_unique_id(unique_id)
             self._abort_if_unique_id_configured()
 
+            connection_type = user_input[CONF_CONNECTION_TYPE]
+            
+            # Route to appropriate next step based on connection type
+            if connection_type == "redfish":
+                return await self.async_step_redfish()
+            elif connection_type == "snmp":
+                return await self.async_step_snmp()
+            elif connection_type == "hybrid":
+                return await self.async_step_hybrid_redfish()
+
+        return self.async_show_form(
+            step_id="user",
+            data_schema=STEP_CONNECTION_TYPE_SCHEMA,
+            errors=errors,
+            description_placeholders={
+                "redfish_desc": "Fast setup, full control features, moderate performance",
+                "snmp_desc": "Fast performance, basic monitoring only",
+                "hybrid_desc": "Best of both: SNMP speed + Redfish controls"
+            }
+        )
+
+    async def async_step_redfish(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle Redfish configuration step."""
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            # Combine all configuration data
+            self._config_data.update(user_input)
+            
             try:
-                info = await validate_input(self.hass, user_input)
+                info = await validate_redfish_input(self.hass, self._config_data)
             except CannotConnect:
                 errors["base"] = "cannot_connect"
             except InvalidAuth:
@@ -494,12 +619,116 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
             else:
-                return self.async_create_entry(title=info["title"], data=user_input)
+                return self.async_create_entry(title=info["title"], data=self._config_data)
 
         return self.async_show_form(
-            step_id="user", 
-            data_schema=_get_dynamic_schema(self._connection_type), 
-            errors=errors
+            step_id="redfish",
+            data_schema=STEP_REDFISH_SCHEMA,
+            errors=errors,
+            description_placeholders={
+                "host": self._config_data.get(CONF_HOST, ""),
+            }
+        )
+
+    async def async_step_snmp(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle SNMP configuration step."""
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            # Combine all configuration data
+            self._config_data.update(user_input)
+            
+            try:
+                info = await validate_snmp_input(self.hass, self._config_data)
+            except CannotConnect:
+                errors["base"] = "cannot_connect"
+            except InvalidAuth:
+                errors["base"] = "invalid_auth"
+            except Exception:  # pylint: disable=broad-except
+                _LOGGER.exception("Unexpected exception")
+                errors["base"] = "unknown"
+            else:
+                return self.async_create_entry(title=info["title"], data=self._config_data)
+
+        return self.async_show_form(
+            step_id="snmp",
+            data_schema=STEP_SNMP_SCHEMA,
+            errors=errors,
+            description_placeholders={
+                "host": self._config_data.get(CONF_HOST, ""),
+            }
+        )
+
+    async def async_step_hybrid_redfish(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle hybrid mode Redfish configuration step."""
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            # Store Redfish configuration
+            self._config_data.update(user_input)
+            
+            # Validate Redfish connection
+            try:
+                # Test Redfish connection before proceeding to SNMP step
+                redfish_data = dict(self._config_data)
+                await validate_redfish_input(self.hass, redfish_data)
+            except CannotConnect:
+                errors["base"] = "cannot_connect"
+            except InvalidAuth:
+                errors["base"] = "invalid_auth"
+            except Exception:  # pylint: disable=broad-except
+                _LOGGER.exception("Unexpected exception")
+                errors["base"] = "unknown"
+            else:
+                # Redfish connection successful, proceed to SNMP configuration
+                return await self.async_step_hybrid_snmp()
+
+        return self.async_show_form(
+            step_id="hybrid_redfish",
+            data_schema=STEP_HYBRID_REDFISH_SCHEMA,
+            errors=errors,
+            description_placeholders={
+                "host": self._config_data.get(CONF_HOST, ""),
+                "step": "Redfish Control Settings",
+                "purpose": "Used for LED control and system resets"
+            }
+        )
+
+    async def async_step_hybrid_snmp(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle hybrid mode SNMP configuration step."""
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            # Combine all configuration data
+            self._config_data.update(user_input)
+            
+            try:
+                info = await validate_hybrid_input(self.hass, self._config_data)
+            except CannotConnect:
+                errors["base"] = "cannot_connect"
+            except InvalidAuth:
+                errors["base"] = "invalid_auth"
+            except Exception:  # pylint: disable=broad-except
+                _LOGGER.exception("Unexpected exception")
+                errors["base"] = "unknown"
+            else:
+                return self.async_create_entry(title=info["title"], data=self._config_data)
+
+        return self.async_show_form(
+            step_id="hybrid_snmp",
+            data_schema=STEP_HYBRID_SNMP_SCHEMA,
+            errors=errors,
+            description_placeholders={
+                "host": self._config_data.get(CONF_HOST, ""),
+                "step": "SNMP Data Collection Settings",
+                "purpose": "Used for fast sensor data monitoring"
+            }
         )
 
 

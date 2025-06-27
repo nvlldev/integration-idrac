@@ -28,6 +28,7 @@ CONF_DISCOVERED_SYSTEM_VOLTAGES: Final = "discovered_system_voltages"
 CONF_DISCOVERED_POWER_CONSUMPTION: Final = "discovered_power_consumption"
 CONF_REQUEST_TIMEOUT: Final = "request_timeout"
 CONF_SESSION_TIMEOUT: Final = "session_timeout"
+CONF_SNMP_PORT: Final = "snmp_port"
 
 # Default values
 DEFAULT_PORT: Final = 443
@@ -40,7 +41,7 @@ DEFAULT_REQUEST_TIMEOUT: Final = 30
 DEFAULT_SESSION_TIMEOUT: Final = 45
 
 # Connection type options
-CONNECTION_TYPES: Final = ["redfish", "snmp"]
+CONNECTION_TYPES: Final = ["redfish", "snmp", "hybrid"]
 
 # SNMP version options
 SNMP_VERSIONS: Final = ["v2c", "v3"]

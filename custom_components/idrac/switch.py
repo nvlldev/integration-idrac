@@ -168,7 +168,7 @@ class IdracIdentifyLEDSwitch(IdracSwitch):
     @property
     def is_on(self) -> bool:
         """Return if the identify LED is on."""
-        if self.coordinator.connection_type == "redfish" and self.coordinator.data:
+        if self.coordinator.connection_type in ["redfish", "hybrid"] and self.coordinator.data:
             led_state = self.coordinator.data.get("indicator_led_state")
             # LED is considered "on" if it's blinking or lit
             return led_state in ["Blinking", "Lit"]
@@ -181,7 +181,7 @@ class IdracIdentifyLEDSwitch(IdracSwitch):
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn on the identify LED."""
-        if self.coordinator.connection_type == "redfish":
+        if self.coordinator.connection_type in ["redfish", "hybrid"]:
             success = await self.coordinator.async_set_indicator_led("Blinking")
             if success:
                 # Request coordinator update to get the new state
@@ -194,7 +194,7 @@ class IdracIdentifyLEDSwitch(IdracSwitch):
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn off the identify LED."""
-        if self.coordinator.connection_type == "redfish":
+        if self.coordinator.connection_type in ["redfish", "hybrid"]:
             success = await self.coordinator.async_set_indicator_led("Off")
             if success:
                 # Request coordinator update to get the new state
@@ -215,5 +215,5 @@ class IdracIdentifyLEDSwitch(IdracSwitch):
     @property  
     def available(self) -> bool:
         """Return if entity is available."""
-        # Only available via Redfish for LED control
-        return self.coordinator.connection_type == "redfish" and self.coordinator.last_update_success
+        # Available via Redfish or hybrid mode for LED control
+        return self.coordinator.connection_type in ["redfish", "hybrid"] and self.coordinator.last_update_success

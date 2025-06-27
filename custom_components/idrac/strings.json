@@ -2,39 +2,126 @@
   "config": {
     "step": {
       "user": {
-        "title": "Dell iDRAC Setup",
-        "description": "Configure your Dell iDRAC connection",
+        "title": "Dell iDRAC Integration Setup",
+        "description": "Configure your Dell iDRAC connection. Choose the connection method that best fits your needs.",
         "data": {
           "host": "Hostname or IP Address",
+          "connection_type": "Connection Type",
+          "scan_interval": "Scan Interval (seconds)"
+        },
+        "data_description": {
+          "host": "The IP address or hostname of your Dell iDRAC",
+          "connection_type": "How to connect to your iDRAC:\n• **Redfish**: Full featured with moderate performance\n• **SNMP**: Fast performance, monitoring only\n• **Hybrid**: Best of both - SNMP speed with Redfish controls",
+          "scan_interval": "How often to refresh sensor data (10-300 seconds)"
+        }
+      },
+      "redfish": {
+        "title": "Redfish API Configuration",
+        "description": "Configure Redfish API connection for {host}. This provides full control features including LED control and system resets.",
+        "data": {
+          "port": "Redfish Port",
+          "username": "Username",
+          "password": "Password",
+          "verify_ssl": "Verify SSL Certificate",
+          "request_timeout": "Request Timeout (seconds)",
+          "session_timeout": "Session Timeout (seconds)"
+        },
+        "data_description": {
+          "port": "Redfish API port (usually 443)",
+          "username": "iDRAC username (usually 'root')",
+          "password": "iDRAC password",
+          "verify_ssl": "Enable SSL certificate verification (usually disabled for iDRACs)",
+          "request_timeout": "Timeout for individual API requests (5-120 seconds)",
+          "session_timeout": "Timeout for the entire session (10-180 seconds)"
+        }
+      },
+      "snmp": {
+        "title": "SNMP Configuration",
+        "description": "Configure SNMP connection for {host}. This provides fast monitoring of sensors but no control features.",
+        "data": {
           "port": "SNMP Port",
-          "community": "SNMP Community String",
-          "scan_interval": "Update Interval (seconds)"
+          "snmp_version": "SNMP Version",
+          "community": "Community String",
+          "username": "SNMP Username",
+          "auth_protocol": "Authentication Protocol",
+          "auth_password": "Authentication Password",
+          "priv_protocol": "Privacy Protocol",
+          "priv_password": "Privacy Password"
+        },
+        "data_description": {
+          "port": "SNMP port (usually 161)",
+          "snmp_version": "SNMP protocol version (v2c for simple, v3 for secure)",
+          "community": "SNMP community string (only for v2c, usually 'public')",
+          "username": "SNMP v3 username (only for v3)",
+          "auth_protocol": "SNMP v3 authentication method (only for v3)",
+          "auth_password": "SNMP v3 authentication password (only for v3)",
+          "priv_protocol": "SNMP v3 encryption method (only for v3)",
+          "priv_password": "SNMP v3 encryption password (only for v3)"
+        }
+      },
+      "hybrid_redfish": {
+        "title": "Hybrid Mode - Redfish Controls",
+        "description": "Step 1 of 2: Configure Redfish API for {host}.\n\n**{step}**\n{purpose}",
+        "data": {
+          "port": "Redfish Port",
+          "username": "Username",
+          "password": "Password",
+          "verify_ssl": "Verify SSL Certificate",
+          "request_timeout": "Request Timeout (seconds)",
+          "session_timeout": "Session Timeout (seconds)"
+        },
+        "data_description": {
+          "port": "Redfish API port for controls (usually 443)",
+          "username": "iDRAC username (usually 'root')",
+          "password": "iDRAC password",
+          "verify_ssl": "Enable SSL certificate verification (usually disabled)",
+          "request_timeout": "Timeout for control operations (5-120 seconds)",
+          "session_timeout": "Session timeout for control operations (10-180 seconds)"
+        }
+      },
+      "hybrid_snmp": {
+        "title": "Hybrid Mode - SNMP Data Collection",
+        "description": "Step 2 of 2: Configure SNMP for {host}.\n\n**{step}**\n{purpose}",
+        "data": {
+          "snmp_port": "SNMP Port",
+          "snmp_version": "SNMP Version",
+          "community": "Community String",
+          "auth_protocol": "Authentication Protocol",
+          "auth_password": "Authentication Password",
+          "priv_protocol": "Privacy Protocol",
+          "priv_password": "Privacy Password"
+        },
+        "data_description": {
+          "snmp_port": "SNMP port for data collection (usually 161)",
+          "snmp_version": "SNMP protocol version (v2c for simple, v3 for secure)",
+          "community": "SNMP community string (only for v2c, usually 'public')",
+          "auth_protocol": "SNMP v3 authentication method (only for v3)",
+          "auth_password": "SNMP v3 authentication password (only for v3)",
+          "priv_protocol": "SNMP v3 encryption method (only for v3)",
+          "priv_password": "SNMP v3 encryption password (only for v3)"
         }
       }
     },
     "error": {
-      "cannot_connect": "Failed to connect to iDRAC",
-      "invalid_auth": "Invalid authentication", 
-      "unknown": "Unexpected error occurred"
+      "cannot_connect": "Failed to connect to iDRAC. Please check the hostname/IP address and network connectivity.",
+      "invalid_auth": "Invalid authentication credentials. Please check your username and password.",
+      "unknown": "Unexpected error occurred during setup."
     },
     "abort": {
-      "already_configured": "Device is already configured"
+      "already_configured": "This iDRAC is already configured with the same connection type."
     }
   },
   "options": {
     "step": {
       "init": {
         "title": "Dell iDRAC Options",
-        "description": "Configure Dell iDRAC options",
+        "description": "Configure advanced options for your Dell iDRAC integration.",
         "data": {
-          "scan_interval": "Update Interval (seconds)",
-          "rediscover_sensors": "Re-discover sensors"
+          "scan_interval": "Scan Interval (seconds)"
+        },
+        "data_description": {
+          "scan_interval": "How often to refresh sensor data (10-300 seconds)"
         }
-      },
-      "rediscover": {
-        "title": "Re-discover Sensors",
-        "description": "Re-scan for available sensors on {host}.\n\nCurrent sensors:\n• {fans} fans\n• {cpus} CPUs\n• {psus} PSUs\n• {voltages} voltage probes\n\nThis will update the sensor list without removing the integration.",
-        "data": {}
       }
     }
   }
