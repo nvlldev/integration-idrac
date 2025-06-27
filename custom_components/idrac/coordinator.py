@@ -145,16 +145,8 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
             # Get sensor data from protocol coordinator
             data = await self.protocol_coordinator.get_sensor_data()
             
-            # In hybrid mode, fetch LED state from Redfish even if using SNMP for sensors
-            if self.connection_type == "hybrid" and hasattr(self, 'redfish_coordinator'):
-                try:
-                    redfish_data = await self.redfish_coordinator.get_sensor_data()
-                    if redfish_data and "indicator_led_state" in redfish_data:
-                        data["indicator_led_state"] = redfish_data["indicator_led_state"]
-                        _LOGGER.debug("Added LED state from Redfish in hybrid mode: %s", 
-                                    redfish_data["indicator_led_state"])
-                except Exception as exc:
-                    _LOGGER.debug("Failed to get LED state from Redfish in hybrid mode: %s", exc)
+            # In hybrid mode, LED state will be fetched on-demand by the switch entity
+            # This avoids slow Redfish calls during regular sensor updates
             
             return data
 

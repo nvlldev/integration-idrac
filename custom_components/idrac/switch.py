@@ -173,10 +173,16 @@ class IdracIdentifyLEDSwitch(IdracSwitch):
     @property
     def is_on(self) -> bool:
         """Return if the identify LED is on."""
-        if self.coordinator.connection_type in ["redfish", "hybrid"] and self.coordinator.data:
-            led_state = self.coordinator.data.get("indicator_led_state")
-            # LED is considered "on" if it's blinking or lit
-            return led_state in ["Blinking", "Lit"]
+        if self.coordinator.connection_type in ["redfish", "hybrid"]:
+            # In hybrid mode, check if we have LED state from coordinator data
+            if self.coordinator.data:
+                led_state = self.coordinator.data.get("indicator_led_state")
+                if led_state is not None:
+                    return led_state in ["Blinking", "Lit"]
+            
+            # Fallback: assume LED state based on last known action
+            # This avoids slow Redfish calls during regular updates
+            return getattr(self, '_last_led_state', False)
         return False
 
     @property
@@ -189,8 +195,9 @@ class IdracIdentifyLEDSwitch(IdracSwitch):
         if self.coordinator.connection_type in ["redfish", "hybrid"]:
             success = await self.coordinator.async_set_indicator_led("Blinking")
             if success:
-                # Request coordinator update to get the new state
-                await self.coordinator.async_request_refresh()
+                # Cache the LED state to avoid slow coordinator refresh
+                self._last_led_state = True
+                self.async_write_ha_state()
             else:
                 _LOGGER.error("Failed to turn on identify LED for %s", self._host)
         else:
@@ -202,8 +209,9 @@ class IdracIdentifyLEDSwitch(IdracSwitch):
         if self.coordinator.connection_type in ["redfish", "hybrid"]:
             success = await self.coordinator.async_set_indicator_led("Off")
             if success:
-                # Request coordinator update to get the new state
-                await self.coordinator.async_request_refresh()
+                # Cache the LED state to avoid slow coordinator refresh
+                self._last_led_state = False
+                self.async_write_ha_state()
             else:
                 _LOGGER.error("Failed to turn off identify LED for %s", self._host)
         else:

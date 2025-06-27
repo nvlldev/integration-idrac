@@ -275,6 +275,30 @@ class RedfishClient:
             result = await self.patch(f"/redfish/v1/Chassis/{system_id}", data)
         return result
 
+    async def get_system_led_state(
+        self, system_id: str = "System.Embedded.1"
+    ) -> str | None:
+        """Get system indicator LED state quickly without full system data.
+        
+        Returns:
+            LED state string ('Blinking', 'Off', 'Lit') or None if unavailable
+        """
+        try:
+            # Try system endpoint first
+            result = await self.get(f"/redfish/v1/Systems/{system_id}")
+            if result and "IndicatorLED" in result:
+                return result["IndicatorLED"]
+                
+            # Fallback to chassis endpoint
+            result = await self.get(f"/redfish/v1/Chassis/{system_id}")
+            if result and "IndicatorLED" in result:
+                return result["IndicatorLED"]
+                
+        except Exception as exc:
+            _LOGGER.debug("Failed to get LED state: %s", exc)
+            
+        return None
+
     async def reset_system(
         self, reset_type: str, system_id: str = "System.Embedded.1"
     ) -> dict[str, Any] | None:
