@@ -43,11 +43,16 @@ async def _discover_sensors(
             )
             
             if not error_indication and not error_status and var_binds:
-                # Check if we got a valid response (not just "no such object")
+                # Check if we got a valid response with meaningful data
                 for name, val in var_binds:
                     if val is not None and str(val) != "No Such Object currently exists at this OID":
-                        discovered_sensors.append(index)
-                        _LOGGER.debug("Found sensor at index %d: %s = %s", index, name, val)
+                        val_str = str(val).strip()
+                        # Only include sensors that have non-empty, meaningful values
+                        if val_str and val_str not in ["", "None", "0", "null"]:
+                            discovered_sensors.append(index)
+                            _LOGGER.debug("Found sensor at index %d: %s = %s", index, name, val)
+                        else:
+                            _LOGGER.debug("Skipping sensor at index %d with empty/invalid value: %s = %s", index, name, val)
                         break
             else:
                 # Log debug info for failed attempts
@@ -72,11 +77,84 @@ async def _discover_cpu_sensors(
     base_oid: str,
 ) -> list[int]:
     """Discover CPU temperature sensors, filtering out inlet/outlet temps."""
-    all_temp_sensors = await _discover_sensors(
-        engine, auth_data, transport_target, context_data, base_oid
-    )
+    _LOGGER.debug("Starting CPU sensor discovery for base OID: %s", base_oid)
+    discovered_sensors = []
     
-    return [sensor_id for sensor_id in all_temp_sensors if sensor_id > 2]
+    # Test indices from 1 to 20 
+    for index in range(1, 21):
+        test_oid = f"{base_oid}.{index}"
+        
+        try:
+            error_indication, error_status, error_index, var_binds = await getCmd(
+                engine,
+                auth_data,
+                transport_target,
+                context_data,
+                ObjectType(ObjectIdentity(test_oid)),
+            )
+            
+            if not error_indication and not error_status and var_binds:
+                for name, val in var_binds:
+                    if val is not None and str(val) != "No Such Object currently exists at this OID":
+                        val_str = str(val).strip()
+                        # Only include CPU sensors (skip Inlet/Exhaust temps) and ensure they have names
+                        if val_str and "CPU" in val_str and "Temp" in val_str:
+                            discovered_sensors.append(index)
+                            _LOGGER.debug("Found CPU sensor at index %d: %s = %s", index, name, val)
+                        elif val_str:
+                            _LOGGER.debug("Skipping non-CPU sensor at index %d: %s = %s", index, name, val)
+                        break
+                        
+        except Exception as exc:
+            _LOGGER.debug("Exception during CPU sensor discovery at index %d: %s", index, exc)
+            continue
+    
+    _LOGGER.debug("Discovered CPU sensors for base OID %s: %s", base_oid, discovered_sensors)
+    return discovered_sensors
+
+
+async def _discover_fan_sensors(
+    engine: SnmpEngine,
+    auth_data: CommunityData | UsmUserData,
+    transport_target: UdpTransportTarget,
+    context_data: ContextData,
+    base_oid: str,
+) -> list[int]:
+    """Discover fan sensors."""
+    _LOGGER.debug("Starting fan sensor discovery for base OID: %s", base_oid)
+    discovered_sensors = []
+    
+    # Test indices from 1 to 20
+    for index in range(1, 21):
+        test_oid = f"{base_oid}.{index}"
+        
+        try:
+            error_indication, error_status, error_index, var_binds = await getCmd(
+                engine,
+                auth_data,
+                transport_target,
+                context_data,
+                ObjectType(ObjectIdentity(test_oid)),
+            )
+            
+            if not error_indication and not error_status and var_binds:
+                for name, val in var_binds:
+                    if val is not None and str(val) != "No Such Object currently exists at this OID":
+                        val_str = str(val).strip()
+                        # Only include fans that have meaningful names (System Board Fan, etc.)
+                        if val_str and ("Fan" in val_str or "Cooling" in val_str):
+                            discovered_sensors.append(index)
+                            _LOGGER.debug("Found fan sensor at index %d: %s = %s", index, name, val)
+                        elif val_str:
+                            _LOGGER.debug("Skipping non-fan sensor at index %d: %s = %s", index, name, val)
+                        break
+                        
+        except Exception as exc:
+            _LOGGER.debug("Exception during fan sensor discovery at index %d: %s", index, exc)
+            continue
+    
+    _LOGGER.debug("Discovered fan sensors for base OID %s: %s", base_oid, discovered_sensors)
+    return discovered_sensors
 
 
 async def _discover_psu_sensors(
@@ -135,7 +213,40 @@ async def _discover_voltage_probes(
     base_oid: str,
 ) -> list[int]:
     """Discover voltage probe sensors."""
-    return await _discover_sensors(engine, auth_data, transport_target, context_data, base_oid)
+    _LOGGER.debug("Starting voltage probe discovery for base OID: %s", base_oid)
+    discovered_sensors = []
+    
+    # Test indices from 1 to 20
+    for index in range(1, 21):
+        test_oid = f"{base_oid}.{index}"
+        
+        try:
+            error_indication, error_status, error_index, var_binds = await getCmd(
+                engine,
+                auth_data,
+                transport_target,
+                context_data,
+                ObjectType(ObjectIdentity(test_oid)),
+            )
+            
+            if not error_indication and not error_status and var_binds:
+                for name, val in var_binds:
+                    if val is not None and str(val) != "No Such Object currently exists at this OID":
+                        val_str = str(val).strip()
+                        # Only include voltage probes that have meaningful names (PS, CPU, etc.)
+                        if val_str and any(keyword in val_str for keyword in ["PS", "CPU", "System", "Board", "PG"]):
+                            discovered_sensors.append(index)
+                            _LOGGER.debug("Found voltage probe at index %d: %s = %s", index, name, val)
+                        elif val_str:
+                            _LOGGER.debug("Skipping voltage probe at index %d with generic name: %s = %s", index, name, val)
+                        break
+                        
+        except Exception as exc:
+            _LOGGER.debug("Exception during voltage probe discovery at index %d: %s", index, exc)
+            continue
+    
+    _LOGGER.debug("Discovered voltage probes for base OID %s: %s", base_oid, discovered_sensors)
+    return discovered_sensors
 
 
 async def _discover_memory_sensors(
@@ -146,7 +257,40 @@ async def _discover_memory_sensors(
     base_oid: str,
 ) -> list[int]:
     """Discover memory sensors."""
-    return await _discover_sensors(engine, auth_data, transport_target, context_data, base_oid)
+    _LOGGER.debug("Starting memory sensor discovery for base OID: %s", base_oid)
+    discovered_sensors = []
+    
+    # Test indices from 1 to 20
+    for index in range(1, 21):
+        test_oid = f"{base_oid}.{index}"
+        
+        try:
+            error_indication, error_status, error_index, var_binds = await getCmd(
+                engine,
+                auth_data,
+                transport_target,
+                context_data,
+                ObjectType(ObjectIdentity(test_oid)),
+            )
+            
+            if not error_indication and not error_status and var_binds:
+                for name, val in var_binds:
+                    if val is not None and str(val) != "No Such Object currently exists at this OID":
+                        val_str = str(val).strip()
+                        # Only include memory slots that have meaningful names (DIMM.Socket.XX format)
+                        if val_str and ("DIMM" in val_str or "Socket" in val_str):
+                            discovered_sensors.append(index)
+                            _LOGGER.debug("Found memory sensor at index %d: %s = %s", index, name, val)
+                        elif val_str:
+                            _LOGGER.debug("Skipping non-memory sensor at index %d: %s = %s", index, name, val)
+                        break
+                        
+        except Exception as exc:
+            _LOGGER.debug("Exception during memory sensor discovery at index %d: %s", index, exc)
+            continue
+    
+    _LOGGER.debug("Discovered memory sensors for base OID %s: %s", base_oid, discovered_sensors)
+    return discovered_sensors
 
 
 async def _discover_system_voltages(
@@ -168,4 +312,44 @@ async def _discover_power_consumption_sensors(
     base_oid: str,
 ) -> list[int]:
     """Discover power consumption sensors."""
-    return await _discover_sensors(engine, auth_data, transport_target, context_data, base_oid)
+    _LOGGER.debug("Starting power consumption sensor discovery for base OID: %s", base_oid)
+    discovered_sensors = []
+    
+    # Test indices from 1 to 10 (power consumption typically has fewer sensors)
+    for index in range(1, 11):
+        test_oid = f"{base_oid}.{index}"
+        
+        try:
+            error_indication, error_status, error_index, var_binds = await getCmd(
+                engine,
+                auth_data,
+                transport_target,
+                context_data,
+                ObjectType(ObjectIdentity(test_oid)),
+            )
+            
+            if not error_indication and not error_status and var_binds:
+                for name, val in var_binds:
+                    if val is not None and str(val) != "No Such Object currently exists at this OID":
+                        # For power consumption, we look for actual numeric values or descriptive names
+                        try:
+                            # Check if it's a numeric value (power reading)
+                            int(val)
+                            discovered_sensors.append(index)
+                            _LOGGER.debug("Found power consumption sensor at index %d: %s = %s", index, name, val)
+                        except (ValueError, TypeError):
+                            # Check if it's a descriptive name containing power-related keywords
+                            val_str = str(val).strip()
+                            if val_str and any(keyword in val_str for keyword in ["Power", "Current", "Consumption", "PS"]):
+                                discovered_sensors.append(index)
+                                _LOGGER.debug("Found power consumption sensor at index %d: %s = %s", index, name, val)
+                            elif val_str:
+                                _LOGGER.debug("Skipping non-power sensor at index %d: %s = %s", index, name, val)
+                        break
+                        
+        except Exception as exc:
+            _LOGGER.debug("Exception during power consumption sensor discovery at index %d: %s", index, exc)
+            continue
+    
+    _LOGGER.debug("Discovered power consumption sensors for base OID %s: %s", base_oid, discovered_sensors)
+    return discovered_sensors

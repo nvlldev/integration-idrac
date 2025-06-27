@@ -138,11 +138,35 @@ class SNMPClient:
         self.discovered_system_voltages = entry.data.get(CONF_DISCOVERED_SYSTEM_VOLTAGES, [])
         self.discovered_power_consumption = entry.data.get(CONF_DISCOVERED_POWER_CONSUMPTION, [])
 
-        # Create isolated SNMP engine for this client instance
-        self.engine = SnmpEngine()
-        self.auth_data = _create_auth_data(entry)
-        self.transport_target = UdpTransportTarget((self.host, self.snmp_port), timeout=5, retries=1)
-        self.context_data = ContextData()
+        # Initialize SNMP objects (these will be created later to avoid blocking I/O during init)
+        self.engine = None
+        self.auth_data = None
+        self.transport_target = None
+        self.context_data = None
+        self._initialized = False
+
+    async def _ensure_initialized(self) -> None:
+        """Ensure SNMP objects are initialized.
+        
+        This method initializes SNMP objects on first use to avoid blocking
+        I/O operations during __init__, which can cause stability issues in
+        Home Assistant's event loop.
+        """
+        if self._initialized:
+            return
+
+        import asyncio
+        loop = asyncio.get_event_loop()
+        
+        # Run the blocking SNMP initialization in an executor to avoid blocking the event loop
+        def _init_snmp():
+            self.engine = SnmpEngine()
+            self.auth_data = _create_auth_data(self.entry)
+            self.transport_target = UdpTransportTarget((self.host, self.snmp_port), timeout=5, retries=1)
+            self.context_data = ContextData()
+        
+        await loop.run_in_executor(None, _init_snmp)
+        self._initialized = True
 
     async def get_device_info(self) -> dict[str, Any]:
         """Get device information via SNMP for device registry.
@@ -155,6 +179,8 @@ class SNMPClient:
             Dictionary containing device information or fallback values
             if SNMP queries fail.
         """
+        await self._ensure_initialized()
+        
         try:
             model_oid = IDRAC_OIDS["system_model"]
             service_tag_oid = IDRAC_OIDS["system_service_tag"]
@@ -204,6 +230,8 @@ class SNMPClient:
             - memory: Memory module status and size
             - power_consumption: System power consumption data
         """
+        await self._ensure_initialized()
+        
         data = {
             "temperatures": {},
             "fans": {},
@@ -317,6 +345,8 @@ class SNMPClient:
         Returns:
             Integer value from SNMP or None if retrieval/conversion fails.
         """
+        await self._ensure_initialized()
+        
         try:
             error_indication, error_status, error_index, var_binds = await getCmd(
                 self.engine,
@@ -358,6 +388,8 @@ class SNMPClient:
         Returns:
             String value from SNMP or None if retrieval fails.
         """
+        await self._ensure_initialized()
+        
         try:
             error_indication, error_status, error_index, var_binds = await getCmd(
                 self.engine,

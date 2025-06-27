@@ -236,10 +236,19 @@ async def validate_snmp_input(hass: HomeAssistant, data: dict[str, Any]) -> dict
 
     try:
         _LOGGER.info("Creating SNMP engine and connection objects")
-        engine = SnmpEngine()
-        auth_data = _create_auth_data(data)
-        transport_target = UdpTransportTarget((host, port), timeout=10, retries=2)
-        context_data = ContextData()
+        
+        # Use executor to avoid blocking I/O operations during SNMP initialization
+        import asyncio
+        loop = asyncio.get_event_loop()
+        
+        def _init_snmp():
+            engine = SnmpEngine()
+            auth_data = _create_auth_data(data)
+            transport_target = UdpTransportTarget((host, port), timeout=10, retries=2)
+            context_data = ContextData()
+            return engine, auth_data, transport_target, context_data
+        
+        engine, auth_data, transport_target, context_data = await loop.run_in_executor(None, _init_snmp)
 
         test_oid = ObjectType(ObjectIdentity("1.3.6.1.4.1.674.10892.5.4.600.30.1.6.1.3"))
 
@@ -265,14 +274,15 @@ async def validate_snmp_input(hass: HomeAssistant, data: dict[str, Any]) -> dict
         from .discovery import (
             _discover_sensors,
             _discover_cpu_sensors,
+            _discover_fan_sensors,
             _discover_psu_sensors,
             _discover_voltage_probes,
             _discover_memory_sensors,
             _discover_system_voltages,
             _discover_power_consumption_sensors,
         )
-
-        discovered_fans = await _discover_sensors(engine, auth_data, transport_target, context_data, SNMP_WALK_OIDS["fans"])
+        
+        discovered_fans = await _discover_fan_sensors(engine, auth_data, transport_target, context_data, SNMP_WALK_OIDS["fans"])
         discovered_cpus = await _discover_cpu_sensors(engine, auth_data, transport_target, context_data, SNMP_WALK_OIDS["cpu_temps"])
         discovered_psus = await _discover_psu_sensors(engine, auth_data, transport_target, context_data, SNMP_WALK_OIDS["psu_status"])
         discovered_voltage_probes = await _discover_voltage_probes(engine, auth_data, transport_target, context_data, SNMP_WALK_OIDS["psu_voltage"])
