@@ -127,7 +127,7 @@ class SNMPClient:
         self.port = entry.data.get(CONF_PORT)
         
         # SNMP configuration
-        self.snmp_port = entry.data.get(CONF_SNMP_PORT, DEFAULT_SNMP_PORT)
+        self.snmp_port = int(entry.data.get(CONF_SNMP_PORT, DEFAULT_SNMP_PORT))
         self.snmp_version = entry.data.get(CONF_SNMP_VERSION, DEFAULT_SNMP_VERSION)
         self.community = entry.data.get(CONF_COMMUNITY, "public")
         

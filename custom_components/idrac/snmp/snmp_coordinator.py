@@ -49,7 +49,10 @@ class SNMPCoordinator:
         self.client = SNMPClient(entry)
         
         # Store server identification for logging
-        self._server_id = f"{self.host}:{self.port}"
+        port = self.port
+        if isinstance(port, (int, float)):
+            port = int(port)
+        self._server_id = f"{self.host}:{port}"
         
         # System identification data for device info
         self._device_info = None

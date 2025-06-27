@@ -65,7 +65,10 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
             self.protocol_coordinator = SNMPCoordinator(hass, entry)
         
         # Store server identification for logging
-        self._server_id = f"{self.host}:{self.entry.data.get('port', 'unknown')}"
+        port = self.entry.data.get('port', 'unknown')
+        if isinstance(port, (int, float)):
+            port = int(port)
+        self._server_id = f"{self.host}:{port}"
         
         # System identification data for device info
         self._device_info = None

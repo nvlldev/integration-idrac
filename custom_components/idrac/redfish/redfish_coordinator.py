@@ -54,12 +54,12 @@ class RedfishCoordinator:
         self.hass = hass
         self.entry = entry
         self.host = entry.data[CONF_HOST]
-        self.port = entry.data.get(CONF_PORT)
+        self.port = int(entry.data.get(CONF_PORT, 443))  # Ensure port is an integer
         self.username = entry.data[CONF_USERNAME]
         self.password = entry.data[CONF_PASSWORD]
         self.verify_ssl = entry.data.get(CONF_VERIFY_SSL, False)
-        self.request_timeout = entry.data.get(CONF_REQUEST_TIMEOUT, DEFAULT_REQUEST_TIMEOUT)
-        self.session_timeout = entry.data.get(CONF_SESSION_TIMEOUT, DEFAULT_SESSION_TIMEOUT)
+        self.request_timeout = int(entry.data.get(CONF_REQUEST_TIMEOUT, DEFAULT_REQUEST_TIMEOUT))
+        self.session_timeout = int(entry.data.get(CONF_SESSION_TIMEOUT, DEFAULT_SESSION_TIMEOUT))
         
         # Create Redfish client
         self.client = RedfishClient(

@@ -41,6 +41,7 @@ class RedfishClient:
         self.base_url = f"https://{host}:{port}"
         self._session: aiohttp.ClientSession | None = None
         self._ssl_context: ssl.SSLContext | None = None
+        _LOGGER.debug("Created RedfishClient for %s", self.base_url)
 
     async def _get_ssl_context(self) -> ssl.SSLContext | None:
         """Get or create SSL context once and cache it."""
@@ -57,7 +58,12 @@ class RedfishClient:
 
     async def _get_session(self) -> aiohttp.ClientSession:
         """Get or create HTTP session."""
-        if self._session is None:
+        if self._session is None or self._session.closed:
+            if self._session is not None:
+                _LOGGER.debug("Recreating closed session for %s", self.base_url)
+            else:
+                _LOGGER.debug("Creating new session for %s", self.base_url)
+            
             # Get SSL context (cached)
             ssl_context = await self._get_ssl_context()
             
@@ -173,7 +179,8 @@ class RedfishClient:
             return None
         except Exception as e:
             request_time = time.time() - start_time
-            _LOGGER.error("GET %s unexpected error: %s (%.2f seconds)", path, e, request_time)
+            _LOGGER.error("GET %s unexpected error: %s (%.2f seconds)", path, str(e), request_time)
+            _LOGGER.debug("GET %s full exception details", path, exc_info=True)
             return None
 
     async def post(self, path: str, data: dict[str, Any]) -> dict[str, Any] | None:
@@ -267,7 +274,8 @@ class RedfishClient:
             _LOGGER.warning("PATCH %s timed out", path)
             return None
         except Exception as e:
-            _LOGGER.error("PATCH %s error: %s", path, e)
+            _LOGGER.error("PATCH %s error: %s", url, e)
+            _LOGGER.debug("PATCH %s full exception details", url, exc_info=True)
             return None
 
     async def set_indicator_led(
@@ -288,7 +296,13 @@ class RedfishClient:
         
         mapped_state = state_mapping.get(state, state)
         data = {"IndicatorLED": mapped_state}
-        return await self.patch(f"/redfish/v1/Systems/{system_id}", data)
+        _LOGGER.debug("Setting LED to %s (mapped from %s) on %s", mapped_state, state, system_id)
+        result = await self.patch(f"/redfish/v1/Systems/{system_id}", data)
+        if result is None:
+            _LOGGER.warning("LED control failed for %s - checking chassis endpoint", system_id)
+            # Try chassis endpoint as fallback for some iDRAC versions
+            result = await self.patch(f"/redfish/v1/Chassis/{system_id}", data)
+        return result
 
     async def reset_system(
         self, reset_type: str, system_id: str = "System.Embedded.1"
