@@ -290,14 +290,14 @@ class SNMPClient:
                     "status": FAN_STATUS.get(fan_status, "unknown"),
                 }
 
-        # Get PSU sensors
+        # Get PSU sensors (update existing discovered sensors)
         for psu_id in self.discovered_psus:
             psu_status = await self.get_value(IDRAC_OIDS["psu_status"].format(index=psu_id))
             psu_location = await self.get_string(IDRAC_OIDS["psu_location"].format(index=psu_id))
             psu_max_output = await self.get_value(IDRAC_OIDS["psu_max_output"].format(index=psu_id))
             psu_current_output = await self.get_value(IDRAC_OIDS["psu_current_output"].format(index=psu_id))
 
-            # Only add PSU sensors that have valid status data
+            # Only include PSU sensors that have valid status data
             if psu_status is not None and psu_location:
                 data["power_supplies"][f"psu_{psu_id}"] = {
                     "name": psu_location,
@@ -305,11 +305,6 @@ class SNMPClient:
                     "power_capacity_watts": psu_max_output,
                     "power_output_watts": psu_current_output,
                 }
-                _LOGGER.debug("Added PSU sensor %d: %s (status=%s)", 
-                            psu_id, psu_location, psu_status)
-            else:
-                _LOGGER.debug("Skipped PSU sensor %d: status=%s, location=%s", 
-                            psu_id, psu_status, psu_location)
 
         # Get voltage probe sensors
         for voltage_id in self.discovered_voltage_probes:
@@ -326,24 +321,19 @@ class SNMPClient:
                     "status": "ok",
                 }
 
-        # Get memory sensors
+        # Get memory sensors (update existing discovered sensors)
         for memory_id in self.discovered_memory:
             memory_status = await self.get_value(IDRAC_OIDS["memory_status"].format(index=memory_id))
             memory_location = await self.get_string(IDRAC_OIDS["memory_location"].format(index=memory_id))
             memory_size = await self.get_value(IDRAC_OIDS["memory_size"].format(index=memory_id))
 
-            # Only add memory sensors that have valid status data
+            # Only include memory sensors that have valid status data
             if memory_status is not None and memory_location:
                 data["memory"][f"memory_{memory_id}"] = {
                     "name": memory_location,
                     "status": MEMORY_HEALTH_STATUS.get(memory_status, "unknown"),
                     "size_kb": memory_size,
                 }
-                _LOGGER.debug("Added memory sensor %d: %s (status=%s, size=%s)", 
-                            memory_id, memory_location, memory_status, memory_size)
-            else:
-                _LOGGER.debug("Skipped memory sensor %d: status=%s, location=%s", 
-                            memory_id, memory_status, memory_location)
 
         # Get power consumption
         if self.discovered_power_consumption:
@@ -356,7 +346,7 @@ class SNMPClient:
                     "max_consumed_watts": power_peak,
                 }
 
-        # Get intrusion detection sensors
+        # Get intrusion detection sensors (update existing discovered sensors)
         for intrusion_id in self.discovered_intrusion:
             intrusion_reading = await self.get_value(IDRAC_OIDS["intrusion_reading"].format(index=intrusion_id))
             intrusion_status = await self.get_value(IDRAC_OIDS["intrusion_status"].format(index=intrusion_id))
@@ -368,10 +358,8 @@ class SNMPClient:
                     "reading": intrusion_reading,
                     "status": INTRUSION_STATUS.get(intrusion_status, "unknown"),
                 }
-                _LOGGER.debug("Added intrusion sensor %d: %s (reading=%s, status=%s)", 
-                            intrusion_id, intrusion_location, intrusion_reading, intrusion_status)
 
-        # Get battery sensors
+        # Get battery sensors (update existing discovered sensors)
         for battery_id in self.discovered_battery:
             battery_reading = await self.get_value(IDRAC_OIDS["battery_reading"].format(index=battery_id))
             battery_status = await self.get_value(IDRAC_OIDS["battery_status"].format(index=battery_id))
@@ -382,10 +370,8 @@ class SNMPClient:
                     "reading": battery_reading,
                     "status": BATTERY_STATUS.get(battery_status, "unknown"),
                 }
-                _LOGGER.debug("Added battery sensor %d: reading=%s, status=%s", 
-                            battery_id, battery_reading, battery_status)
 
-        # Get processor sensors
+        # Get processor sensors (update existing discovered sensors)
         for processor_id in self.discovered_processors:
             processor_reading = await self.get_value(IDRAC_OIDS["processor_reading"].format(index=processor_id))
             processor_status = await self.get_value(IDRAC_OIDS["processor_status"].format(index=processor_id))
@@ -397,8 +383,6 @@ class SNMPClient:
                     "reading": processor_reading,
                     "status": PROCESSOR_STATUS.get(processor_status, "unknown"),
                 }
-                _LOGGER.debug("Added processor sensor %d: %s (reading=%s, status=%s)", 
-                            processor_id, processor_location, processor_reading, processor_status)
 
         return data
 
