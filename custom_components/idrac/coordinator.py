@@ -33,6 +33,8 @@ from .const import (
     CONF_VERIFY_SSL,
     CONF_SCAN_INTERVAL,
     CONF_CONNECTION_TYPE,
+    CONF_REQUEST_TIMEOUT,
+    CONF_SESSION_TIMEOUT,
     CONF_DISCOVERED_CPUS,
     CONF_DISCOVERED_FANS,
     CONF_DISCOVERED_MEMORY,
@@ -47,6 +49,8 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_SNMP_VERSION,
     DEFAULT_CONNECTION_TYPE,
+    DEFAULT_REQUEST_TIMEOUT,
+    DEFAULT_SESSION_TIMEOUT,
     SNMP_AUTH_PROTOCOLS,
     SNMP_PRIV_PROTOCOLS,
     DOMAIN,
@@ -110,10 +114,13 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
             self.username = entry.data[CONF_USERNAME]
             self.password = entry.data[CONF_PASSWORD]
             self.verify_ssl = entry.data.get(CONF_VERIFY_SSL, False)
+            self.request_timeout = entry.data.get(CONF_REQUEST_TIMEOUT, DEFAULT_REQUEST_TIMEOUT)
+            self.session_timeout = entry.data.get(CONF_SESSION_TIMEOUT, DEFAULT_SESSION_TIMEOUT)
             
             # Create Redfish client
             self.client = RedfishClient(
-                hass, self.host, self.username, self.password, self.port, self.verify_ssl
+                hass, self.host, self.username, self.password, self.port, self.verify_ssl, 
+                self.request_timeout, self.session_timeout
             )
         else:
             # SNMP configuration

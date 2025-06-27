@@ -26,6 +26,8 @@ CONF_DISCOVERED_STORAGE_CONTROLLERS: Final = "discovered_storage_controllers"
 CONF_DISCOVERED_DETAILED_MEMORY: Final = "discovered_detailed_memory"
 CONF_DISCOVERED_SYSTEM_VOLTAGES: Final = "discovered_system_voltages"
 CONF_DISCOVERED_POWER_CONSUMPTION: Final = "discovered_power_consumption"
+CONF_REQUEST_TIMEOUT: Final = "request_timeout"
+CONF_SESSION_TIMEOUT: Final = "session_timeout"
 
 # Default values
 DEFAULT_PORT: Final = 443
@@ -34,6 +36,8 @@ DEFAULT_COMMUNITY: Final = "public"
 DEFAULT_SCAN_INTERVAL: Final = 30
 DEFAULT_SNMP_VERSION: Final = "v2c"
 DEFAULT_CONNECTION_TYPE: Final = "redfish"
+DEFAULT_REQUEST_TIMEOUT: Final = 30
+DEFAULT_SESSION_TIMEOUT: Final = 45
 
 # Connection type options
 CONNECTION_TYPES: Final = ["redfish", "snmp"]

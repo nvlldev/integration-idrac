@@ -35,6 +35,8 @@ from .const import (
     CONF_VERIFY_SSL,
     CONF_SCAN_INTERVAL,
     CONF_CONNECTION_TYPE,
+    CONF_REQUEST_TIMEOUT,
+    CONF_SESSION_TIMEOUT,
     CONF_DISCOVERED_CPUS,
     CONF_DISCOVERED_FANS,
     CONF_DISCOVERED_MEMORY,
@@ -53,6 +55,8 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_SNMP_VERSION,
     DEFAULT_CONNECTION_TYPE,
+    DEFAULT_REQUEST_TIMEOUT,
+    DEFAULT_SESSION_TIMEOUT,
     SNMP_VERSIONS,
     SNMP_AUTH_PROTOCOLS,
     SNMP_PRIV_PROTOCOLS,
@@ -113,6 +117,12 @@ def _get_dynamic_schema(connection_type: str = DEFAULT_CONNECTION_TYPE) -> vol.S
             vol.Required(CONF_USERNAME, default="root"): str,
             vol.Required(CONF_PASSWORD): str,
             vol.Optional(CONF_VERIFY_SSL, default=False): bool,
+            vol.Optional(CONF_REQUEST_TIMEOUT, default=DEFAULT_REQUEST_TIMEOUT): vol.All(
+                vol.Coerce(int), vol.Range(min=5, max=120)
+            ),
+            vol.Optional(CONF_SESSION_TIMEOUT, default=DEFAULT_SESSION_TIMEOUT): vol.All(
+                vol.Coerce(int), vol.Range(min=10, max=180)
+            ),
         })
     else:  # SNMP
         base_schema.update({
@@ -139,8 +149,10 @@ async def validate_redfish_input(hass: HomeAssistant, data: dict[str, Any]) -> d
     username = data[CONF_USERNAME]
     password = data[CONF_PASSWORD]
     verify_ssl = data[CONF_VERIFY_SSL]
+    request_timeout = data.get(CONF_REQUEST_TIMEOUT, DEFAULT_REQUEST_TIMEOUT)
+    session_timeout = data.get(CONF_SESSION_TIMEOUT, DEFAULT_SESSION_TIMEOUT)
 
-    client = RedfishClient(hass, host, username, password, port, verify_ssl)
+    client = RedfishClient(hass, host, username, password, port, verify_ssl, request_timeout, session_timeout)
 
     try:
         # Test connection to iDRAC

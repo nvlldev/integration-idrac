@@ -26,6 +26,8 @@ class RedfishClient:
         password: str,
         port: int = 443,
         verify_ssl: bool = False,
+        request_timeout: int = 30,
+        session_timeout: int = 45,
     ) -> None:
         """Initialize the Redfish client."""
         self.hass = hass
@@ -34,6 +36,8 @@ class RedfishClient:
         self.username = username
         self.password = password
         self.verify_ssl = verify_ssl
+        self.request_timeout = request_timeout
+        self.session_timeout = session_timeout
         self.base_url = f"https://{host}:{port}"
         self._session: Optional[aiohttp.ClientSession] = None
 
@@ -45,7 +49,10 @@ class RedfishClient:
                 connector = aiohttp.TCPConnector()
             else:
                 # Disable SSL verification for older iDRACs
-                ssl_context = ssl.create_default_context()
+                # Use executor to avoid blocking the event loop
+                import functools
+                loop = asyncio.get_event_loop()
+                ssl_context = await loop.run_in_executor(None, ssl.create_default_context)
                 ssl_context.check_hostname = False
                 ssl_context.verify_mode = ssl.CERT_NONE
                 connector = aiohttp.TCPConnector(ssl=ssl_context)
@@ -56,7 +63,7 @@ class RedfishClient:
                     "Content-Type": "application/json",
                     "Accept": "application/json",
                 },
-                timeout=aiohttp.ClientTimeout(total=25, connect=10),
+                timeout=aiohttp.ClientTimeout(total=self.session_timeout, connect=15),
             )
 
         return self._session
@@ -74,7 +81,7 @@ class RedfishClient:
 
         try:
             session = await self._get_session()
-            async with session.get(url, auth=auth, timeout=aiohttp.ClientTimeout(total=20)) as response:
+            async with session.get(url, auth=auth, timeout=aiohttp.ClientTimeout(total=self.request_timeout)) as response:
                 if response.status == 200:
                     return await response.json()
                 elif response.status == 401:
@@ -83,7 +90,7 @@ class RedfishClient:
                     _LOGGER.warning("GET %s failed: %s %s", path, response.status, response.reason)
                     return None
         except asyncio.TimeoutError:
-            _LOGGER.warning("GET %s timed out after 20 seconds", path)
+            _LOGGER.warning("GET %s timed out after %d seconds", path, self.request_timeout)
             return None
         except Exception as e:
             _LOGGER.error("GET %s error: %s", path, e)
@@ -97,7 +104,7 @@ class RedfishClient:
         try:
             session = await self._get_session()
             async with session.post(
-                url, auth=auth, json=data, timeout=aiohttp.ClientTimeout(total=10)
+                url, auth=auth, json=data, timeout=aiohttp.ClientTimeout(total=self.request_timeout)
             ) as response:
                 if response.status in [200, 202, 204]:
                     if response.content_length and response.content_length > 0:
@@ -160,7 +167,7 @@ class RedfishClient:
         try:
             session = await self._get_session()
             async with session.patch(
-                url, auth=auth, json=data, timeout=aiohttp.ClientTimeout(total=10)
+                url, auth=auth, json=data, timeout=aiohttp.ClientTimeout(total=self.request_timeout)
             ) as response:
                 if response.status in [200, 202, 204]:
                     if response.content_length and response.content_length > 0:
