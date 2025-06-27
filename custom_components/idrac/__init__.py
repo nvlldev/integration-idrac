@@ -18,8 +18,8 @@ _LOGGER = logging.getLogger(__name__)
 PLATFORMS: list[Platform] = [
     Platform.SENSOR,
     Platform.BINARY_SENSOR,
-    # Platform.SWITCH,    # Disabled - SNMP SET operations blocked by iDRAC firmware
-    # Platform.BUTTON,    # Disabled - SNMP SET operations blocked by iDRAC firmware
+    Platform.SWITCH,    # Re-enabled for Redfish LED control
+    Platform.BUTTON,    # Re-enabled for Redfish power control
 ]
 
 
