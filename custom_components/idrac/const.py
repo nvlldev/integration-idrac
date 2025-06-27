@@ -39,11 +39,11 @@ CONF_SNMP_PORT: Final = "snmp_port"
 DEFAULT_PORT: Final = 443
 DEFAULT_SNMP_PORT: Final = 161
 DEFAULT_COMMUNITY: Final = "public"
-DEFAULT_SCAN_INTERVAL: Final = 30
+DEFAULT_SCAN_INTERVAL: Final = 15  # Faster default updates
 DEFAULT_SNMP_VERSION: Final = "v2c"
 DEFAULT_CONNECTION_TYPE: Final = "redfish"
-DEFAULT_REQUEST_TIMEOUT: Final = 60
-DEFAULT_SESSION_TIMEOUT: Final = 90
+DEFAULT_REQUEST_TIMEOUT: Final = 30  # Faster timeout
+DEFAULT_SESSION_TIMEOUT: Final = 45  # Faster timeout
 
 # Connection type options
 CONNECTION_TYPES: Final = ["redfish", "snmp", "hybrid"]

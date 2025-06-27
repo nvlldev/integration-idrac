@@ -99,13 +99,10 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
         if self._device_info is not None:
             return self._device_info
         
-        _LOGGER.debug("Fetching device info for %s", self._server_id)
-        
-        # Get device info from the primary protocol coordinator
+        # Get device info from the primary protocol coordinator (cached after first fetch)
         device_info = await self.protocol_coordinator.get_device_info()
         
         self._device_info = device_info
-        _LOGGER.debug("Device info: %s", device_info)
         return device_info
 
     @property 

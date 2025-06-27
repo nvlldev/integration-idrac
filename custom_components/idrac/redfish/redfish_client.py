@@ -89,7 +89,7 @@ class RedfishClient:
                 },
                 timeout=aiohttp.ClientTimeout(
                     total=self.session_timeout, 
-                    connect=15, 
+                    connect=10,  # Faster connect timeout
                     sock_read=self.request_timeout,
                 ),
             )
@@ -128,9 +128,6 @@ class RedfishClient:
 
     async def get(self, path: str) -> dict[str, Any] | None:
         """Make GET request to Redfish API."""
-        import time
-        start_time = time.time()
-        
         url = f"{self.base_url}{path}"
         auth = aiohttp.BasicAuth(self.username, self.password)
 
@@ -138,49 +135,23 @@ class RedfishClient:
             session = await self._get_session()
             async with session.get(url, auth=auth, timeout=aiohttp.ClientTimeout(total=self.request_timeout)) as response:
                 if response.status == 200:
-                    result = await response.json()
-                    request_time = time.time() - start_time
-                    _LOGGER.debug("GET %s completed in %.2f seconds", path, request_time)
-                    return result
+                    return await response.json()
                 elif response.status == 401:
                     raise RedfishError("Authentication failed - check credentials")
-                elif response.status == 403:
-                    _LOGGER.warning("GET %s forbidden: insufficient privileges", path)
-                    return None
-                elif response.status == 404:
-                    _LOGGER.debug("GET %s not found: endpoint may not be supported", path)
+                elif response.status in [403, 404]:
                     return None
                 elif response.status >= 500:
-                    request_time = time.time() - start_time
-                    _LOGGER.warning("GET %s server error: %s %s (%.2f seconds)", 
-                                   path, response.status, response.reason, request_time)
+                    _LOGGER.warning("GET %s server error: %s %s", path, response.status, response.reason)
                     return None
                 else:
-                    request_time = time.time() - start_time
-                    _LOGGER.warning("GET %s failed: %s %s (%.2f seconds)", 
-                                   path, response.status, response.reason, request_time)
                     return None
         except asyncio.TimeoutError:
-            request_time = time.time() - start_time
-            _LOGGER.warning("GET %s timed out after %d seconds (actual: %.2f)", 
-                           path, self.request_timeout, request_time)
+            _LOGGER.warning("GET %s timed out", path)
             return None
-        except aiohttp.ClientConnectorError as e:
-            request_time = time.time() - start_time
-            _LOGGER.warning("GET %s connection failed: %s (%.2f seconds)", path, e, request_time)
-            return None
-        except aiohttp.ClientSSLError as e:
-            request_time = time.time() - start_time
-            _LOGGER.warning("GET %s SSL error: %s (%.2f seconds)", path, e, request_time)
-            return None
-        except ConnectionError as e:
-            request_time = time.time() - start_time
-            _LOGGER.warning("GET %s connection error: %s (%.2f seconds)", path, e, request_time)
+        except (aiohttp.ClientConnectorError, aiohttp.ClientSSLError, ConnectionError):
             return None
         except Exception as e:
-            request_time = time.time() - start_time
-            _LOGGER.error("GET %s unexpected error: %s (%.2f seconds)", path, str(e), request_time)
-            _LOGGER.debug("GET %s full exception details", path, exc_info=True)
+            _LOGGER.error("GET %s unexpected error: %s", path, str(e))
             return None
 
     async def post(self, path: str, data: dict[str, Any]) -> dict[str, Any] | None:

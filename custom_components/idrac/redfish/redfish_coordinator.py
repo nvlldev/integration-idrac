@@ -158,13 +158,11 @@ class RedfishCoordinator:
         # Pre-warm SSL connection on first run to reduce latency
         if not self._ssl_warmed_up:
             try:
-                _LOGGER.debug("Warming up SSL connection for %s", self._server_id)
                 await self.client.warm_up_connection()
                 self._ssl_warmed_up = True
-                _LOGGER.debug("SSL connection warm-up completed for %s", self._server_id)
-            except Exception as exc:
-                _LOGGER.warning("Failed to warm up SSL connection for %s: %s", self._server_id, exc)
+            except Exception:
                 # Continue without warm-up, individual requests will establish connections
+                pass
         
         start_time = time.time()
         data = {
@@ -180,7 +178,6 @@ class RedfishCoordinator:
         }
 
         # Fetch all data concurrently to improve performance
-        api_start = time.time()
         try:
             # Include power subsystem in the main concurrent batch for better performance
             system_task = self.client.get_system_info()
@@ -198,30 +195,19 @@ class RedfishCoordinator:
             
             # Handle any exceptions from the concurrent calls
             if isinstance(system_data, Exception):
-                _LOGGER.warning("Failed to get system info: %s", system_data)
                 system_data = None
             if isinstance(thermal_data, Exception):
-                _LOGGER.warning("Failed to get thermal info: %s", thermal_data)
                 thermal_data = None
             if isinstance(power_data, Exception):
-                _LOGGER.warning("Failed to get power info: %s", power_data)
                 power_data = None
             if isinstance(manager_data, Exception):
-                _LOGGER.warning("Failed to get manager info: %s", manager_data)
                 manager_data = None
             if isinstance(chassis_data, Exception):
-                _LOGGER.warning("Failed to get chassis info: %s", chassis_data)
                 chassis_data = None
             if isinstance(power_subsystem_data, Exception):
-                _LOGGER.debug("Failed to get power subsystem info: %s", power_subsystem_data)
                 power_subsystem_data = None
-        
-            api_end = time.time()
-            _LOGGER.debug("Redfish API calls completed in %.2f seconds", api_end - api_start)
                 
-        except Exception as exc:
-            _LOGGER.warning("Error during concurrent Redfish API calls for %s, falling back to sequential: %s", 
-                           self._server_id, exc)
+        except Exception:
             # Fallback to sequential calls if concurrent fails
             try:
                 system_data = await self.client.get_system_info()
@@ -230,9 +216,7 @@ class RedfishCoordinator:
                 manager_data = await self.client.get_manager_info()
                 chassis_data = await self.client.get_chassis_info()
                 power_subsystem_data = await self.client.get_power_subsystem()
-                _LOGGER.debug("Sequential API calls completed for %s", self._server_id)
-            except Exception as fallback_exc:
-                _LOGGER.error("Sequential API calls also failed for %s: %s", self._server_id, fallback_exc)
+            except Exception:
                 # Set all data to None to continue with partial data processing
                 system_data = thermal_data = power_data = manager_data = chassis_data = power_subsystem_data = None
 
@@ -476,8 +460,10 @@ class RedfishCoordinator:
             "components": health_components,
         }
 
+        # Only log timing if it's taking too long
         total_time = time.time() - start_time
-        _LOGGER.debug("Total Redfish update completed in %.2f seconds", total_time)
+        if total_time > 10:
+            _LOGGER.warning("Redfish update took %.2f seconds - consider optimizing", total_time)
         
         return data
 

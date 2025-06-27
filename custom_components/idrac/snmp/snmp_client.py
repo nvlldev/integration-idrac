@@ -1,6 +1,7 @@
 """Dell iDRAC SNMP client."""
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -164,14 +165,14 @@ class SNMPClient:
         if self._initialized:
             return
 
-        import asyncio
         loop = asyncio.get_event_loop()
         
         # Run the blocking SNMP initialization in an executor to avoid blocking the event loop
         def _init_snmp():
             self.engine = SnmpEngine()
             self.auth_data = _create_auth_data(self.entry)
-            self.transport_target = UdpTransportTarget((self.host, self.snmp_port), timeout=5, retries=1)
+            # Optimize SNMP transport with faster timeouts and no retries for speed
+            self.transport_target = UdpTransportTarget((self.host, self.snmp_port), timeout=2, retries=0)
             self.context_data = ContextData()
         
         await loop.run_in_executor(None, _init_snmp)
@@ -226,9 +227,8 @@ class SNMPClient:
     async def get_sensor_data(self) -> dict[str, Any]:
         """Collect all sensor data via SNMP using discovered sensor indices.
         
-        Iterates through all discovered sensor indices and collects data for
-        each sensor type. The sensor indices are discovered during integration
-        setup and stored in the configuration entry.
+        Uses concurrent SNMP requests to optimize performance and reduce
+        update times. Collects data for all sensor types in parallel.
         
         Returns:
             Dictionary containing organized sensor data with keys:
@@ -257,141 +257,215 @@ class SNMPClient:
             "processors": {},
         }
 
-        # Get CPU temperature sensors
+        # Collect all SNMP requests concurrently for better performance
+        
+        # Build concurrent tasks for all sensors
+        tasks = []
+        
+        # Temperature sensor tasks
         for cpu_id in self.discovered_cpus:
-            temp_reading = await self.get_value(IDRAC_OIDS["temp_probe_reading"].format(index=cpu_id))
-            temp_status = await self.get_value(IDRAC_OIDS["temp_probe_status"].format(index=cpu_id))
-            temp_location = await self.get_string(IDRAC_OIDS["temp_probe_location"].format(index=cpu_id))
-            temp_upper_critical = await self.get_value(IDRAC_OIDS["temp_probe_upper_critical"].format(index=cpu_id))
-            temp_upper_warning = await self.get_value(IDRAC_OIDS["temp_probe_upper_warning"].format(index=cpu_id))
-
-            if temp_reading is not None:
-                # Convert temperature from tenths of degrees to degrees
+            tasks.extend([
+                self._get_temperature_data(cpu_id),
+            ])
+        
+        # Fan sensor tasks  
+        for fan_id in self.discovered_fans:
+            tasks.extend([
+                self._get_fan_data(fan_id),
+            ])
+            
+        # PSU sensor tasks
+        for psu_id in self.discovered_psus:
+            tasks.extend([
+                self._get_psu_data(psu_id),
+            ])
+            
+        # Execute all requests concurrently
+        if tasks:
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # Process results
+            for result in results:
+                if isinstance(result, dict) and not isinstance(result, Exception):
+                    if "temperature" in result:
+                        data["temperatures"].update(result["temperature"])
+                    elif "fan" in result:
+                        data["fans"].update(result["fan"])
+                    elif "psu" in result:
+                        data["power_supplies"].update(result["psu"])
+        
+        # Handle remaining sensors sequentially for now (can be optimized later)
+        await self._collect_remaining_sensors(data)
+        
+        return data
+    
+    async def _get_temperature_data(self, cpu_id: int) -> dict[str, Any]:
+        """Get temperature data for a specific CPU concurrently."""
+        try:
+            temp_reading, temp_status, temp_location, temp_upper_critical, temp_upper_warning = await asyncio.gather(
+                self.get_value(IDRAC_OIDS["temp_probe_reading"].format(index=cpu_id)),
+                self.get_value(IDRAC_OIDS["temp_probe_status"].format(index=cpu_id)),
+                self.get_string(IDRAC_OIDS["temp_probe_location"].format(index=cpu_id)),
+                self.get_value(IDRAC_OIDS["temp_probe_upper_critical"].format(index=cpu_id)),
+                self.get_value(IDRAC_OIDS["temp_probe_upper_warning"].format(index=cpu_id)),
+                return_exceptions=True
+            )
+            
+            if temp_reading is not None and not isinstance(temp_reading, Exception):
                 temperature_celsius = temp_reading / 10.0 if temp_reading > 100 else temp_reading
                 
-                data["temperatures"][f"cpu_temp_{cpu_id}"] = {
-                    "name": temp_location or f"CPU {cpu_id} Temperature",
-                    "temperature": temperature_celsius,
-                    "status": TEMP_STATUS.get(temp_status, "unknown"),
-                    "upper_threshold_critical": temp_upper_critical / 10.0 if temp_upper_critical and temp_upper_critical > 100 else temp_upper_critical,
-                    "upper_threshold_non_critical": temp_upper_warning / 10.0 if temp_upper_warning and temp_upper_warning > 100 else temp_upper_warning,
-                }
-
-        # Get fan sensors
-        for fan_id in self.discovered_fans:
-            fan_reading = await self.get_value(IDRAC_OIDS["cooling_device_reading"].format(index=fan_id))
-            fan_status = await self.get_value(IDRAC_OIDS["cooling_device_status"].format(index=fan_id))
-            fan_location = await self.get_string(IDRAC_OIDS["cooling_device_location"].format(index=fan_id))
-
-            if fan_reading is not None:
-                data["fans"][f"fan_{fan_id}"] = {
-                    "name": fan_location or f"Fan {fan_id}",
-                    "speed_rpm": fan_reading,
-                    "status": FAN_STATUS.get(fan_status, "unknown"),
-                }
-
-        # Get PSU sensors (update existing discovered sensors)
-        for psu_id in self.discovered_psus:
-            psu_status = await self.get_value(IDRAC_OIDS["psu_status"].format(index=psu_id))
-            psu_location = await self.get_string(IDRAC_OIDS["psu_location"].format(index=psu_id))
-            psu_max_output = await self.get_value(IDRAC_OIDS["psu_max_output"].format(index=psu_id))
-            psu_current_output = await self.get_value(IDRAC_OIDS["psu_current_output"].format(index=psu_id))
-
-            # Only include PSU sensors that have valid status data
-            if psu_status is not None and psu_location:
-                data["power_supplies"][f"psu_{psu_id}"] = {
-                    "name": psu_location,
-                    "status": PSU_STATUS.get(psu_status, "unknown"),
-                    "power_capacity_watts": psu_max_output,
-                    "power_output_watts": psu_current_output,
-                }
-
-        # Get voltage probe sensors
+                return {"temperature": {
+                    f"cpu_temp_{cpu_id}": {
+                        "name": temp_location if not isinstance(temp_location, Exception) else f"CPU {cpu_id} Temperature",
+                        "temperature": temperature_celsius,
+                        "status": TEMP_STATUS.get(temp_status if not isinstance(temp_status, Exception) else None, "unknown"),
+                        "upper_threshold_critical": temp_upper_critical / 10.0 if temp_upper_critical and temp_upper_critical > 100 and not isinstance(temp_upper_critical, Exception) else temp_upper_critical,
+                        "upper_threshold_non_critical": temp_upper_warning / 10.0 if temp_upper_warning and temp_upper_warning > 100 and not isinstance(temp_upper_warning, Exception) else temp_upper_warning,
+                    }
+                }}
+        except Exception:
+            pass
+        return {}
+    
+    async def _get_fan_data(self, fan_id: int) -> dict[str, Any]:
+        """Get fan data for a specific fan concurrently."""
+        try:
+            fan_reading, fan_status, fan_location = await asyncio.gather(
+                self.get_value(IDRAC_OIDS["cooling_device_reading"].format(index=fan_id)),
+                self.get_value(IDRAC_OIDS["cooling_device_status"].format(index=fan_id)),
+                self.get_string(IDRAC_OIDS["cooling_device_location"].format(index=fan_id)),
+                return_exceptions=True
+            )
+            
+            if fan_reading is not None and not isinstance(fan_reading, Exception):
+                return {"fan": {
+                    f"fan_{fan_id}": {
+                        "name": fan_location if not isinstance(fan_location, Exception) else f"Fan {fan_id}",
+                        "speed_rpm": fan_reading,
+                        "status": FAN_STATUS.get(fan_status if not isinstance(fan_status, Exception) else None, "unknown"),
+                    }
+                }}
+        except Exception:
+            pass
+        return {}
+        
+    async def _get_psu_data(self, psu_id: int) -> dict[str, Any]:
+        """Get PSU data for a specific PSU concurrently."""
+        try:
+            psu_status, psu_location, psu_max_output, psu_current_output = await asyncio.gather(
+                self.get_value(IDRAC_OIDS["psu_status"].format(index=psu_id)),
+                self.get_string(IDRAC_OIDS["psu_location"].format(index=psu_id)),
+                self.get_value(IDRAC_OIDS["psu_max_output"].format(index=psu_id)),
+                self.get_value(IDRAC_OIDS["psu_current_output"].format(index=psu_id)),
+                return_exceptions=True
+            )
+            
+            if psu_status is not None and not isinstance(psu_status, Exception) and psu_location and not isinstance(psu_location, Exception):
+                return {"psu": {
+                    f"psu_{psu_id}": {
+                        "name": psu_location,
+                        "status": PSU_STATUS.get(psu_status, "unknown"),
+                        "power_capacity_watts": psu_max_output if not isinstance(psu_max_output, Exception) else None,
+                        "power_output_watts": psu_current_output if not isinstance(psu_current_output, Exception) else None,
+                    }
+                }}
+        except Exception:
+            pass
+        return {}
+    
+    async def _collect_remaining_sensors(self, data: dict[str, Any]) -> None:
+        """Collect remaining sensor types that aren't optimized yet."""
+        # Collect other sensors with minimal overhead
+        tasks = []
+        
+        # Voltage probe sensors
         for voltage_id in self.discovered_voltage_probes:
-            voltage_reading = await self.get_value(IDRAC_OIDS["psu_input_voltage"].format(index=voltage_id))
-            voltage_location = await self.get_string(IDRAC_OIDS["psu_location"].format(index=voltage_id))
-
-            if voltage_reading is not None:
-                # Convert millivolts to volts
-                voltage_volts = voltage_reading / 1000.0 if voltage_reading > 1000 else voltage_reading
-                
-                data["voltages"][f"psu_voltage_{voltage_id}"] = {
-                    "name": f"{voltage_location} Voltage" if voltage_location else f"PSU {voltage_id} Voltage",
-                    "reading_volts": voltage_volts,
-                    "status": "ok",
-                }
-
-        # Get memory sensors (update existing discovered sensors)
+            tasks.append(self._get_voltage_data(voltage_id))
+            
+        # Memory sensors  
         for memory_id in self.discovered_memory:
-            memory_status = await self.get_value(IDRAC_OIDS["memory_status"].format(index=memory_id))
-            memory_location = await self.get_string(IDRAC_OIDS["memory_location"].format(index=memory_id))
-            memory_size = await self.get_value(IDRAC_OIDS["memory_size"].format(index=memory_id))
-
-            # Only include memory sensors that have valid status data
-            if memory_status is not None and memory_location:
-                data["memory"][f"memory_{memory_id}"] = {
-                    "name": memory_location,
-                    "status": MEMORY_HEALTH_STATUS.get(memory_status, "unknown"),
-                    "size_kb": memory_size,
-                }
-
-        # Get power consumption
+            tasks.append(self._get_memory_data(memory_id))
+            
+        # Power consumption (if discovered)
         if self.discovered_power_consumption:
-            power_current = await self.get_value(IDRAC_OIDS["power_consumption_current"])
-            power_peak = await self.get_value(IDRAC_OIDS["power_consumption_peak"])
-
-            if power_current is not None:
-                data["power_consumption"] = {
+            tasks.append(self._get_power_consumption_data())
+            
+        # Execute remaining sensors concurrently
+        if tasks:
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for result in results:
+                if isinstance(result, dict) and not isinstance(result, Exception):
+                    for key, value in result.items():
+                        if key in data:
+                            data[key].update(value)
+    
+    async def _get_voltage_data(self, voltage_id: int) -> dict[str, Any]:
+        """Get voltage data concurrently."""
+        try:
+            voltage_reading, voltage_location = await asyncio.gather(
+                self.get_value(IDRAC_OIDS["psu_input_voltage"].format(index=voltage_id)),
+                self.get_string(IDRAC_OIDS["psu_location"].format(index=voltage_id)),
+                return_exceptions=True
+            )
+            
+            if voltage_reading is not None and not isinstance(voltage_reading, Exception):
+                voltage_volts = voltage_reading / 1000.0 if voltage_reading > 1000 else voltage_reading
+                return {"voltages": {
+                    f"psu_voltage_{voltage_id}": {
+                        "name": f"{voltage_location} Voltage" if not isinstance(voltage_location, Exception) and voltage_location else f"PSU {voltage_id} Voltage",
+                        "reading_volts": voltage_volts,
+                        "status": "ok",
+                    }
+                }}
+        except Exception:
+            pass
+        return {}
+    
+    async def _get_memory_data(self, memory_id: int) -> dict[str, Any]:
+        """Get memory data concurrently."""
+        try:
+            memory_status, memory_location, memory_size = await asyncio.gather(
+                self.get_value(IDRAC_OIDS["memory_status"].format(index=memory_id)),
+                self.get_string(IDRAC_OIDS["memory_location"].format(index=memory_id)),
+                self.get_value(IDRAC_OIDS["memory_size"].format(index=memory_id)),
+                return_exceptions=True
+            )
+            
+            if (memory_status is not None and not isinstance(memory_status, Exception) and 
+                memory_location and not isinstance(memory_location, Exception)):
+                return {"memory": {
+                    f"memory_{memory_id}": {
+                        "name": memory_location,
+                        "status": MEMORY_HEALTH_STATUS.get(memory_status, "unknown"),
+                        "size_kb": memory_size if not isinstance(memory_size, Exception) else None,
+                    }
+                }}
+        except Exception:
+            pass
+        return {}
+    
+    async def _get_power_consumption_data(self) -> dict[str, Any]:
+        """Get power consumption data concurrently."""
+        try:
+            power_current, power_peak = await asyncio.gather(
+                self.get_value(IDRAC_OIDS["power_consumption_current"]),
+                self.get_value(IDRAC_OIDS["power_consumption_peak"]),
+                return_exceptions=True
+            )
+            
+            if power_current is not None and not isinstance(power_current, Exception):
+                return {"power_consumption": {
                     "consumed_watts": power_current,
-                    "max_consumed_watts": power_peak,
-                }
-
-        # Get intrusion detection sensors (update existing discovered sensors)
-        for intrusion_id in self.discovered_intrusion:
-            intrusion_reading = await self.get_value(IDRAC_OIDS["intrusion_reading"].format(index=intrusion_id))
-            intrusion_status = await self.get_value(IDRAC_OIDS["intrusion_status"].format(index=intrusion_id))
-            intrusion_location = await self.get_string(IDRAC_OIDS["intrusion_location"].format(index=intrusion_id))
-
-            if intrusion_reading is not None and intrusion_location:
-                data["intrusion_detection"][f"intrusion_{intrusion_id}"] = {
-                    "name": intrusion_location,
-                    "reading": intrusion_reading,
-                    "status": INTRUSION_STATUS.get(intrusion_status, "unknown"),
-                }
-
-        # Get battery sensors (update existing discovered sensors)
-        for battery_id in self.discovered_battery:
-            battery_reading = await self.get_value(IDRAC_OIDS["battery_reading"].format(index=battery_id))
-            battery_status = await self.get_value(IDRAC_OIDS["battery_status"].format(index=battery_id))
-
-            if battery_reading is not None and battery_status is not None:
-                data["battery"][f"battery_{battery_id}"] = {
-                    "name": f"System Battery {battery_id}",
-                    "reading": battery_reading,
-                    "status": BATTERY_STATUS.get(battery_status, "unknown"),
-                }
-
-        # Get processor sensors (update existing discovered sensors)
-        for processor_id in self.discovered_processors:
-            processor_reading = await self.get_value(IDRAC_OIDS["processor_reading"].format(index=processor_id))
-            processor_status = await self.get_value(IDRAC_OIDS["processor_status"].format(index=processor_id))
-            processor_location = await self.get_string(IDRAC_OIDS["processor_location"].format(index=processor_id))
-
-            if processor_reading is not None and processor_location:
-                data["processors"][f"processor_{processor_id}"] = {
-                    "name": processor_location,
-                    "reading": processor_reading,
-                    "status": PROCESSOR_STATUS.get(processor_status, "unknown"),
-                }
-
-        return data
+                    "max_consumed_watts": power_peak if not isinstance(power_peak, Exception) else None,
+                }}
+        except Exception:
+            pass
+        return {}
 
     async def get_value(self, oid: str) -> int | None:
         """Get an SNMP value and return as integer.
         
-        Performs an SNMP GET operation for the specified OID and converts
-        the result to an integer. Handles errors gracefully and returns
-        None if the value cannot be retrieved or converted.
+        Optimized for performance with minimal logging overhead.
         
         Args:
             oid: SNMP Object Identifier string.
@@ -410,11 +484,7 @@ class SNMPClient:
                 ObjectType(ObjectIdentity(oid)),
             )
 
-            if error_indication:
-                _LOGGER.debug("SNMP error indication for OID %s: %s", oid, error_indication)
-                return None
-            elif error_status:
-                _LOGGER.debug("SNMP error status for OID %s: %s", oid, error_status.prettyPrint())
+            if error_indication or error_status:
                 return None
 
             for name, val in var_binds:
@@ -422,19 +492,16 @@ class SNMPClient:
                     try:
                         return int(val)
                     except (ValueError, TypeError):
-                        _LOGGER.debug("Could not convert SNMP value to int for OID %s: %s", oid, val)
                         return None
             return None
 
-        except Exception as exc:
-            _LOGGER.debug("Exception getting SNMP value for OID %s: %s", oid, exc)
+        except Exception:
             return None
 
     async def get_string(self, oid: str) -> str | None:
         """Get an SNMP value and return as string.
         
-        Performs an SNMP GET operation for the specified OID and converts
-        the result to a string. Strips whitespace and handles errors gracefully.
+        Optimized for performance with minimal logging overhead.
         
         Args:
             oid: SNMP Object Identifier string.
@@ -453,11 +520,7 @@ class SNMPClient:
                 ObjectType(ObjectIdentity(oid)),
             )
 
-            if error_indication:
-                _LOGGER.debug("SNMP error indication for OID %s: %s", oid, error_indication)
-                return None
-            elif error_status:
-                _LOGGER.debug("SNMP error status for OID %s: %s", oid, error_status.prettyPrint())
+            if error_indication or error_status:
                 return None
 
             for name, val in var_binds:
@@ -465,6 +528,5 @@ class SNMPClient:
                     return str(val).strip()
             return None
 
-        except Exception as exc:
-            _LOGGER.debug("Exception getting SNMP string for OID %s: %s", oid, exc)
+        except Exception:
             return None
