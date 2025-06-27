@@ -91,20 +91,33 @@ def _create_auth_data(data: dict[str, Any]) -> CommunityData | UsmUserData:
         return CommunityData(community)
 
 
-STEP_USER_DATA_SCHEMA = vol.Schema(
-    {
+def _get_user_schema(user_input: dict[str, Any] | None = None) -> vol.Schema:
+    """Get the schema for the user step based on SNMP version."""
+    snmp_version = (user_input or {}).get(CONF_SNMP_VERSION, DEFAULT_SNMP_VERSION)
+    
+    schema = {
         vol.Required(CONF_HOST): str,
         vol.Optional(CONF_PORT, default=DEFAULT_PORT): int,
         vol.Optional(CONF_SNMP_VERSION, default=DEFAULT_SNMP_VERSION): vol.In(SNMP_VERSIONS),
-        vol.Optional(CONF_COMMUNITY, default=DEFAULT_COMMUNITY): str,
-        vol.Optional(CONF_USERNAME): str,
-        vol.Optional(CONF_AUTH_PROTOCOL, default="none"): vol.In(list(SNMP_AUTH_PROTOCOLS.keys())),
-        vol.Optional(CONF_AUTH_PASSWORD): str,
-        vol.Optional(CONF_PRIV_PROTOCOL, default="none"): vol.In(list(SNMP_PRIV_PROTOCOLS.keys())),
-        vol.Optional(CONF_PRIV_PASSWORD): str,
         vol.Optional(CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL): vol.All(int, vol.Range(min=10, max=300)),
     }
-)
+    
+    if snmp_version == "v3":
+        # SNMP v3 fields
+        schema.update({
+            vol.Required(CONF_USERNAME): str,
+            vol.Optional(CONF_AUTH_PROTOCOL, default="sha"): vol.In(list(SNMP_AUTH_PROTOCOLS.keys())),
+            vol.Optional(CONF_AUTH_PASSWORD): str,
+            vol.Optional(CONF_PRIV_PROTOCOL, default="aes128"): vol.In(list(SNMP_PRIV_PROTOCOLS.keys())),
+            vol.Optional(CONF_PRIV_PASSWORD): str,
+        })
+    else:
+        # SNMP v2c fields
+        schema.update({
+            vol.Optional(CONF_COMMUNITY, default=DEFAULT_COMMUNITY): str,
+        })
+    
+    return vol.Schema(schema)
 
 
 async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
@@ -495,11 +508,54 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Handle the initial step."""
         _LOGGER.info("iDRAC config flow step_user called with input: %s", user_input is not None)
         errors: dict[str, str] = {}
-        if user_input is not None:
+        
+        # Check if we need to show version-specific fields
+        if user_input is not None and not errors:
+            # If user just changed SNMP version, show form again with appropriate fields
+            if len(user_input) == 4:  # Only basic fields filled (host, port, version, scan_interval)
+                return self.async_show_form(
+                    step_id="user", 
+                    data_schema=_get_user_schema(user_input), 
+                    errors=errors
+                )
+            
             try:
-                _LOGGER.info("Calling validate_input with data: %s", {k: v for k, v in user_input.items() if k != CONF_COMMUNITY})
-                info = await validate_input(self.hass, user_input)
-                _LOGGER.info("validate_input completed successfully")
+                # Validate credentials based on SNMP version
+                snmp_version = user_input.get(CONF_SNMP_VERSION, DEFAULT_SNMP_VERSION)
+                if snmp_version == "v3":
+                    # Ensure required v3 fields are present
+                    if not user_input.get(CONF_USERNAME):
+                        errors["base"] = "missing_username"
+                    elif user_input.get(CONF_AUTH_PROTOCOL) != "none" and not user_input.get(CONF_AUTH_PASSWORD):
+                        errors["base"] = "missing_auth_password"
+                    elif user_input.get(CONF_PRIV_PROTOCOL) != "none" and not user_input.get(CONF_PRIV_PASSWORD):
+                        errors["base"] = "missing_priv_password"
+                else:
+                    # v2c - community is required but has default
+                    pass
+                
+                if not errors:
+                    _LOGGER.info("Calling validate_input with SNMP %s", snmp_version)
+                    info = await validate_input(self.hass, user_input)
+                    _LOGGER.info("validate_input completed successfully")
+                    
+                    unique_id = f"{user_input[CONF_HOST]}:{user_input[CONF_PORT]}"
+                    await self.async_set_unique_id(unique_id)
+                    self._abort_if_unique_id_configured()
+                    
+                    # Add discovered sensor info to the config data
+                    config_data = user_input.copy()
+                    config_data[CONF_DISCOVERED_FANS] = info[CONF_DISCOVERED_FANS]
+                    config_data[CONF_DISCOVERED_CPUS] = info[CONF_DISCOVERED_CPUS]
+                    config_data[CONF_DISCOVERED_PSUS] = info[CONF_DISCOVERED_PSUS]
+                    config_data[CONF_DISCOVERED_VOLTAGE_PROBES] = info[CONF_DISCOVERED_VOLTAGE_PROBES]
+                    config_data[CONF_DISCOVERED_MEMORY] = info[CONF_DISCOVERED_MEMORY]
+                    config_data[CONF_DISCOVERED_VIRTUAL_DISKS] = info[CONF_DISCOVERED_VIRTUAL_DISKS]
+                    config_data[CONF_DISCOVERED_PHYSICAL_DISKS] = info[CONF_DISCOVERED_PHYSICAL_DISKS]
+                    config_data[CONF_DISCOVERED_STORAGE_CONTROLLERS] = info[CONF_DISCOVERED_STORAGE_CONTROLLERS]
+                    
+                    return self.async_create_entry(title=info["title"], data=config_data)
+                    
             except CannotConnect as exc:
                 _LOGGER.error("Cannot connect to iDRAC: %s", exc)
                 errors["base"] = "cannot_connect"
@@ -509,26 +565,11 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             except Exception as exc:  # pylint: disable=broad-except
                 _LOGGER.exception("Unexpected exception during validation: %s", exc)
                 errors["base"] = "unknown"
-            else:
-                unique_id = f"{user_input[CONF_HOST]}:{user_input[CONF_PORT]}"
-                await self.async_set_unique_id(unique_id)
-                self._abort_if_unique_id_configured()
-                
-                # Add discovered sensor info to the config data
-                config_data = user_input.copy()
-                config_data[CONF_DISCOVERED_FANS] = info[CONF_DISCOVERED_FANS]
-                config_data[CONF_DISCOVERED_CPUS] = info[CONF_DISCOVERED_CPUS]
-                config_data[CONF_DISCOVERED_PSUS] = info[CONF_DISCOVERED_PSUS]
-                config_data[CONF_DISCOVERED_VOLTAGE_PROBES] = info[CONF_DISCOVERED_VOLTAGE_PROBES]
-                config_data[CONF_DISCOVERED_MEMORY] = info[CONF_DISCOVERED_MEMORY]
-                config_data[CONF_DISCOVERED_VIRTUAL_DISKS] = info[CONF_DISCOVERED_VIRTUAL_DISKS]
-                config_data[CONF_DISCOVERED_PHYSICAL_DISKS] = info[CONF_DISCOVERED_PHYSICAL_DISKS]
-                config_data[CONF_DISCOVERED_STORAGE_CONTROLLERS] = info[CONF_DISCOVERED_STORAGE_CONTROLLERS]
-                
-                return self.async_create_entry(title=info["title"], data=config_data)
 
         return self.async_show_form(
-            step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
+            step_id="user", 
+            data_schema=_get_user_schema(user_input), 
+            errors=errors
         )
 
 
