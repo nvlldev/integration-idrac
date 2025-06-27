@@ -38,8 +38,8 @@
           "username": "iDRAC login username",
           "password": "iDRAC login password",
           "verify_ssl": "Verify SSL certificates (disable for self-signed certificates)",
-          "request_timeout": "Maximum time to wait for API responses",
-          "session_timeout": "How long to keep the connection active"
+          "request_timeout": "Maximum time to wait for API responses (10-300 seconds)",
+          "session_timeout": "How long to keep the connection active (30-600 seconds)"
         }
       },
       "snmp_version": {
@@ -123,8 +123,8 @@
           "username": "iDRAC username (usually 'root')",
           "password": "iDRAC password",
           "verify_ssl": "Enable SSL certificate verification (usually disabled)",
-          "request_timeout": "Timeout for control operations (5-120 seconds)",
-          "session_timeout": "Session timeout for control operations (10-180 seconds)"
+          "request_timeout": "Timeout for control operations (10-300 seconds)",
+          "session_timeout": "Session timeout for control operations (30-600 seconds)"
         }
       },
       "hybrid_snmp_version": {

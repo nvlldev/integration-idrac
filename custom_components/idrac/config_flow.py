@@ -112,18 +112,18 @@ STEP_REDFISH_SCHEMA = vol.Schema({
     vol.Optional(CONF_VERIFY_SSL, default=False): selector.BooleanSelector(),
     vol.Optional(CONF_REQUEST_TIMEOUT, default=DEFAULT_REQUEST_TIMEOUT): selector.NumberSelector(
         selector.NumberSelectorConfig(
-            min=5,
-            max=120,
-            step=5,
+            min=10,
+            max=300,
+            step=10,
             unit_of_measurement="seconds",
             mode=selector.NumberSelectorMode.SLIDER
         )
     ),
     vol.Optional(CONF_SESSION_TIMEOUT, default=DEFAULT_SESSION_TIMEOUT): selector.NumberSelector(
         selector.NumberSelectorConfig(
-            min=10,
-            max=180,
-            step=5,
+            min=30,
+            max=600,
+            step=15,
             unit_of_measurement="seconds",
             mode=selector.NumberSelectorMode.SLIDER
         )
@@ -197,18 +197,18 @@ STEP_HYBRID_REDFISH_SCHEMA = vol.Schema({
     vol.Optional(CONF_VERIFY_SSL, default=False): selector.BooleanSelector(),
     vol.Optional(CONF_REQUEST_TIMEOUT, default=DEFAULT_REQUEST_TIMEOUT): selector.NumberSelector(
         selector.NumberSelectorConfig(
-            min=5,
-            max=120,
-            step=5,
+            min=10,
+            max=300,
+            step=10,
             unit_of_measurement="seconds",
             mode=selector.NumberSelectorMode.SLIDER
         )
     ),
     vol.Optional(CONF_SESSION_TIMEOUT, default=DEFAULT_SESSION_TIMEOUT): selector.NumberSelector(
         selector.NumberSelectorConfig(
-            min=10,
-            max=180,
-            step=5,
+            min=30,
+            max=600,
+            step=15,
             unit_of_measurement="seconds",
             mode=selector.NumberSelectorMode.SLIDER
         )
@@ -350,7 +350,7 @@ async def validate_snmp_input(hass: HomeAssistant, data: dict[str, Any]) -> dict
     """Validate SNMP connection and discover sensors."""
     _LOGGER.info("Starting iDRAC SNMP validation for host: %s", data.get(CONF_HOST))
     host = data[CONF_HOST]
-    port = data[CONF_SNMP_PORT]
+    port = int(data[CONF_SNMP_PORT])  # Ensure port is an integer
     snmp_version = data.get(CONF_SNMP_VERSION, DEFAULT_SNMP_VERSION)
 
     try:
@@ -471,7 +471,7 @@ async def validate_snmp_input(hass: HomeAssistant, data: dict[str, Any]) -> dict
     except CannotConnect:
         raise
     except Exception as exc:
-        _LOGGER.exception("Unexpected exception during SNMP validation for %s:%s: %s", host, port, exc)
+        _LOGGER.error("Unexpected exception during SNMP validation for %s:%s: %s", host, port, exc)
         raise CannotConnect
 
 
