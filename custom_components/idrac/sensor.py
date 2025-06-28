@@ -71,24 +71,26 @@ async def async_setup_entry(
         else:
             _LOGGER.warning("Fan data category exists but contains no sensors")
 
-    # Add voltage sensors (filter out status sensors that show ~1v)
+    # Add voltage sensors (filter out status sensors and PSU duplicates)
     if coordinator.data and "voltages" in coordinator.data:
         for voltage_id, voltage_data in coordinator.data["voltages"].items():
             voltage_reading = voltage_data.get("reading_volts")
-            # Only create voltage sensors for actual voltage readings (not status indicators)
-            # Skip if reading is exactly 1.0 or close to 1.0 (likely a status indicator)
+            voltage_name = voltage_data.get("name", "").lower()
+            
+            # Skip voltage sensors that are:
+            # 1. Status indicators (reading close to 1.0V)
+            # 2. PSU-related (will be handled by Redfish PSU input voltage sensors)
             if voltage_reading is not None and (voltage_reading < 0.9 or voltage_reading > 1.1):
-                entities.append(IdracVoltageSensor(coordinator, config_entry, voltage_id, voltage_data))
+                # Skip PSU voltage sensors to avoid duplicates with Redfish PSU input voltage
+                if not any(psu_keyword in voltage_name for psu_keyword in ["psu", "power supply", "ps1", "ps2"]):
+                    entities.append(IdracVoltageSensor(coordinator, config_entry, voltage_id, voltage_data))
 
     # Add memory health sensors (SNMP data)
     if coordinator.data and "memory" in coordinator.data:
         for memory_id, memory_data in coordinator.data["memory"].items():
             entities.append(IdracMemoryHealthSensor(coordinator, config_entry, memory_id, memory_data))
 
-    # Add PSU sensors
-    if coordinator.data and "power_supplies" in coordinator.data:
-        for psu_id, psu_data in coordinator.data["power_supplies"].items():
-            entities.append(IdracPSUStatusSensor(coordinator, config_entry, psu_id, psu_data))
+    # PSU health sensors are handled by binary sensors - no regular PSU status sensors needed
 
     # Add intrusion detection sensors (SNMP available!)
     if coordinator.data and "intrusion_detection" in coordinator.data:
@@ -306,7 +308,19 @@ class IdracTemperatureSensor(IdracSensor):
         temp_data: dict,
     ) -> None:
         """Initialize the temperature sensor."""
-        name = temp_data.get("name", f"Temperature {temp_id}")
+        # Improve naming for CPU temperature sensors
+        sensor_name = temp_data.get("name", "")
+        if sensor_name and "cpu" in sensor_name.lower():
+            # Extract CPU number for cleaner naming (e.g., "CPU1 Temp" -> "CPU 1 Temperature")
+            import re
+            cpu_match = re.search(r'cpu\s*(\d+)', sensor_name.lower())
+            if cpu_match:
+                cpu_num = cpu_match.group(1)
+                name = f"CPU {cpu_num} Temperature"
+            else:
+                name = sensor_name
+        else:
+            name = sensor_name or f"Temperature {temp_id}"
         super().__init__(coordinator, config_entry, f"temperature_{temp_id}", name)
         self.temp_id = temp_id
         self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
@@ -346,9 +360,26 @@ class IdracFanSpeedSensor(IdracSensor):
         fan_data: dict,
     ) -> None:
         """Initialize the fan sensor."""
-        # Extract numeric index from fan_id for cleaner naming
-        fan_index = fan_id.replace('fan_', '') if fan_id.startswith('fan_') else fan_id
-        name = fan_data.get("name", f"System Fan {fan_index} Speed")
+        # Improve fan naming to handle various patterns
+        sensor_name = fan_data.get("name", "")
+        if sensor_name:
+            # Handle "System Board Fan1" -> "System Fan 1 Speed"
+            import re
+            if "system board fan" in sensor_name.lower():
+                fan_match = re.search(r'fan\s*(\d+)', sensor_name.lower())
+                if fan_match:
+                    fan_num = fan_match.group(1)
+                    name = f"System Fan {fan_num} Speed"
+                else:
+                    name = f"{sensor_name} Speed"
+            elif not sensor_name.lower().endswith('speed'):
+                name = f"{sensor_name} Speed"
+            else:
+                name = sensor_name
+        else:
+            # Extract numeric index from fan_id for cleaner naming
+            fan_index = fan_id.replace('fan_', '') if fan_id.startswith('fan_') else fan_id
+            name = f"System Fan {fan_index} Speed"
         super().__init__(coordinator, config_entry, f"fan_{fan_id}", name)
         self.fan_id = fan_id
         self._attr_state_class = SensorStateClass.MEASUREMENT
@@ -540,58 +571,7 @@ class IdracMemoryHealthSensor(IdracSensor):
         }
 
 
-class IdracPSUStatusSensor(IdracSensor):
-    """PSU status sensor."""
-
-    def __init__(
-        self,
-        coordinator: IdracDataUpdateCoordinator,
-        config_entry: ConfigEntry,
-        psu_id: str,
-        psu_data: dict[str, Any],
-    ) -> None:
-        """Initialize the PSU status sensor."""
-        psu_name = psu_data.get("name", f"PSU {psu_id}")
-        # Extract numeric index from psu_id for cleaner naming
-        psu_index = psu_id.replace('psu_', '') if psu_id.startswith('psu_') else psu_id
-        super().__init__(coordinator, config_entry, f"psu_{psu_id}_status", f"Power Supply {psu_index} Health")
-        self.psu_id = psu_id
-        self._attr_entity_category = EntityCategory.DIAGNOSTIC
-
-    @property
-    def native_value(self) -> str | None:
-        """Return the state of the sensor."""
-        if not self.coordinator.data or "power_supplies" not in self.coordinator.data:
-            return None
-        psu_data = self.coordinator.data["power_supplies"].get(self.psu_id)
-        if not psu_data:
-            return None
-        return psu_data.get("status", "Unknown")
-
-    @property
-    def icon(self) -> str:
-        """Return the icon for the sensor."""
-        status = self.native_value
-        if status == "ok":
-            return "mdi:power-plug"
-        elif status in ["non_critical", "critical", "non_recoverable"]:
-            return "mdi:power-plug-off"
-        else:
-            return "mdi:power-plug-outline"
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any] | None:
-        """Return additional state attributes."""
-        if not self.coordinator.data or "power_supplies" not in self.coordinator.data:
-            return None
-        psu_data = self.coordinator.data["power_supplies"].get(self.psu_id)
-        if not psu_data:
-            return None
-        return {
-            "power_capacity_watts": psu_data.get("power_capacity_watts"),
-            "power_output_watts": psu_data.get("power_output_watts"),
-            "name": psu_data.get("name"),
-        }
+# PSU status sensors are handled by binary sensors - regular PSU status sensor class removed
 
 
 class IdracIntrusionSensor(IdracSensor):

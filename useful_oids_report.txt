@@ -1,5 +1,0 @@
-DELL iDRAC USEFUL OIDs REPORT
-Generated for: 192.168.50.131:161
-Total useful OIDs found: 0
-================================================================================
-

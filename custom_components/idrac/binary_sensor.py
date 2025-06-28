@@ -129,7 +129,9 @@ class IdracPsuStatusBinarySensor(IdracBinarySensor):
     ) -> None:
         """Initialize the PSU status binary sensor."""
         sensor_key = f"psu_{psu_index}"
-        sensor_name = f"PSU {psu_index} Health"
+        # Extract numeric index for consistent naming
+        psu_index = psu_index.replace('psu_', '') if str(psu_index).startswith('psu_') else psu_index
+        sensor_name = f"Power Supply {psu_index} Health"
         super().__init__(
             coordinator,
             config_entry,
