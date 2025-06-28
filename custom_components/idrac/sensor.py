@@ -57,7 +57,7 @@ async def async_setup_entry(
         ("fans", IdracFanSpeedSensor),
         ("voltages", IdracVoltageSensor),
         ("intrusion_detection", IdracIntrusionSensor),
-        ("battery", IdracBatterySensor),
+        # ("battery", IdracBatterySensor), # Moved to binary_sensor.py as IdracBatteryHealthBinarySensor
         ("processors", IdracProcessorSensor),
     ]
     
@@ -117,16 +117,7 @@ async def async_setup_entry(
         for sensor_class in manager_sensors:
             entities.append(sensor_class(manager_coordinator, config_entry))
     
-    # Power consumption aggregate sensors
-    power_coordinator = get_coordinator_for_category("power_consumption", snmp_coordinator, redfish_coordinator, "snmp")
-    if power_coordinator and power_coordinator.data and "power_consumption" in power_coordinator.data:
-        power_sensors = [
-            IdracAveragePowerSensor,
-            IdracMaxPowerSensor, 
-            IdracMinPowerSensor,
-        ]
-        for sensor_class in power_sensors:
-            entities.append(sensor_class(power_coordinator, config_entry))
+    # Power consumption aggregate sensors removed per user request
     
     # Aggregate sensors with pattern requirements
     temp_coordinator = get_coordinator_for_category("temperatures", snmp_coordinator, redfish_coordinator, "snmp")
@@ -536,55 +527,7 @@ class IdracIntrusionSensor(IdracSensor):
         }
 
 
-class IdracBatterySensor(IdracSensor):
-    """System battery sensor."""
-
-    def __init__(
-        self,
-        coordinator: SNMPDataUpdateCoordinator | RedfishDataUpdateCoordinator,
-        config_entry: ConfigEntry,
-        battery_id: str,
-        battery_data: dict[str, Any],
-    ) -> None:
-        """Initialize the battery sensor."""
-        battery_name = battery_data.get("name", f"Battery {battery_id}")
-        super().__init__(coordinator, config_entry, f"battery_{battery_id}", f"{battery_name} Health")
-        self.battery_id = battery_id
-        self._attr_entity_category = None
-
-    @property
-    def native_value(self) -> str | None:
-        """Return the state of the sensor."""
-        if not self.coordinator.data or "battery" not in self.coordinator.data:
-            return None
-        battery_data = self.coordinator.data["battery"].get(self.battery_id)
-        if not battery_data:
-            return None
-        return battery_data.get("status", "Unknown")
-
-    @property
-    def icon(self) -> str:
-        """Return the icon for the sensor."""
-        status = self.native_value
-        if status == "ok":
-            return "mdi:battery"
-        elif status in ["non_critical", "critical", "non_recoverable"]:
-            return "mdi:battery-alert"
-        else:
-            return "mdi:battery-unknown"
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any] | None:
-        """Return additional state attributes."""
-        if not self.coordinator.data or "battery" not in self.coordinator.data:
-            return None
-        battery_data = self.coordinator.data["battery"].get(self.battery_id)
-        if not battery_data:
-            return None
-        return {
-            "reading": battery_data.get("reading"),
-            "name": battery_data.get("name"),
-        }
+# Battery sensor moved to binary_sensor.py as IdracBatteryHealthBinarySensor
 
 
 class IdracProcessorSensor(IdracSensor):
@@ -728,61 +671,7 @@ class IdracPSUInputVoltageSensor(IdracSensor):
         return psu_data.get("line_input_voltage")
 
 
-class IdracAveragePowerSensor(IdracSensor):
-    """System average power consumption sensor."""
-    
-    def __init__(self, coordinator: SNMPDataUpdateCoordinator | RedfishDataUpdateCoordinator, config_entry: ConfigEntry) -> None:
-        """Initialize the sensor."""
-        super().__init__(coordinator, config_entry, "average_power_consumption", "System Average Power")
-        self._attr_device_class = SensorDeviceClass.POWER
-        self._attr_state_class = SensorStateClass.MEASUREMENT
-        self._attr_native_unit_of_measurement = UnitOfPower.WATT
-        self._attr_icon = "mdi:flash-outline"
-
-    @property
-    def native_value(self) -> float | None:
-        """Return the average power consumption."""
-        if not self.coordinator.data or "power_consumption" not in self.coordinator.data:
-            return None
-        return self.coordinator.data["power_consumption"].get("average_consumed_watts")
-
-
-class IdracMaxPowerSensor(IdracSensor):
-    """System maximum power consumption sensor."""
-    
-    def __init__(self, coordinator: SNMPDataUpdateCoordinator | RedfishDataUpdateCoordinator, config_entry: ConfigEntry) -> None:
-        """Initialize the sensor."""
-        super().__init__(coordinator, config_entry, "max_power_consumption", "System Peak Power")
-        self._attr_device_class = SensorDeviceClass.POWER
-        self._attr_state_class = SensorStateClass.MEASUREMENT
-        self._attr_native_unit_of_measurement = UnitOfPower.WATT
-        self._attr_icon = "mdi:flash-triangle"
-
-    @property
-    def native_value(self) -> float | None:
-        """Return the maximum power consumption."""
-        if not self.coordinator.data or "power_consumption" not in self.coordinator.data:
-            return None
-        return self.coordinator.data["power_consumption"].get("max_consumed_watts")
-
-
-class IdracMinPowerSensor(IdracSensor):
-    """System minimum power consumption sensor."""
-    
-    def __init__(self, coordinator: SNMPDataUpdateCoordinator | RedfishDataUpdateCoordinator, config_entry: ConfigEntry) -> None:
-        """Initialize the sensor."""
-        super().__init__(coordinator, config_entry, "min_power_consumption", "System Minimum Power")
-        self._attr_device_class = SensorDeviceClass.POWER
-        self._attr_state_class = SensorStateClass.MEASUREMENT
-        self._attr_native_unit_of_measurement = UnitOfPower.WATT
-        self._attr_icon = "mdi:flash-off"
-
-    @property
-    def native_value(self) -> float | None:
-        """Return the minimum power consumption."""
-        if not self.coordinator.data or "power_consumption" not in self.coordinator.data:
-            return None
-        return self.coordinator.data["power_consumption"].get("min_consumed_watts")
+# Power aggregate sensors (Average, Min, Max) removed per user request
 
 
 class IdracSnmpResponseTimeSensor(IdracSensor):

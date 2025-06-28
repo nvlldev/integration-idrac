@@ -14,6 +14,7 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .entity_base import IdracEntityBase
 from .const import (
+    CONF_DISCOVERED_BATTERY,
     CONF_DISCOVERED_MEMORY,
     CONF_DISCOVERED_PHYSICAL_DISKS,
     CONF_DISCOVERED_PSUS,
@@ -59,8 +60,20 @@ async def async_setup_entry(
     intrusion_coordinator = get_coordinator_for_category("chassis_intrusion", snmp_coordinator, redfish_coordinator, "redfish")
     if not intrusion_coordinator:
         intrusion_coordinator = get_coordinator_for_category("intrusion_detection", snmp_coordinator, redfish_coordinator, "snmp")
+    
+    # Debug logging for intrusion sensor
+    _LOGGER.debug("Intrusion sensor setup:")
+    _LOGGER.debug("  Redfish chassis_intrusion data: %s", 
+                  redfish_coordinator.data.get("chassis_intrusion") if redfish_coordinator and redfish_coordinator.data else "No data")
+    _LOGGER.debug("  SNMP intrusion_detection data: %s", 
+                  snmp_coordinator.data.get("intrusion_detection") if snmp_coordinator and snmp_coordinator.data else "No data")
+    _LOGGER.debug("  Selected coordinator: %s", 
+                  type(intrusion_coordinator).__name__ if intrusion_coordinator else "None")
+    
     if intrusion_coordinator:
         entities.append(IdracSystemIntrusionBinarySensor(intrusion_coordinator, config_entry))
+    else:
+        _LOGGER.warning("No intrusion sensor data available from either coordinator")
     
     # PSU redundancy (typically from Redfish)
     redundancy_coordinator = get_coordinator_for_category("power_redundancy", snmp_coordinator, redfish_coordinator, "redfish")
@@ -107,6 +120,14 @@ async def async_setup_entry(
                 IdracStorageControllerBinarySensor(controller_coordinator, config_entry, controller_index),
                 IdracControllerBatteryBinarySensor(controller_coordinator, config_entry, controller_index),
             ])
+    
+    # Add system battery health binary sensors
+    battery_coordinator = get_coordinator_for_category("battery", snmp_coordinator, redfish_coordinator, "snmp")
+    if battery_coordinator:
+        for battery_index in config_entry.data.get(CONF_DISCOVERED_BATTERY, []):
+            entities.append(
+                IdracBatteryHealthBinarySensor(battery_coordinator, config_entry, battery_index)
+            )
     
     # Note: Voltage status binary sensors removed - voltage status is covered by regular voltage sensors
     
@@ -642,12 +663,13 @@ class IdracSystemIntrusionBinarySensor(IdracBinarySensor):
                     if reading is not None:
                         try:
                             reading_int = int(reading)
-                            # Dell iDRAC intrusion values: 1=other, 2=unknown, 3=ok, 4=non_critical, 5=critical, 6=non_recoverable
-                            # Also: 1=secure, 2=off (disabled), 3=breach_detected in some models
-                            if reading_int in [3, 5, 6]:  # breach_detected, critical, non_recoverable
+                            # Dell iDRAC intrusion values from INTRUSION_STATUS mapping:
+                            # 1=breach, 2=no_breach, 3=ok, 4=unknown
+                            if reading_int == 1:  # breach
                                 return True   # Intrusion detected
-                            elif reading_int == 1:
+                            elif reading_int in [2, 3]:  # no_breach, ok
                                 return False  # Secure/OK
+                            # 4=unknown, return None to indicate unavailable
                         except (ValueError, TypeError):
                             continue
             # If we processed sensors but none showed intrusion, return False
@@ -658,11 +680,12 @@ class IdracSystemIntrusionBinarySensor(IdracBinarySensor):
         if intrusion_value is not None:
             try:
                 intrusion_int = int(intrusion_value)
-                # Dell iDRAC intrusion values: 1=secure, 2=off (disabled), 3=breach_detected
+                # Use same mapping as above for consistency
+                # 1=breach, 2=no_breach, 3=ok, 4=unknown
                 if intrusion_int == 1:
-                    return False  # Secure
-                elif intrusion_int == 3:
                     return True   # Breach detected
+                elif intrusion_int in [2, 3]:
+                    return False  # Secure/OK
                 else:
                     return None   # Unknown/disabled
             except (ValueError, TypeError):
@@ -670,6 +693,21 @@ class IdracSystemIntrusionBinarySensor(IdracBinarySensor):
         
         # If no intrusion data found, sensor is not available
         return None
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        is_on_value = self.is_on
+        coordinator_success = self.coordinator.last_update_success
+        
+        _LOGGER.debug("Intrusion sensor availability check:")
+        _LOGGER.debug("  Coordinator success: %s", coordinator_success)
+        _LOGGER.debug("  is_on value: %s", is_on_value)
+        _LOGGER.debug("  Coordinator data keys: %s", 
+                      list(self.coordinator.data.keys()) if self.coordinator.data else "No data")
+        
+        # The sensor is available if the coordinator succeeded AND we got a valid is_on value
+        return coordinator_success and is_on_value is not None
 
 
 class IdracPsuRedundancyBinarySensor(IdracBinarySensor):
@@ -957,5 +995,119 @@ class IdracMemoryHealthBinarySensor(IdracBinarySensor):
             and self.coordinator.data is not None
             and "memory" in self.coordinator.data
             and self._entity_key in self.coordinator.data["memory"]
+        )
+
+
+class IdracBatteryHealthBinarySensor(IdracBinarySensor):
+    """Dell iDRAC system battery health binary sensor."""
+
+    def __init__(
+        self,
+        coordinator: SNMPDataUpdateCoordinator | RedfishDataUpdateCoordinator,
+        config_entry: ConfigEntry,
+        battery_index: int,
+    ) -> None:
+        """Initialize the battery health binary sensor."""
+        sensor_key = f"battery_{battery_index}"
+        sensor_name = f"System Battery {battery_index} Health"
+        super().__init__(
+            coordinator,
+            config_entry,
+            sensor_key,
+            sensor_name,
+            BinarySensorDeviceClass.PROBLEM,  # "On" means problem detected, "Off" means OK
+        )
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_icon = "mdi:battery"
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return True if battery has a problem."""
+        if self.coordinator.data is None or "battery" not in self.coordinator.data:
+            return None
+        
+        battery_data = self.coordinator.data["battery"].get(self._entity_key)
+        if battery_data is None:
+            return None
+        
+        # Handle both SNMP nested format and direct status format
+        if isinstance(battery_data, dict):
+            status_value = battery_data.get("status")
+        else:
+            status_value = battery_data
+            
+        if status_value is None:
+            return None
+            
+        # Handle both string and numeric status values
+        if isinstance(status_value, str):
+            # String status: "ok", "critical", "warning", etc.
+            return status_value.lower() not in ["ok", "normal", "good"]
+        else:
+            try:
+                status_int = int(status_value)
+                # Dell iDRAC battery status values: 1=other, 2=unknown, 3=ok, 4=non_critical, 5=critical, 6=non_recoverable
+                # Return True (problem) for anything other than "ok" (3)
+                return status_int != 3
+            except (ValueError, TypeError):
+                return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, str] | None:
+        """Return additional state attributes."""
+        if self.coordinator.data is None or "battery" not in self.coordinator.data:
+            return None
+        
+        battery_data = self.coordinator.data["battery"].get(self._entity_key)
+        if battery_data is None:
+            return None
+        
+        attributes = {}
+        
+        # Handle nested battery data structure
+        if isinstance(battery_data, dict):
+            status_value = battery_data.get("status")
+            # Add additional battery information if available
+            if "name" in battery_data:
+                attributes["battery_name"] = battery_data["name"]
+            if "reading" in battery_data:
+                attributes["reading"] = battery_data["reading"]
+        else:
+            status_value = battery_data
+            
+        if status_value is not None:
+            if isinstance(status_value, str):
+                attributes["status_text"] = status_value
+            else:
+                try:
+                    status_int = int(status_value)
+                    # Map Dell iDRAC battery status values to readable strings
+                    status_map = {
+                        1: "other",
+                        2: "unknown", 
+                        3: "ok",
+                        4: "non_critical",
+                        5: "critical",
+                        6: "non_recoverable"
+                    }
+                    status_text = status_map.get(status_int, "unknown")
+                    
+                    attributes.update({
+                        "status_code": status_int,
+                        "status_text": status_text,
+                    })
+                except (ValueError, TypeError):
+                    attributes["raw_value"] = str(status_value)
+        
+        return attributes if attributes else None
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        return (
+            self.coordinator.last_update_success
+            and self.coordinator.data is not None
+            and "battery" in self.coordinator.data
+            and self._entity_key in self.coordinator.data["battery"]
         )
 

@@ -383,12 +383,13 @@ async def discover_intrusion_sensors(
                 for name, val in var_binds:
                     if val is not None and str(val) != "No Such Object currently exists at this OID":
                         val_str = str(val).strip()
-                        # Look for intrusion-related keywords
-                        if val_str and any(keyword in val_str for keyword in ["Intrusion", "Chassis", "Case"]):
+                        # Any non-empty string indicates a valid intrusion sensor location
+                        # The actual intrusion detection will be determined by reading the status
+                        if val_str:
                             discovered_sensors.append(index)
                             _LOGGER.debug("Found intrusion sensor at index %d: %s = %s", index, name, val)
-                        elif val_str:
-                            _LOGGER.debug("Skipping non-intrusion sensor at index %d: %s = %s", index, name, val)
+                        else:
+                            _LOGGER.debug("Skipping empty intrusion sensor at index %d", index)
                         break
                         
         except Exception as exc:

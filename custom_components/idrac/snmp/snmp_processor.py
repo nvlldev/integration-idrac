@@ -353,10 +353,15 @@ class SNMPDataProcessor:
         """Process chassis intrusion sensor data."""
         processed_count = 0
         
+        _LOGGER.debug("Processing intrusion sensors. Discovered IDs: %s", self.discovered_intrusion)
+        
         for intrusion_id in self.discovered_intrusion:
             intrusion_reading = values.get(format_oid_with_index(IDRAC_OIDS["intrusion_reading"], intrusion_id))
             intrusion_status = values.get(format_oid_with_index(IDRAC_OIDS["intrusion_status"], intrusion_id))
             intrusion_location = strings.get(format_oid_with_index(IDRAC_OIDS["intrusion_location"], intrusion_id))
+            
+            _LOGGER.debug("Intrusion sensor %s: reading=%s, status=%s, location=%s", 
+                         intrusion_id, intrusion_reading, intrusion_status, intrusion_location)
             
             if intrusion_reading is not None and intrusion_location:
                 sensor_data = {
