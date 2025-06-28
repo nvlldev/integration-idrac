@@ -339,11 +339,30 @@ class IdracSensor(CoordinatorEntity[SNMPDataUpdateCoordinator | RedfishDataUpdat
         except Exception as exc:
             _LOGGER.warning("Failed to get device info for sensor: %s", exc)
             self._attr_name = f"Dell iDRAC ({self.coordinator.host}) {self._sensor_name}"
+            # Provide fallback device info to ensure device is created
+            self._attr_device_info = {
+                "identifiers": {("idrac", self.coordinator.host)},
+                "name": f"Dell iDRAC ({self.coordinator.host})",
+                "manufacturer": "Dell",
+                "model": "iDRAC",
+                "configuration_url": f"https://{self.coordinator.host}",
+            }
 
     @property
     def device_info(self):
         """Return device information."""
-        return getattr(self, '_attr_device_info', None)
+        # Always return device info - use fallback if not set
+        if hasattr(self, '_attr_device_info') and self._attr_device_info:
+            return self._attr_device_info
+        
+        # Fallback device info
+        return {
+            "identifiers": {("idrac", self.coordinator.host)},
+            "name": f"Dell iDRAC ({self.coordinator.host})",
+            "manufacturer": "Dell", 
+            "model": "iDRAC",
+            "configuration_url": f"https://{self.coordinator.host}",
+        }
 
     @property
     def available(self) -> bool:

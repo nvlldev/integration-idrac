@@ -84,6 +84,30 @@ class IdracSwitch(CoordinatorEntity, SwitchEntity):
         except Exception as exc:
             _LOGGER.warning("Failed to get device info for switch: %s", exc)
             self._attr_name = f"Dell iDRAC ({self._host}) {self._switch_name}"
+            # Provide fallback device info to ensure device is created
+            self._attr_device_info = {
+                "identifiers": {("idrac", self.coordinator.host)},
+                "name": f"Dell iDRAC ({self.coordinator.host})",
+                "manufacturer": "Dell",
+                "model": "iDRAC",
+                "configuration_url": f"https://{self.coordinator.host}",
+            }
+
+    @property
+    def device_info(self):
+        """Return device information."""
+        # Always return device info - use fallback if not set
+        if hasattr(self, '_attr_device_info') and self._attr_device_info:
+            return self._attr_device_info
+        
+        # Fallback device info
+        return {
+            "identifiers": {("idrac", self.coordinator.host)},
+            "name": f"Dell iDRAC ({self.coordinator.host})",
+            "manufacturer": "Dell", 
+            "model": "iDRAC",
+            "configuration_url": f"https://{self.coordinator.host}",
+        }
 
     async def _async_snmp_set(self, oid: str, value: int) -> bool:
         """Send SNMP SET command using coordinator's SNMP connection."""
