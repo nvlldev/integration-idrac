@@ -376,20 +376,53 @@ class RedfishCoordinator:
                     "serial_number": psu.get("SerialNumber"),
                 }
 
-            # Process voltages
+            # Process voltages - filter out PG (Power Good) sensors
             voltages = power_data.get("Voltages", [])
+            
+            # Initialize system_voltages for PG sensors
+            if "system_voltages" not in data:
+                data["system_voltages"] = {}
+            
             for i, voltage in enumerate(voltages):
                 if voltage.get("ReadingVolts") is not None:
                     voltage_name = voltage.get("Name", f"Voltage {i+1}")
-                    data["voltages"][f"voltage_{i+1}"] = {
-                        "name": voltage_name,
-                        "reading_volts": voltage.get("ReadingVolts"),
-                        "status": voltage.get("Status", {}).get("Health"),
-                        "upper_threshold_critical": voltage.get("UpperThresholdCritical"),
-                        "upper_threshold_non_critical": voltage.get("UpperThresholdNonCritical"),
-                        "lower_threshold_critical": voltage.get("LowerThresholdCritical"),
-                        "lower_threshold_non_critical": voltage.get("LowerThresholdNonCritical"),
-                    }
+                    voltage_volts = voltage.get("ReadingVolts")
+                    
+                    # Handle PG (Power Good) sensors as binary sensors
+                    name_lower = voltage_name.lower() if voltage_name else ""
+                    is_pg_sensor = (
+                        " pg" in name_lower or
+                        name_lower.endswith(" pg") or
+                        "power good" in name_lower or
+                        ("system board" in name_lower and "voltage" in name_lower)
+                    )
+                    
+                    if is_pg_sensor:
+                        # PG sensors are binary status indicators (1V = OK, 0V = Not OK)
+                        is_ok = voltage_volts > 0.5  # Consider > 0.5V as "OK"
+                        
+                        # Clean up the sensor name for binary sensor
+                        clean_name = voltage_name.replace(" Voltage", "").replace(" PG", " Power Good")
+                        
+                        data["system_voltages"][f"system_voltage_{i+1}"] = {
+                            "name": clean_name,
+                            "reading": 1 if is_ok else 0,  # Binary reading for binary sensor
+                            "status": "ok" if is_ok else "critical",
+                            "voltage_value": voltage_volts,  # Keep original voltage for debugging
+                            "sensor_type": "power_good" if " pg" in name_lower else "system_voltage",
+                        }
+                        _LOGGER.debug("Redfish: Converted PG sensor to binary: %s -> %s", voltage_name, clean_name)
+                    else:
+                        # Regular voltage sensors
+                        data["voltages"][f"voltage_{i+1}"] = {
+                            "name": voltage_name,
+                            "reading_volts": voltage_volts,
+                            "status": voltage.get("Status", {}).get("Health"),
+                            "upper_threshold_critical": voltage.get("UpperThresholdCritical"),
+                            "upper_threshold_non_critical": voltage.get("UpperThresholdNonCritical"),
+                            "lower_threshold_critical": voltage.get("LowerThresholdCritical"),
+                            "lower_threshold_non_critical": voltage.get("LowerThresholdNonCritical"),
+                        }
 
         # Process manager information
         if manager_data:
