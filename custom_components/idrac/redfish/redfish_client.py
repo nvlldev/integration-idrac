@@ -217,6 +217,53 @@ class RedfishClient:
         """Get power subsystem information including redundancy."""
         return await self.get(f"/redfish/v1/Chassis/{system_id}/PowerSubsystem")
 
+    async def discover_available_endpoints(self) -> dict[str, bool]:
+        """Discover which Redfish endpoints are available on this iDRAC.
+        
+        Returns:
+            Dictionary mapping endpoint names to availability status.
+        """
+        endpoints = {
+            "service_root": False,
+            "systems": False,
+            "system_info": False,
+            "chassis": False,
+            "chassis_info": False,
+            "thermal": False,
+            "power": False,
+            "managers": False,
+            "manager_info": False,
+            "power_subsystem": False,
+        }
+        
+        # Test endpoints in order of importance
+        endpoint_tests = [
+            ("service_root", "/redfish/v1"),
+            ("systems", "/redfish/v1/Systems"),
+            ("system_info", "/redfish/v1/Systems/System.Embedded.1"),
+            ("chassis", "/redfish/v1/Chassis"),
+            ("chassis_info", "/redfish/v1/Chassis/System.Embedded.1"),
+            ("thermal", "/redfish/v1/Chassis/System.Embedded.1/Thermal"),
+            ("power", "/redfish/v1/Chassis/System.Embedded.1/Power"),
+            ("managers", "/redfish/v1/Managers"),
+            ("manager_info", "/redfish/v1/Managers/iDRAC.Embedded.1"),
+            ("power_subsystem", "/redfish/v1/Chassis/System.Embedded.1/PowerSubsystem"),
+        ]
+        
+        for endpoint_name, endpoint_path in endpoint_tests:
+            try:
+                result = await self.get(endpoint_path)
+                endpoints[endpoint_name] = result is not None
+                if result is not None:
+                    _LOGGER.debug("✅ %s endpoint available", endpoint_name)
+                else:
+                    _LOGGER.debug("❌ %s endpoint unavailable", endpoint_name)
+            except Exception as exc:
+                _LOGGER.debug("❌ %s endpoint error: %s", endpoint_name, exc)
+                endpoints[endpoint_name] = False
+        
+        return endpoints
+
     async def patch(self, path: str, data: dict[str, Any]) -> dict[str, Any] | None:
         """Make PATCH request to Redfish API."""
         url = f"{self.base_url}{path}"
@@ -307,21 +354,60 @@ class RedfishClient:
         return await self.post(f"/redfish/v1/Systems/{system_id}/Actions/ComputerSystem.Reset", data)
 
     async def test_connection(self) -> bool:
-        """Test connection to iDRAC Redfish API."""
+        """Test connection to iDRAC Redfish API with comprehensive validation."""
         try:
             _LOGGER.debug("Testing connection to %s (SSL verify: %s)", self.base_url, self.verify_ssl)
+            
+            # Test service root first
             service_root = await self.get_service_root()
-            success = service_root is not None
-            if success:
-                _LOGGER.debug("Connection test successful to %s", self.base_url)
-            else:
+            if not service_root:
                 _LOGGER.error("Connection test failed - no service root returned from %s", self.base_url)
-                _LOGGER.error("Common solutions: 1) Check if iDRAC web interface is accessible at %s", self.base_url)
-                _LOGGER.error("                  2) Try port 443 instead of %d", self.port)
-                _LOGGER.error("                  3) Disable SSL verification if using self-signed certificates")
-            return success
+                _LOGGER.error("Common solutions:")
+                _LOGGER.error("  1) Check if iDRAC web interface is accessible at %s", self.base_url)
+                _LOGGER.error("  2) Verify credentials are correct")
+                _LOGGER.error("  3) Try port 443 instead of %d", self.port)
+                _LOGGER.error("  4) Disable SSL verification if using self-signed certificates")
+                return False
+            
+            # Log Redfish version and product info
+            redfish_version = service_root.get("RedfishVersion", "Unknown")
+            product = service_root.get("Product", "Unknown")
+            _LOGGER.debug("Connected to %s, Redfish v%s", product, redfish_version)
+            
+            # Test critical endpoints to validate Dell iDRAC support
+            critical_endpoints = [
+                ("Systems", "/redfish/v1/Systems"),
+                ("Chassis", "/redfish/v1/Chassis"),
+                ("Managers", "/redfish/v1/Managers"),
+            ]
+            
+            for endpoint_name, endpoint_path in critical_endpoints:
+                try:
+                    result = await self.get(endpoint_path)
+                    if result is None:
+                        _LOGGER.warning("%s endpoint unavailable on %s", endpoint_name, self.base_url)
+                    else:
+                        members = result.get("Members", [])
+                        _LOGGER.debug("%s endpoint available with %d members", endpoint_name, len(members))
+                except Exception as exc:
+                    _LOGGER.warning("Failed to test %s endpoint: %s", endpoint_name, exc)
+            
+            _LOGGER.debug("Connection test successful to %s", self.base_url)
+            return True
+            
+        except RedfishError as e:
+            if "Authentication failed" in str(e):
+                _LOGGER.error("Authentication failed to %s - check username/password", self.base_url)
+            else:
+                _LOGGER.error("Redfish error connecting to %s: %s", self.base_url, e)
+            return False
         except Exception as e:
             _LOGGER.error("Connection test failed to %s: %s", self.base_url, e)
+            _LOGGER.error("This may indicate:")
+            _LOGGER.error("  - Network connectivity issues")
+            _LOGGER.error("  - iDRAC not responding or rebooting")
+            _LOGGER.error("  - Redfish service disabled")
+            _LOGGER.error("  - Incompatible iDRAC version (requires iDRAC 7+ for Redfish)")
             return False
 
     def get_performance_info(self) -> dict:

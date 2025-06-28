@@ -158,9 +158,12 @@ class RedfishCoordinator:
         # Pre-warm SSL connection on first run to reduce latency
         if not self._ssl_warmed_up:
             try:
+                warmup_start = time.time()
                 await self.client.warm_up_connection()
                 self._ssl_warmed_up = True
-            except Exception:
+                _LOGGER.debug("SSL warm-up completed in %.2f seconds", time.time() - warmup_start)
+            except Exception as exc:
+                _LOGGER.debug("SSL warm-up failed, continuing: %s", exc)
                 # Continue without warm-up, individual requests will establish connections
                 pass
         
@@ -177,62 +180,104 @@ class RedfishCoordinator:
             "system_health": {},
         }
 
+        # First validate service root to ensure Redfish is available
+        try:
+            service_root = await self.client.get_service_root()
+            if not service_root:
+                _LOGGER.error("Redfish service root unavailable on %s", self._server_id)
+                return data
+        except Exception as exc:
+            _LOGGER.error("Failed to connect to Redfish on %s: %s", self._server_id, exc)
+            return data
+
         # Fetch core sensor data concurrently, prioritizing essential endpoints
         try:
             # Primary concurrent batch - essential sensor data
+            _LOGGER.debug("Fetching primary sensor data from %s", self._server_id)
             system_task = self.client.get_system_info()
             thermal_task = self.client.get_thermal_info()
             power_task = self.client.get_power_info()
             
-            # Wait for primary data to complete concurrently
-            system_data, thermal_data, power_data = await asyncio.gather(
-                system_task, thermal_task, power_task,
-                return_exceptions=True
+            # Wait for primary data to complete concurrently with timeout
+            primary_timeout = 6.0  # Stricter timeout for primary data
+            system_data, thermal_data, power_data = await asyncio.wait_for(
+                asyncio.gather(system_task, thermal_task, power_task, return_exceptions=True),
+                timeout=primary_timeout
             )
             
-            # Secondary batch - nice-to-have data (only if primary batch was fast)
+            # Check for any critical failures in primary data
+            primary_failures = 0
+            if isinstance(system_data, Exception):
+                _LOGGER.warning("System data failed: %s", system_data)
+                system_data = None
+                primary_failures += 1
+            if isinstance(thermal_data, Exception):
+                _LOGGER.warning("Thermal data failed: %s", thermal_data)
+                thermal_data = None
+                primary_failures += 1
+            if isinstance(power_data, Exception):
+                _LOGGER.warning("Power data failed: %s", power_data)
+                power_data = None
+                primary_failures += 1
+            
+            # Only proceed with secondary data if primary was successful enough
             secondary_start = time.time()
-            if (secondary_start - start_time) < 5.0:  # Only fetch if primary was under 5s
+            primary_time = secondary_start - start_time
+            
+            if primary_failures <= 1 and primary_time < 5.0:
+                # Secondary batch - nice-to-have data
+                _LOGGER.debug("Fetching secondary data from %s (primary took %.2fs)", self._server_id, primary_time)
                 manager_task = self.client.get_manager_info()
                 chassis_task = self.client.get_chassis_info()
                 
-                manager_data, chassis_data = await asyncio.gather(
-                    manager_task, chassis_task,
-                    return_exceptions=True
-                )
+                # Use shorter timeout for secondary data
+                secondary_timeout = 4.0
+                try:
+                    manager_data, chassis_data = await asyncio.wait_for(
+                        asyncio.gather(manager_task, chassis_task, return_exceptions=True),
+                        timeout=secondary_timeout
+                    )
+                    
+                    if isinstance(manager_data, Exception):
+                        _LOGGER.debug("Manager data failed: %s", manager_data)
+                        manager_data = None
+                    if isinstance(chassis_data, Exception):
+                        _LOGGER.debug("Chassis data failed: %s", chassis_data)
+                        chassis_data = None
+                        
+                except asyncio.TimeoutError:
+                    _LOGGER.warning("Secondary data timeout on %s after %.2fs", self._server_id, secondary_timeout)
+                    manager_data = chassis_data = None
                 
                 # Skip power subsystem for now - it's often slow and non-essential
                 power_subsystem_data = None
             else:
-                # Skip secondary data if primary took too long
+                # Skip secondary data if primary took too long or had too many failures
+                _LOGGER.debug("Skipping secondary data for %s (primary time: %.2fs, failures: %d)", 
+                            self._server_id, primary_time, primary_failures)
                 manager_data = chassis_data = power_subsystem_data = None
-            
-            # Handle any exceptions from the concurrent calls
-            if isinstance(system_data, Exception):
-                system_data = None
-            if isinstance(thermal_data, Exception):
-                thermal_data = None
-            if isinstance(power_data, Exception):
-                power_data = None
-            if isinstance(manager_data, Exception):
-                manager_data = None
-            if isinstance(chassis_data, Exception):
-                chassis_data = None
-            if isinstance(power_subsystem_data, Exception):
-                power_subsystem_data = None
                 
-        except Exception:
-            # Fallback to sequential calls if concurrent fails
+        except asyncio.TimeoutError:
+            _LOGGER.error("Primary data timeout on %s after %.2fs", self._server_id, primary_timeout)
+            # Try emergency fallback with individual requests
             try:
-                system_data = await self.client.get_system_info()
-                thermal_data = await self.client.get_thermal_info()
-                power_data = await self.client.get_power_info()
-                manager_data = await self.client.get_manager_info()
-                chassis_data = await self.client.get_chassis_info()
-                power_subsystem_data = await self.client.get_power_subsystem()
-            except Exception:
-                # Set all data to None to continue with partial data processing
-                system_data = thermal_data = power_data = manager_data = chassis_data = power_subsystem_data = None
+                system_data = await asyncio.wait_for(self.client.get_system_info(), timeout=3.0)
+            except:
+                system_data = None
+            try:
+                thermal_data = await asyncio.wait_for(self.client.get_thermal_info(), timeout=3.0)
+            except:
+                thermal_data = None
+            try:
+                power_data = await asyncio.wait_for(self.client.get_power_info(), timeout=3.0)
+            except:
+                power_data = None
+            manager_data = chassis_data = power_subsystem_data = None
+                
+        except Exception as exc:
+            _LOGGER.error("Unexpected error during data collection from %s: %s", self._server_id, exc)
+            # Set all data to None to continue with partial data processing
+            system_data = thermal_data = power_data = manager_data = chassis_data = power_subsystem_data = None
 
         # Process system information
         if system_data:
