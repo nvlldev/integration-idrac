@@ -159,14 +159,42 @@ class SNMPClient:
         self.discovered_battery = entry.data.get(CONF_DISCOVERED_BATTERY, [])
         self.discovered_processors = entry.data.get(CONF_DISCOVERED_PROCESSORS, [])
         
+        # Debug: Log what we loaded from config entry
+        _LOGGER.debug("Loaded discovered sensors from config entry:")
+        _LOGGER.debug("  Raw config data keys: %s", list(entry.data.keys()))
+        total_loaded = (len(self.discovered_cpus) + len(self.discovered_fans) + len(self.discovered_psus) + 
+                       len(self.discovered_memory) + len(self.discovered_voltage_probes))
+        _LOGGER.debug("  Total loaded from main categories: %d", total_loaded)
+        
         sensor_count = self._count_discovered_sensors()
-        _LOGGER.debug("SNMP client initialized for %s:%d with %d discovered sensor types", 
+        _LOGGER.debug("SNMP client initialized for %s:%d with %d total discovered sensors", 
                      self.host, self.port, sensor_count)
         
-        # Log sensor breakdown for debugging
-        _LOGGER.debug("Discovered sensors breakdown: CPUs=%d, Fans=%d, PSUs=%d, Memory=%d, VoltageProbes=%d",
+        # Log complete sensor breakdown for debugging
+        _LOGGER.debug("Complete discovered sensors breakdown:")
+        _LOGGER.debug("  CPUs=%d, Fans=%d, PSUs=%d, Memory=%d, VoltageProbes=%d",
                      len(self.discovered_cpus), len(self.discovered_fans), len(self.discovered_psus),
                      len(self.discovered_memory), len(self.discovered_voltage_probes))
+        _LOGGER.debug("  VirtualDisks=%d, PhysicalDisks=%d, StorageControllers=%d",
+                     len(self.discovered_virtual_disks), len(self.discovered_physical_disks), 
+                     len(self.discovered_storage_controllers))
+        _LOGGER.debug("  DetailedMemory=%d, SystemVoltages=%d, PowerConsumption=%d",
+                     len(self.discovered_detailed_memory), len(self.discovered_system_voltages),
+                     len(self.discovered_power_consumption))
+        _LOGGER.debug("  Intrusion=%d, Battery=%d, Processors=%d",
+                     len(self.discovered_intrusion), len(self.discovered_battery),
+                     len(self.discovered_processors))
+        
+        # Log actual discovered sensor indices for debugging empty lists
+        if sensor_count == 0:
+            _LOGGER.warning("No sensors discovered during config flow - this may indicate:")
+            _LOGGER.warning("  1. SNMP discovery failed during setup")
+            _LOGGER.warning("  2. Config entry data missing discovered sensor indices")
+            _LOGGER.warning("  3. Network connectivity issues to iDRAC SNMP interface")
+            _LOGGER.debug("Config entry discovered sensor data:")
+            _LOGGER.debug("  CONF_DISCOVERED_CPUS: %s", self.entry.data.get(CONF_DISCOVERED_CPUS, 'missing'))
+            _LOGGER.debug("  CONF_DISCOVERED_FANS: %s", self.entry.data.get(CONF_DISCOVERED_FANS, 'missing'))
+            _LOGGER.debug("  CONF_DISCOVERED_PSUS: %s", self.entry.data.get(CONF_DISCOVERED_PSUS, 'missing'))
 
     def _count_discovered_sensors(self) -> int:
         """Count total discovered sensors across all categories."""
@@ -176,7 +204,7 @@ class SNMPClient:
                 len(self.discovered_physical_disks) + len(self.discovered_storage_controllers) +
                 len(self.discovered_detailed_memory) + len(self.discovered_system_voltages) +
                 len(self.discovered_intrusion) + len(self.discovered_battery) +
-                len(self.discovered_processors) + (1 if self.discovered_power_consumption else 0))
+                len(self.discovered_processors) + len(self.discovered_power_consumption))
 
     async def _ensure_initialized(self) -> None:
         """Ensure SNMP connection objects are initialized."""
@@ -366,6 +394,17 @@ class SNMPClient:
         _LOGGER.debug("Starting SNMP data collection for %d sensors from %s:%d", 
                      total_sensors, self.host, self.port)
         
+        # Fallback: If no sensors were discovered during config flow, try runtime discovery
+        if total_sensors == 0:
+            _LOGGER.warning("No sensors discovered during setup, attempting runtime discovery...")
+            try:
+                await self._runtime_sensor_discovery()
+                total_sensors = self._count_discovered_sensors()
+                _LOGGER.info("Runtime discovery found %d sensors", total_sensors)
+            except Exception as exc:
+                _LOGGER.error("Runtime sensor discovery failed: %s", exc)
+                # Continue with empty sensor lists
+        
         # Initialize data structure
         data = {
             "temperatures": {},
@@ -437,8 +476,8 @@ class SNMPClient:
                 all_value_oids.append(IDRAC_OIDS["psu_input_voltage"].format(index=voltage_id))
                 all_string_oids.append(IDRAC_OIDS["psu_location"].format(index=voltage_id))
                 
-            # Power consumption OIDs
-            if self.discovered_power_consumption:
+            # Power consumption OIDs (uses fixed OIDs, not indexed)
+            if self.discovered_power_consumption:  # Check if any power consumption sensors were discovered
                 all_value_oids.extend([
                     IDRAC_OIDS["power_consumption_current"],
                     IDRAC_OIDS["power_consumption_peak"],
@@ -712,3 +751,144 @@ class SNMPClient:
                 _LOGGER.debug("Failed to get SNMP batch strings: %s", exc)
                 
         return results
+
+    async def _runtime_sensor_discovery(self) -> None:
+        """Perform runtime sensor discovery if no sensors were found during config flow.
+        
+        This is a fallback mechanism for when the integration was set up before
+        hybrid mode or when discovery failed during initial setup.
+        """
+        _LOGGER.info("Performing runtime SNMP sensor discovery for %s:%d", self.host, self.port)
+        
+        await self._ensure_initialized()
+        
+        # Import discovery functions
+        from .snmp_discovery import (
+            discover_fan_sensors,
+            discover_cpu_sensors,
+            discover_psu_sensors,
+            discover_voltage_probes,
+            discover_memory_sensors,
+            discover_sensors,
+            discover_system_voltages,
+            discover_power_consumption_sensors,
+            discover_intrusion_sensors,
+            discover_battery_sensors,
+            discover_processor_sensors,
+        )
+        
+        try:
+            # Discover basic sensors
+            _LOGGER.debug("Discovering fans...")
+            self.discovered_fans = await discover_fan_sensors(
+                self.engine, self.auth_data, self.transport_target, self.context_data,
+                "1.3.6.1.4.1.674.10892.5.4.700.12.1.8.1"
+            )
+            _LOGGER.debug("Found %d fans", len(self.discovered_fans))
+            
+            _LOGGER.debug("Discovering CPU temperatures...")
+            self.discovered_cpus = await discover_cpu_sensors(
+                self.engine, self.auth_data, self.transport_target, self.context_data,
+                "1.3.6.1.4.1.674.10892.5.4.700.20.1.8.1"
+            )
+            _LOGGER.debug("Found %d CPU temperature sensors", len(self.discovered_cpus))
+            
+            _LOGGER.debug("Discovering PSUs...")
+            self.discovered_psus = await discover_psu_sensors(
+                self.engine, self.auth_data, self.transport_target, self.context_data,
+                "1.3.6.1.4.1.674.10892.5.4.600.12.1.8.1"
+            )
+            _LOGGER.debug("Found %d PSUs", len(self.discovered_psus))
+            
+            _LOGGER.debug("Discovering voltage probes...")
+            self.discovered_voltage_probes = await discover_voltage_probes(
+                self.engine, self.auth_data, self.transport_target, self.context_data,
+                "1.3.6.1.4.1.674.10892.5.4.600.30.1.8.1"
+            )
+            _LOGGER.debug("Found %d voltage probes", len(self.discovered_voltage_probes))
+            
+            # Try memory discovery with multiple OID bases
+            _LOGGER.debug("Discovering memory modules...")
+            memory_oid_bases = [
+                "1.3.6.1.4.1.674.10892.5.4.1100.50.1.8.1",
+                "1.3.6.1.4.1.674.10892.5.4.1100.40.1.8.1", 
+                "1.3.6.1.4.1.674.10892.5.4.1100.30.1.8.1",
+            ]
+            
+            for oid_base in memory_oid_bases:
+                memory_results = await discover_memory_sensors(
+                    self.engine, self.auth_data, self.transport_target, self.context_data, oid_base
+                )
+                if memory_results:
+                    self.discovered_memory.extend(memory_results)
+                    _LOGGER.debug("Found %d memory modules with OID base %s", len(memory_results), oid_base)
+                    break
+            
+            # Remove duplicates from memory
+            self.discovered_memory = sorted(list(set(self.discovered_memory)))
+            _LOGGER.debug("Total unique memory modules: %d", len(self.discovered_memory))
+            
+            # Discover storage components
+            _LOGGER.debug("Discovering virtual disks...")
+            self.discovered_virtual_disks = await discover_sensors(
+                self.engine, self.auth_data, self.transport_target, self.context_data,
+                "1.3.6.1.4.1.674.10892.5.5.1.20.130.4.1.2"
+            )
+            _LOGGER.debug("Found %d virtual disks", len(self.discovered_virtual_disks))
+            
+            _LOGGER.debug("Discovering physical disks...")
+            self.discovered_physical_disks = await discover_sensors(
+                self.engine, self.auth_data, self.transport_target, self.context_data,
+                "1.3.6.1.4.1.674.10892.5.5.1.20.130.4.1.4"
+            )
+            _LOGGER.debug("Found %d physical disks", len(self.discovered_physical_disks))
+            
+            _LOGGER.debug("Discovering storage controllers...")
+            self.discovered_storage_controllers = await discover_sensors(
+                self.engine, self.auth_data, self.transport_target, self.context_data,
+                "1.3.6.1.4.1.674.10892.5.5.1.20.130.1.1.2"
+            )
+            _LOGGER.debug("Found %d storage controllers", len(self.discovered_storage_controllers))
+            
+            # Discover additional sensor types
+            _LOGGER.debug("Discovering system voltages...")
+            self.discovered_system_voltages = await discover_system_voltages(
+                self.engine, self.auth_data, self.transport_target, self.context_data,
+                "1.3.6.1.4.1.674.10892.5.4.600.30.1.8.1"
+            )
+            _LOGGER.debug("Found %d system voltages", len(self.discovered_system_voltages))
+            
+            _LOGGER.debug("Discovering power consumption...")
+            self.discovered_power_consumption = await discover_power_consumption_sensors(
+                self.engine, self.auth_data, self.transport_target, self.context_data,
+                "1.3.6.1.4.1.674.10892.5.4.600.30.1.8.1"
+            )
+            _LOGGER.debug("Found %d power consumption sensors", len(self.discovered_power_consumption))
+            
+            _LOGGER.debug("Discovering intrusion sensors...")
+            self.discovered_intrusion = await discover_intrusion_sensors(
+                self.engine, self.auth_data, self.transport_target, self.context_data,
+                "1.3.6.1.4.1.674.10892.5.4.300.70.1.5.1"
+            )
+            _LOGGER.debug("Found %d intrusion sensors", len(self.discovered_intrusion))
+            
+            _LOGGER.debug("Discovering battery sensors...")
+            self.discovered_battery = await discover_battery_sensors(
+                self.engine, self.auth_data, self.transport_target, self.context_data,
+                "1.3.6.1.4.1.674.10892.5.4.600.50.1.8.1"
+            )
+            _LOGGER.debug("Found %d battery sensors", len(self.discovered_battery))
+            
+            _LOGGER.debug("Discovering processors...")
+            self.discovered_processors = await discover_processor_sensors(
+                self.engine, self.auth_data, self.transport_target, self.context_data,
+                "1.3.6.1.4.1.674.10892.5.4.1100.30.1.8.1"
+            )
+            _LOGGER.debug("Found %d processors", len(self.discovered_processors))
+            
+            total_discovered = self._count_discovered_sensors()
+            _LOGGER.info("Runtime discovery completed: found %d total sensors", total_discovered)
+            
+        except Exception as exc:
+            _LOGGER.error("Runtime sensor discovery failed: %s", exc, exc_info=True)
+            raise
