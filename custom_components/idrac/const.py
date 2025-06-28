@@ -33,6 +33,7 @@ CONF_DISCOVERED_BATTERY: Final = "discovered_battery"
 CONF_DISCOVERED_PROCESSORS: Final = "discovered_processors"
 CONF_REQUEST_TIMEOUT: Final = "request_timeout"
 CONF_SESSION_TIMEOUT: Final = "session_timeout"
+CONF_SNMP_TIMEOUT: Final = "snmp_timeout"
 CONF_SNMP_PORT: Final = "snmp_port"
 
 # Default values
@@ -44,6 +45,7 @@ DEFAULT_SNMP_VERSION: Final = "v2c"
 DEFAULT_CONNECTION_TYPE: Final = "hybrid"
 DEFAULT_REQUEST_TIMEOUT: Final = 30  # Standard timeout for Redfish requests
 DEFAULT_SESSION_TIMEOUT: Final = 300  # Extended session timeout for better connection reuse
+DEFAULT_SNMP_TIMEOUT: Final = 4  # Standard timeout for SNMP requests
 DEFAULT_PASSWORD: Final = "calvin"  # Default Dell iDRAC password
 
 # Connection type options
