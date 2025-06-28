@@ -527,18 +527,37 @@ class IdracSystemIntrusionBinarySensor(IdracBinarySensor):
         if self.coordinator.data is None:
             return None
         
+        # Debug: Log available data keys
+        import logging
+        _LOGGER = logging.getLogger(__name__)
+        
         # Try Redfish data format first
         intrusion_data = self.coordinator.data.get("chassis_intrusion")
+        _LOGGER.debug("Chassis intrusion data: %s", intrusion_data)
+        
         if intrusion_data is not None:
             if isinstance(intrusion_data, dict):
                 status = intrusion_data.get("status")
-                if status and status != "Unknown":
-                    # "HardwareIntrusion" or "TamperingDetected" means intrusion
-                    # "Normal" means no intrusion
-                    return status in ["HardwareIntrusion", "TamperingDetected"]
-                elif status == "Unknown":
-                    # If intrusion sensor status is unknown, consider it as no intrusion (false)
-                    return False
+                _LOGGER.debug("Chassis intrusion status: %s", status)
+                if status:
+                    if status == "Unknown":
+                        # If intrusion sensor status is unknown, consider it as no intrusion (false)
+                        return False
+                    else:
+                        # "HardwareIntrusion" or "TamperingDetected" means intrusion
+                        # "Normal" means no intrusion
+                        return status in ["HardwareIntrusion", "TamperingDetected"]
+        
+        # Try alternative chassis info location
+        chassis_info = self.coordinator.data.get("chassis_info", {})
+        intrusion_sensor = chassis_info.get("intrusion_sensor")
+        _LOGGER.debug("Chassis info intrusion sensor: %s", intrusion_sensor)
+        
+        if intrusion_sensor is not None:
+            if intrusion_sensor == "Unknown":
+                return False
+            else:
+                return intrusion_sensor in ["HardwareIntrusion", "TamperingDetected"]
         
         # Fallback to SNMP data format
         intrusion_value = self.coordinator.data.get("system_intrusion")
@@ -548,8 +567,11 @@ class IdracSystemIntrusionBinarySensor(IdracBinarySensor):
                 # Dell iDRAC intrusion values: 1=secure, 2=breach_detected
                 return intrusion_int == 2
             except (ValueError, TypeError):
-                return None
-        return None
+                pass
+        
+        # If no data found anywhere, assume no intrusion (safe default)
+        _LOGGER.debug("No chassis intrusion data found, defaulting to False (no intrusion)")
+        return False
 
 
 class IdracPsuRedundancyBinarySensor(IdracBinarySensor):

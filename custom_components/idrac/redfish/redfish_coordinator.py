@@ -409,6 +409,13 @@ class RedfishCoordinator:
                 "sensor_number": physical_security.get("IntrusionSensorNumber"),
                 "re_arm": physical_security.get("IntrusionSensorReArm"),
             }
+        else:
+            # Ensure chassis_intrusion data exists even if chassis data is not available
+            data["chassis_intrusion"] = {
+                "status": "Unknown",
+                "sensor_number": None,
+                "re_arm": None,
+            }
 
         # Process power subsystem for redundancy info
         if power_subsystem_data:
