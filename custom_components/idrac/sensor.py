@@ -67,7 +67,7 @@ async def async_setup_entry(
         if fan_count > 0:
             _LOGGER.info("Creating %d fan sensors", fan_count) 
             for fan_id, fan_data in coordinator.data["fans"].items():
-                entities.append(IdracFanSensor(coordinator, config_entry, fan_id, fan_data))
+                entities.append(IdracFanSpeedSensor(coordinator, config_entry, fan_id, fan_data))
         else:
             _LOGGER.warning("Fan data category exists but contains no sensors")
 
@@ -126,9 +126,7 @@ async def async_setup_entry(
     # Add additional PSU power sensors for Redfish
     if coordinator.connection_type in ["redfish", "hybrid"] and coordinator.data and "power_supplies" in coordinator.data:
         for psu_id, psu_data in coordinator.data["power_supplies"].items():
-            # Input power sensor
-            if psu_data.get("power_input_watts") is not None:
-                entities.append(IdracPSUInputPowerSensor(coordinator, config_entry, psu_id, psu_data))
+            # PSU input power sensor removed as requested
             # Output power sensor
             if psu_data.get("power_output_watts") is not None:
                 entities.append(IdracPSUOutputPowerSensor(coordinator, config_entry, psu_id, psu_data))
@@ -337,7 +335,7 @@ class IdracTemperatureSensor(IdracSensor):
         }
 
 
-class IdracFanSensor(IdracSensor):
+class IdracFanSpeedSensor(IdracSensor):
     """Fan speed sensor."""
 
     def __init__(
@@ -348,7 +346,9 @@ class IdracFanSensor(IdracSensor):
         fan_data: dict,
     ) -> None:
         """Initialize the fan sensor."""
-        name = fan_data.get("name", f"Fan {fan_id}")
+        # Extract numeric index from fan_id for cleaner naming
+        fan_index = fan_id.replace('fan_', '') if fan_id.startswith('fan_') else fan_id
+        name = fan_data.get("name", f"System Fan {fan_index} Speed")
         super().__init__(coordinator, config_entry, f"fan_{fan_id}", name)
         self.fan_id = fan_id
         self._attr_state_class = SensorStateClass.MEASUREMENT
@@ -552,7 +552,9 @@ class IdracPSUStatusSensor(IdracSensor):
     ) -> None:
         """Initialize the PSU status sensor."""
         psu_name = psu_data.get("name", f"PSU {psu_id}")
-        super().__init__(coordinator, config_entry, f"psu_{psu_id}_status", f"{psu_name} Health Status")
+        # Extract numeric index from psu_id for cleaner naming
+        psu_index = psu_id.replace('psu_', '') if psu_id.startswith('psu_') else psu_id
+        super().__init__(coordinator, config_entry, f"psu_{psu_id}_status", f"Power Supply {psu_index} Health")
         self.psu_id = psu_id
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
@@ -786,29 +788,7 @@ class IdracDateTimeSensor(IdracSensor):
         return self.coordinator.data["manager_info"].get("datetime")
 
 
-class IdracPSUInputPowerSensor(IdracSensor):
-    """PSU input power sensor."""
-    
-    def __init__(self, coordinator: IdracDataUpdateCoordinator, config_entry: ConfigEntry, 
-                 psu_id: str, psu_data: dict[str, Any]) -> None:
-        """Initialize the sensor."""
-        psu_name = psu_data.get("name", f"PSU {psu_id.replace('psu_', '')}")
-        super().__init__(coordinator, config_entry, f"{psu_id}_input_power", f"{psu_name} Input Power")
-        self._attr_device_class = SensorDeviceClass.POWER
-        self._attr_state_class = SensorStateClass.MEASUREMENT
-        self._attr_native_unit_of_measurement = UnitOfPower.WATT
-        self._attr_icon = "mdi:flash"
-        self.psu_id = psu_id
-
-    @property
-    def native_value(self) -> float | None:
-        """Return the PSU input power."""
-        if not self.coordinator.data or "power_supplies" not in self.coordinator.data:
-            return None
-        psu_data = self.coordinator.data["power_supplies"].get(self.psu_id)
-        if not psu_data:
-            return None
-        return psu_data.get("power_input_watts")
+# PSU input power sensor removed as requested
 
 
 class IdracPSUOutputPowerSensor(IdracSensor):
@@ -817,8 +797,8 @@ class IdracPSUOutputPowerSensor(IdracSensor):
     def __init__(self, coordinator: IdracDataUpdateCoordinator, config_entry: ConfigEntry, 
                  psu_id: str, psu_data: dict[str, Any]) -> None:
         """Initialize the sensor."""
-        psu_name = psu_data.get("name", f"PSU {psu_id.replace('psu_', '')}")
-        super().__init__(coordinator, config_entry, f"{psu_id}_output_power", f"{psu_name} Output Power")
+        psu_index = psu_id.replace('psu_', '') if psu_id.startswith('psu_') else psu_id
+        super().__init__(coordinator, config_entry, f"{psu_id}_output_power", f"Power Supply {psu_index} Output Power")
         self._attr_device_class = SensorDeviceClass.POWER
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_native_unit_of_measurement = UnitOfPower.WATT
@@ -842,8 +822,8 @@ class IdracPSUInputVoltageSensor(IdracSensor):
     def __init__(self, coordinator: IdracDataUpdateCoordinator, config_entry: ConfigEntry, 
                  psu_id: str, psu_data: dict[str, Any]) -> None:
         """Initialize the sensor."""
-        psu_name = psu_data.get("name", f"PSU {psu_id.replace('psu_', '')}")
-        super().__init__(coordinator, config_entry, f"{psu_id}_input_voltage", f"{psu_name} Input Voltage")
+        psu_index = psu_id.replace('psu_', '') if psu_id.startswith('psu_') else psu_id
+        super().__init__(coordinator, config_entry, f"{psu_id}_input_voltage", f"Power Supply {psu_index} Input Voltage")
         self._attr_device_class = SensorDeviceClass.VOLTAGE
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_native_unit_of_measurement = UnitOfElectricPotential.VOLT
@@ -1100,7 +1080,7 @@ class IdracTemperatureDeltaSensor(IdracSensor):
     
     def __init__(self, coordinator: IdracDataUpdateCoordinator, config_entry: ConfigEntry) -> None:
         """Initialize the sensor."""
-        super().__init__(coordinator, config_entry, "temperature_delta", "Thermal Delta (Inlet-Outlet)")
+        super().__init__(coordinator, config_entry, "temperature_delta", "Temperature Rise")
         self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
         self._attr_device_class = SensorDeviceClass.TEMPERATURE
         self._attr_state_class = SensorStateClass.MEASUREMENT

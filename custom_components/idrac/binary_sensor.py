@@ -634,7 +634,7 @@ class IdracPsuRedundancyBinarySensor(IdracBinarySensor):
             coordinator,
             config_entry,
             "psu_redundancy",
-            "PSU Redundancy Health",
+            "PSU Redundancy",
             BinarySensorDeviceClass.PROBLEM,  # "On" means problem detected, "Off" means OK
         )
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
