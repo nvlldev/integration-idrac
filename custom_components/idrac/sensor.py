@@ -26,6 +26,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import DOMAIN, REDFISH_HEALTH_STATUS
 from .coordinator_snmp import SNMPDataUpdateCoordinator
 from .coordinator_redfish import RedfishDataUpdateCoordinator
+from .utils import get_device_name_prefix
 
 _LOGGER = logging.getLogger(__name__)
 
