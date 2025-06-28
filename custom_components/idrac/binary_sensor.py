@@ -15,6 +15,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .entity_base import IdracEntityBase
 from .const import (
     CONF_DISCOVERED_BATTERY,
+    CONF_DISCOVERED_INTRUSION,
     CONF_DISCOVERED_MEMORY,
     CONF_DISCOVERED_PHYSICAL_DISKS,
     CONF_DISCOVERED_PSUS,
@@ -127,6 +128,14 @@ async def async_setup_entry(
         for battery_index in config_entry.data.get(CONF_DISCOVERED_BATTERY, []):
             entities.append(
                 IdracBatteryHealthBinarySensor(battery_coordinator, config_entry, battery_index)
+            )
+    
+    # Add system board intrusion detection binary sensors (separate from chassis intrusion)
+    board_intrusion_coordinator = get_coordinator_for_category("intrusion_detection", snmp_coordinator, redfish_coordinator, "snmp")
+    if board_intrusion_coordinator:
+        for intrusion_index in config_entry.data.get(CONF_DISCOVERED_INTRUSION, []):
+            entities.append(
+                IdracSystemBoardIntrusionBinarySensor(board_intrusion_coordinator, config_entry, intrusion_index)
             )
     
     # Note: Voltage status binary sensors removed - voltage status is covered by regular voltage sensors
@@ -798,7 +807,7 @@ class IdracPowerStateBinarySensor(IdracBinarySensor):
             coordinator,
             config_entry,
             "power_state",
-            "Server Power State",
+            "Power State",
             BinarySensorDeviceClass.POWER,  # "On" means powered on, "Off" means powered off
         )
         self._attr_icon = "mdi:power"
@@ -1109,5 +1118,146 @@ class IdracBatteryHealthBinarySensor(IdracBinarySensor):
             and self.coordinator.data is not None
             and "battery" in self.coordinator.data
             and self._entity_key in self.coordinator.data["battery"]
+        )
+
+
+class IdracSystemBoardIntrusionBinarySensor(IdracBinarySensor):
+    """Dell iDRAC system board intrusion detection binary sensor."""
+
+    def __init__(
+        self,
+        coordinator: SNMPDataUpdateCoordinator | RedfishDataUpdateCoordinator,
+        config_entry: ConfigEntry,
+        intrusion_index: int,
+    ) -> None:
+        """Initialize the system board intrusion binary sensor."""
+        sensor_key = f"intrusion_{intrusion_index}"
+        
+        # Get actual intrusion sensor name from coordinator data
+        intrusion_name = self._get_intrusion_sensor_name(coordinator, intrusion_index)
+        sensor_name = f"{intrusion_name} Detection"
+        
+        super().__init__(
+            coordinator,
+            config_entry,
+            sensor_key,
+            sensor_name,
+            BinarySensorDeviceClass.SAFETY,  # "On" means intrusion detected, "Off" means secure
+        )
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_icon = "mdi:shield-alert"
+
+    def _get_intrusion_sensor_name(self, coordinator, intrusion_index: int) -> str:
+        """Get the intrusion sensor name from coordinator data."""
+        if coordinator.data and "intrusion_detection" in coordinator.data:
+            intrusion_key = f"intrusion_{intrusion_index}"
+            intrusion_data = coordinator.data["intrusion_detection"].get(intrusion_key)
+            if intrusion_data and "name" in intrusion_data:
+                name = intrusion_data["name"]
+                # Clean up the name - remove redundant "Detection" if present
+                if name.endswith(" Detection"):
+                    name = name[:-10]  # Remove " Detection"
+                return name
+        
+        # Fallback to generic name
+        return f"System Board Intrusion {intrusion_index}"
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return True if intrusion is detected."""
+        if self.coordinator.data is None or "intrusion_detection" not in self.coordinator.data:
+            return None
+        
+        intrusion_data = self.coordinator.data["intrusion_detection"].get(self._entity_key)
+        if intrusion_data is None:
+            return None
+        
+        # Handle both SNMP nested format and direct status format
+        if isinstance(intrusion_data, dict):
+            reading_value = intrusion_data.get("reading")
+        else:
+            reading_value = intrusion_data
+            
+        if reading_value is None:
+            return None
+            
+        # Handle both string and numeric reading values
+        if isinstance(reading_value, str):
+            # String reading: "breach", "ok", "secure", etc.
+            return reading_value.lower() in ["breach", "detected", "tampered"]
+        else:
+            try:
+                reading_int = int(reading_value)
+                # Dell iDRAC intrusion values from INTRUSION_STATUS mapping:
+                # 1=breach, 2=no_breach, 3=ok, 4=unknown
+                if reading_int == 1:  # breach
+                    return True   # Intrusion detected
+                elif reading_int in [2, 3]:  # no_breach, ok
+                    return False  # Secure/OK
+                # 4=unknown, return None to indicate unavailable
+                else:
+                    return None
+            except (ValueError, TypeError):
+                return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, str] | None:
+        """Return additional state attributes."""
+        if self.coordinator.data is None or "intrusion_detection" not in self.coordinator.data:
+            return None
+        
+        intrusion_data = self.coordinator.data["intrusion_detection"].get(self._entity_key)
+        if intrusion_data is None:
+            return None
+        
+        attributes = {}
+        
+        # Handle nested intrusion data structure
+        if isinstance(intrusion_data, dict):
+            reading_value = intrusion_data.get("reading")
+            status_value = intrusion_data.get("status")
+            
+            # Add additional intrusion information if available
+            if "name" in intrusion_data:
+                attributes["sensor_name"] = intrusion_data["name"]
+            if reading_value is not None:
+                attributes["reading"] = reading_value
+            if status_value is not None:
+                attributes["status"] = status_value
+        else:
+            reading_value = intrusion_data
+            
+        if reading_value is not None:
+            if isinstance(reading_value, str):
+                attributes["reading_text"] = reading_value
+            else:
+                try:
+                    reading_int = int(reading_value)
+                    # Map Dell iDRAC intrusion reading values to readable strings
+                    reading_map = {
+                        1: "breach",
+                        2: "no_breach", 
+                        3: "ok",
+                        4: "unknown"
+                    }
+                    reading_text = reading_map.get(reading_int, "unknown")
+                    
+                    attributes.update({
+                        "reading_code": reading_int,
+                        "reading_text": reading_text,
+                    })
+                except (ValueError, TypeError):
+                    attributes["raw_reading"] = str(reading_value)
+        
+        return attributes if attributes else None
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        return (
+            self.coordinator.last_update_success
+            and self.coordinator.data is not None
+            and "intrusion_detection" in self.coordinator.data
+            and self._entity_key in self.coordinator.data["intrusion_detection"]
         )
 

@@ -56,7 +56,7 @@ async def async_setup_entry(
         ("temperatures", IdracTemperatureSensor),
         ("fans", IdracFanSpeedSensor),
         ("voltages", IdracVoltageSensor),
-        ("intrusion_detection", IdracIntrusionSensor),
+        # ("intrusion_detection", IdracIntrusionSensor), # Moved to binary_sensor.py as System Board Intrusion Detection
         # ("battery", IdracBatterySensor), # Moved to binary_sensor.py as IdracBatteryHealthBinarySensor
         ("processors", IdracProcessorSensor),
     ]
@@ -79,8 +79,7 @@ async def async_setup_entry(
         for psu_id, psu_data in psu_coordinator.data["power_supplies"].items():
             if psu_data.get("power_output_watts") is not None:
                 entities.append(IdracPSUOutputPowerSensor(psu_coordinator, config_entry, psu_id, psu_data))
-            if psu_data.get("line_input_voltage") is not None:
-                entities.append(IdracPSUInputVoltageSensor(psu_coordinator, config_entry, psu_id, psu_data))
+            # PSU voltage sensors removed per user request
     
     # Single instance sensors
     single_sensors = [
@@ -476,55 +475,7 @@ class IdracProcessorCountSensor(IdracSensor):
 # PSU status sensors are handled by binary sensors - regular PSU status sensor class removed
 
 
-class IdracIntrusionSensor(IdracSensor):
-    """Chassis intrusion sensor."""
-
-    def __init__(
-        self,
-        coordinator: SNMPDataUpdateCoordinator | RedfishDataUpdateCoordinator,
-        config_entry: ConfigEntry,
-        intrusion_id: str,
-        intrusion_data: dict[str, Any],
-    ) -> None:
-        """Initialize the chassis intrusion sensor."""
-        intrusion_name = intrusion_data.get("name", f"Intrusion {intrusion_id}")
-        super().__init__(coordinator, config_entry, f"intrusion_{intrusion_id}", f"{intrusion_name} Detection")
-        self.intrusion_id = intrusion_id
-        self._attr_entity_category = None
-
-    @property
-    def native_value(self) -> str | None:
-        """Return the state of the sensor."""
-        if not self.coordinator.data or "intrusion_detection" not in self.coordinator.data:
-            return None
-        intrusion_data = self.coordinator.data["intrusion_detection"].get(self.intrusion_id)
-        if not intrusion_data:
-            return None
-        return intrusion_data.get("status", "Unknown")
-
-    @property
-    def icon(self) -> str:
-        """Return the icon for the sensor."""
-        status = self.native_value
-        if status == "ok":
-            return "mdi:shield-check"
-        elif status == "breach":
-            return "mdi:shield-alert"
-        else:
-            return "mdi:shield-outline"
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any] | None:
-        """Return additional state attributes."""
-        if not self.coordinator.data or "intrusion_detection" not in self.coordinator.data:
-            return None
-        intrusion_data = self.coordinator.data["intrusion_detection"].get(self.intrusion_id)
-        if not intrusion_data:
-            return None
-        return {
-            "reading": intrusion_data.get("reading"),
-            "name": intrusion_data.get("name"),
-        }
+# Intrusion detection sensors moved to binary_sensor.py as System Board Intrusion Detection binary sensors
 
 
 # Battery sensor moved to binary_sensor.py as IdracBatteryHealthBinarySensor
@@ -646,29 +597,7 @@ class IdracPSUOutputPowerSensor(IdracSensor):
         return psu_data.get("power_output_watts")
 
 
-class IdracPSUInputVoltageSensor(IdracSensor):
-    """PSU input voltage sensor."""
-    
-    def __init__(self, coordinator: SNMPDataUpdateCoordinator | RedfishDataUpdateCoordinator, config_entry: ConfigEntry, 
-                 psu_id: str, psu_data: dict[str, Any]) -> None:
-        """Initialize the sensor."""
-        psu_index = psu_id.replace('psu_', '') if psu_id.startswith('psu_') else psu_id
-        super().__init__(coordinator, config_entry, f"{psu_id}_input_voltage", f"Power Supply {psu_index} Input Voltage")
-        self._attr_device_class = SensorDeviceClass.VOLTAGE
-        self._attr_state_class = SensorStateClass.MEASUREMENT
-        self._attr_native_unit_of_measurement = UnitOfElectricPotential.VOLT
-        self._attr_icon = "mdi:lightning-bolt"
-        self.psu_id = psu_id
-
-    @property
-    def native_value(self) -> float | None:
-        """Return the PSU input voltage."""
-        if not self.coordinator.data or "power_supplies" not in self.coordinator.data:
-            return None
-        psu_data = self.coordinator.data["power_supplies"].get(self.psu_id)
-        if not psu_data:
-            return None
-        return psu_data.get("line_input_voltage")
+# PSU input voltage sensors removed per user request
 
 
 # Power aggregate sensors (Average, Min, Max) removed per user request
@@ -1002,7 +931,7 @@ class IdracMemoryMirroringSensor(IdracSensor):
     ) -> None:
         """Initialize the memory mirroring sensor."""
         super().__init__(coordinator, config_entry, "memory_mirroring", "Memory Mirroring")
-        self._attr_entity_category = None
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self._attr_icon = "mdi:content-duplicate"
 
     @property
@@ -1092,7 +1021,7 @@ class IdracMemoryTypeSensor(IdracSensor):
     ) -> None:
         """Initialize the memory type sensor."""
         super().__init__(coordinator, config_entry, "memory_type", "Memory Type")
-        self._attr_entity_category = None
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self._attr_icon = "mdi:memory-arrow-down"
 
     @property
@@ -1142,7 +1071,14 @@ class IdracProcessorMaxSpeedSensor(IdracSensor):
         if not self.coordinator.data:
             return False
         system_info = self.coordinator.data.get("system_info", {})
-        return system_info.get("processor_max_speed_mhz") is not None
+        max_speed = system_info.get("processor_max_speed_mhz")
+        
+        # Debug logging to help diagnose availability issues
+        if max_speed is None:
+            _LOGGER.debug("Processor max speed unavailable - system_info keys: %s", 
+                         list(system_info.keys()) if system_info else "No system_info")
+        
+        return max_speed is not None
 
 
 class IdracProcessorCurrentSpeedSensor(IdracSensor):
@@ -1175,6 +1111,13 @@ class IdracProcessorCurrentSpeedSensor(IdracSensor):
         if not self.coordinator.data:
             return False
         system_info = self.coordinator.data.get("system_info", {})
-        return system_info.get("processor_current_speed_mhz") is not None
+        current_speed = system_info.get("processor_current_speed_mhz")
+        
+        # Debug logging to help diagnose availability issues
+        if current_speed is None:
+            _LOGGER.debug("Processor current speed unavailable - system_info keys: %s", 
+                         list(system_info.keys()) if system_info else "No system_info")
+        
+        return current_speed is not None
 
 

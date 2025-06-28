@@ -286,6 +286,12 @@ class RedfishCoordinator:
         # Process system information
         if system_data:
             _LOGGER.debug("Raw system_data from Redfish: %s", system_data)
+            
+            # Debug ProcessorSummary specifically for speed sensor troubleshooting
+            processor_summary = system_data.get("ProcessorSummary", {})
+            _LOGGER.debug("ProcessorSummary content: %s", processor_summary)
+            _LOGGER.debug("MaxSpeedMHz field: %s", processor_summary.get("MaxSpeedMHz"))
+            _LOGGER.debug("SpeedMHz field: %s", processor_summary.get("SpeedMHz"))
             data["system_info"] = {
                 "power_state": system_data.get("PowerState"),
                 "health": system_data.get("Status", {}).get("Health"),
