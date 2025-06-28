@@ -941,11 +941,8 @@ class IdracPSUInputPowerSensor(IdracSensor):
     def __init__(self, coordinator: IdracDataUpdateCoordinator, config_entry: ConfigEntry, 
                  psu_id: str, psu_data: dict[str, Any]) -> None:
         """Initialize the sensor."""
-        super().__init__(coordinator, config_entry)
-        device_name_prefix = _get_device_name_prefix(coordinator)
         psu_name = psu_data.get("name", f"PSU {psu_id.replace('psu_', '')}")
-        self._attr_name = f"{device_name_prefix} {psu_name} Input Power"
-        self._attr_unique_id = f"{coordinator.host}_{psu_id}_input_power"
+        super().__init__(coordinator, config_entry, f"{psu_id}_input_power", f"{psu_name} Input Power")
         self._attr_device_class = SensorDeviceClass.POWER
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_native_unit_of_measurement = UnitOfPower.WATT
@@ -969,11 +966,8 @@ class IdracPSUOutputPowerSensor(IdracSensor):
     def __init__(self, coordinator: IdracDataUpdateCoordinator, config_entry: ConfigEntry, 
                  psu_id: str, psu_data: dict[str, Any]) -> None:
         """Initialize the sensor."""
-        super().__init__(coordinator, config_entry)
-        device_name_prefix = _get_device_name_prefix(coordinator)
         psu_name = psu_data.get("name", f"PSU {psu_id.replace('psu_', '')}")
-        self._attr_name = f"{device_name_prefix} {psu_name} Output Power"
-        self._attr_unique_id = f"{coordinator.host}_{psu_id}_output_power"
+        super().__init__(coordinator, config_entry, f"{psu_id}_output_power", f"{psu_name} Output Power")
         self._attr_device_class = SensorDeviceClass.POWER
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_native_unit_of_measurement = UnitOfPower.WATT
@@ -997,11 +991,8 @@ class IdracPSUInputVoltageSensor(IdracSensor):
     def __init__(self, coordinator: IdracDataUpdateCoordinator, config_entry: ConfigEntry, 
                  psu_id: str, psu_data: dict[str, Any]) -> None:
         """Initialize the sensor."""
-        super().__init__(coordinator, config_entry)
-        device_name_prefix = _get_device_name_prefix(coordinator)
         psu_name = psu_data.get("name", f"PSU {psu_id.replace('psu_', '')}")
-        self._attr_name = f"{device_name_prefix} {psu_name} Input Voltage"
-        self._attr_unique_id = f"{coordinator.host}_{psu_id}_input_voltage"
+        super().__init__(coordinator, config_entry, f"{psu_id}_input_voltage", f"{psu_name} Input Voltage")
         self._attr_device_class = SensorDeviceClass.VOLTAGE
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_native_unit_of_measurement = UnitOfElectricPotential.VOLT
@@ -1024,10 +1015,7 @@ class IdracAveragePowerSensor(IdracSensor):
     
     def __init__(self, coordinator: IdracDataUpdateCoordinator, config_entry: ConfigEntry) -> None:
         """Initialize the sensor."""
-        super().__init__(coordinator, config_entry)
-        device_name_prefix = _get_device_name_prefix(coordinator)
-        self._attr_name = f"{device_name_prefix} Average Power Consumption"
-        self._attr_unique_id = f"{coordinator.host}_average_power_consumption"
+        super().__init__(coordinator, config_entry, "average_power_consumption", "Average Power Consumption")
         self._attr_device_class = SensorDeviceClass.POWER
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_native_unit_of_measurement = UnitOfPower.WATT
@@ -1046,10 +1034,7 @@ class IdracMaxPowerSensor(IdracSensor):
     
     def __init__(self, coordinator: IdracDataUpdateCoordinator, config_entry: ConfigEntry) -> None:
         """Initialize the sensor."""
-        super().__init__(coordinator, config_entry)
-        device_name_prefix = _get_device_name_prefix(coordinator)
-        self._attr_name = f"{device_name_prefix} Maximum Power Consumption"
-        self._attr_unique_id = f"{coordinator.host}_max_power_consumption"
+        super().__init__(coordinator, config_entry, "max_power_consumption", "Maximum Power Consumption")
         self._attr_device_class = SensorDeviceClass.POWER
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_native_unit_of_measurement = UnitOfPower.WATT
@@ -1068,10 +1053,7 @@ class IdracMinPowerSensor(IdracSensor):
     
     def __init__(self, coordinator: IdracDataUpdateCoordinator, config_entry: ConfigEntry) -> None:
         """Initialize the sensor."""
-        super().__init__(coordinator, config_entry)
-        device_name_prefix = _get_device_name_prefix(coordinator)
-        self._attr_name = f"{device_name_prefix} Minimum Power Consumption"
-        self._attr_unique_id = f"{coordinator.host}_min_power_consumption"
+        super().__init__(coordinator, config_entry, "min_power_consumption", "Minimum Power Consumption")
         self._attr_device_class = SensorDeviceClass.POWER
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_native_unit_of_measurement = UnitOfPower.WATT

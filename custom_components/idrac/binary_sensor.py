@@ -79,13 +79,7 @@ async def async_setup_entry(
             IdracControllerBatteryBinarySensor(coordinator, config_entry, controller_index),
         ])
     
-    # Add voltage status binary sensors (for readings that are status indicators, not actual voltages)
-    if coordinator.data and "voltages" in coordinator.data:
-        for voltage_id, voltage_data in coordinator.data["voltages"].items():
-            voltage_reading = voltage_data.get("reading_volts")
-            # Create binary sensors for voltage status indicators (readings around 1.0v)
-            if voltage_reading is not None and (0.9 <= voltage_reading <= 1.1):
-                entities.append(IdracVoltageStatusBinarySensor(coordinator, config_entry, voltage_id, voltage_data))
+    # Note: Voltage status binary sensors removed - voltage status is covered by regular voltage sensors
 
     async_add_entities(entities)
 
