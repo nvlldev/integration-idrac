@@ -3,23 +3,14 @@
     "step": {
       "user": {
         "title": "Dell iDRAC Setup",
-        "description": "Connect to your Dell iDRAC for comprehensive server monitoring and control.",
+        "description": "Connect to your Dell iDRAC for comprehensive server monitoring and control using hybrid Redfish + SNMP approach.",
         "data": {
           "host": "Hostname or IP Address",
-          "connection_type": "Connection Type",
           "scan_interval": "Update Interval (seconds)"
         },
         "data_description": {
           "host": "Enter the IP address or hostname of your Dell iDRAC",
-          "connection_type": "Choose how to connect:\n• **Redfish API**: Full control with system management\n• **SNMP Only**: Fast monitoring without controls\n• **Hybrid**: SNMP monitoring + Redfish controls (recommended)",
-          "scan_interval": "How often to update sensor readings"
-        },
-        "options": {
-          "connection_type": {
-            "redfish": "Redfish API",
-            "snmp": "SNMP Only", 
-            "hybrid": "Hybrid (Redfish + SNMP)"
-          }
+          "scan_interval": "How often to update sensor readings (hybrid mode provides optimal performance and sensor coverage)"
         }
       },
       "redfish": {
@@ -108,8 +99,8 @@
         }
       },
       "hybrid_redfish": {
-        "title": "Hybrid Mode - Redfish Controls",
-        "description": "Step 1 of 2: Configure Redfish API for {host}. This will be used for control operations like LED and system resets.",
+        "title": "Redfish API Configuration",
+        "description": "Step 1 of 2: Configure Redfish API for {host}. This provides system controls and Redfish sensor data.",
         "data": {
           "port": "Port",
           "username": "Username",
@@ -128,8 +119,8 @@
         }
       },
       "hybrid_snmp_version": {
-        "title": "Hybrid Mode - SNMP Version",
-        "description": "Step 2 of 2: Choose SNMP version for data collection from {host}.",
+        "title": "SNMP Configuration",
+        "description": "Step 2 of 2: Choose SNMP version for supplemental data collection from {host}.",
         "data": {
           "snmp_port": "SNMP Port", 
           "snmp_version": "SNMP Version"
@@ -146,8 +137,8 @@
         }
       },
       "hybrid_snmp_v2c": {
-        "title": "Hybrid Mode - SNMP v2c Credentials",
-        "description": "Enter your SNMP v2c community string for data collection from {host}.",
+        "title": "SNMP v2c Credentials",
+        "description": "Enter your SNMP v2c community string for supplemental data collection from {host}.",
         "data": {
           "community": "Community String"
         },
@@ -156,8 +147,8 @@
         }
       },
       "hybrid_snmp_v3": {
-        "title": "Hybrid Mode - SNMP v3 Credentials", 
-        "description": "Enter your SNMP v3 authentication details for data collection from {host}.",
+        "title": "SNMP v3 Credentials", 
+        "description": "Enter your SNMP v3 authentication details for supplemental data collection from {host}.",
         "data": {
           "username": "Username",
           "auth_protocol": "Authentication Protocol",

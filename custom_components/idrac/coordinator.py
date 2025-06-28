@@ -28,17 +28,15 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
     """Data update coordinator for Dell iDRAC integration.
     
     This coordinator manages data collection from Dell iDRAC devices using
-    either Redfish API, SNMP, or a hybrid approach. It delegates protocol-specific
-    operations to specialized coordinators while providing a unified interface
-    for the Home Assistant integration.
+    a hybrid approach that combines Redfish API and SNMP for comprehensive
+    sensor coverage. It supplements missing Redfish sensors with SNMP data
+    to provide the most complete monitoring possible.
     
     Attributes:
         entry: The config entry for this coordinator.
         host: The iDRAC host address.
-        connection_type: Type of connection (redfish, snmp, or hybrid).
-        protocol_coordinator: Primary coordinator for data collection.
-        snmp_coordinator: SNMP coordinator (hybrid mode only).
-        redfish_coordinator: Redfish coordinator (hybrid mode only).
+        snmp_coordinator: SNMP coordinator for sensor data.
+        redfish_coordinator: Redfish coordinator for sensor data and controls.
     """
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
@@ -56,26 +54,14 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
         
         _LOGGER.debug("Host: %s, Connection type: %s", self.host, self.connection_type)
         
-        # Initialize protocol-specific coordinators
+        # Initialize both SNMP and Redfish coordinators for hybrid mode
         try:
-            if self.connection_type == "redfish":
-                _LOGGER.debug("Creating RedfishCoordinator for redfish mode")
-                self.protocol_coordinator = RedfishCoordinator(hass, entry)
-            elif self.connection_type == "hybrid":
-                # Hybrid mode: SNMP for data, Redfish for controls
-                _LOGGER.debug("Creating coordinators for hybrid mode")
-                _LOGGER.debug("Creating SNMPCoordinator")
-                self.snmp_coordinator = SNMPCoordinator(hass, entry)
-                _LOGGER.debug("Creating RedfishCoordinator")
-                self.redfish_coordinator = RedfishCoordinator(hass, entry)
-                self.protocol_coordinator = self.snmp_coordinator  # Primary data source
-                _LOGGER.debug("Hybrid mode coordinators created successfully")
-            else:
-                # SNMP only
-                _LOGGER.debug("Creating SNMPCoordinator for snmp mode")
-                self.protocol_coordinator = SNMPCoordinator(hass, entry)
-            
-            _LOGGER.debug("Protocol coordinators created successfully")
+            _LOGGER.debug("Creating coordinators for hybrid mode (SNMP + Redfish)")
+            _LOGGER.debug("Creating SNMPCoordinator")
+            self.snmp_coordinator = SNMPCoordinator(hass, entry)
+            _LOGGER.debug("Creating RedfishCoordinator")
+            self.redfish_coordinator = RedfishCoordinator(hass, entry)
+            _LOGGER.debug("Hybrid mode coordinators created successfully")
         except Exception as exc:
             _LOGGER.error("Failed to create protocol coordinators: %s", exc, exc_info=True)
             raise
@@ -124,11 +110,29 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
         if self._device_info is not None:
             return self._device_info
         
-        # Get device info from the primary protocol coordinator (cached after first fetch)
-        device_info = await self.protocol_coordinator.get_device_info()
-        
-        self._device_info = device_info
-        return device_info
+        # Try Redfish first for device info, fallback to SNMP if needed
+        try:
+            device_info = await self.redfish_coordinator.get_device_info()
+            self._device_info = device_info
+            return device_info
+        except Exception as exc:
+            _LOGGER.debug("Redfish device info failed, trying SNMP: %s", exc)
+            try:
+                device_info = await self.snmp_coordinator.get_device_info()
+                self._device_info = device_info
+                return device_info
+            except Exception as snmp_exc:
+                _LOGGER.warning("Both Redfish and SNMP device info failed: %s, %s", exc, snmp_exc)
+                # Return minimal device info
+                device_info = {
+                    "identifiers": {(DOMAIN, self._server_id)},
+                    "name": f"Dell iDRAC ({self.host})",
+                    "manufacturer": "Dell",
+                    "model": "iDRAC",
+                    "configuration_url": f"https://{self.host}",
+                }
+                self._device_info = device_info
+                return device_info
 
     @property 
     def device_info(self) -> dict[str, Any]:
@@ -146,7 +150,7 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
             "name": f"Dell iDRAC ({self.host})",
             "manufacturer": "Dell",
             "model": "iDRAC",
-            "configuration_url": f"https://{self.host}" if self.connection_type == "redfish" else None,
+            "configuration_url": f"https://{self.host}",
         }
 
     async def _async_update_data(self) -> dict[str, Any]:
@@ -172,14 +176,42 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
                            f"{self._device_info.get('model', 'Unknown Model')} "
                            f"(Serial: {self._device_info.get('serial_number', 'Unknown')})")
             
-            # Get sensor data from protocol coordinator
-            _LOGGER.debug("Updating sensor data via %s protocol", self.connection_type)
-            data = await self.protocol_coordinator.get_sensor_data()
+            # Collect data from both sources in parallel for efficiency
+            _LOGGER.debug("Updating sensor data via hybrid approach (Redfish + SNMP)")
             
-            # In hybrid mode, LED state will be fetched on-demand by the switch entity
-            # This avoids slow Redfish calls during regular sensor updates
+            import asyncio
             
-            return data
+            # Start both data collection tasks concurrently
+            redfish_task = self.redfish_coordinator.get_sensor_data()
+            snmp_task = self.snmp_coordinator.get_sensor_data()
+            
+            # Wait for both with timeout
+            try:
+                redfish_data, snmp_data = await asyncio.wait_for(
+                    asyncio.gather(redfish_task, snmp_task, return_exceptions=True),
+                    timeout=60.0  # Total timeout for both sources
+                )
+            except asyncio.TimeoutError:
+                _LOGGER.warning("Hybrid data collection timeout for %s, trying individual sources", self._server_id)
+                # Fallback to individual collection with shorter timeouts
+                redfish_data = await asyncio.wait_for(self.redfish_coordinator.get_sensor_data(), timeout=30.0)
+                snmp_data = await asyncio.wait_for(self.snmp_coordinator.get_sensor_data(), timeout=30.0)
+            
+            # Handle exceptions from individual coordinators
+            if isinstance(redfish_data, Exception):
+                _LOGGER.warning("Redfish data collection failed: %s", redfish_data)
+                redfish_data = {}
+            if isinstance(snmp_data, Exception):
+                _LOGGER.warning("SNMP data collection failed: %s", snmp_data)
+                snmp_data = {}
+            
+            # Combine data sources - prefer Redfish, supplement with SNMP
+            combined_data = self._combine_sensor_data(redfish_data, snmp_data)
+            
+            _LOGGER.debug("Hybrid data collection complete: %d Redfish fields, %d SNMP fields, %d combined fields",
+                         len(redfish_data), len(snmp_data), len(combined_data))
+            
+            return combined_data
 
         except RedfishError as exc:
             _LOGGER.error("Redfish authentication failed for iDRAC %s: %s", self._server_id, exc)
@@ -195,11 +227,75 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
                          self._server_id, self.connection_type, exc)
             raise UpdateFailed(f"Error communicating with iDRAC {self._server_id}: {exc}") from exc
 
+    def _combine_sensor_data(self, redfish_data: dict[str, Any], snmp_data: dict[str, Any]) -> dict[str, Any]:
+        """Combine Redfish and SNMP sensor data, preferring Redfish when available.
+        
+        Args:
+            redfish_data: Data from Redfish API
+            snmp_data: Data from SNMP
+            
+        Returns:
+            Combined sensor data dictionary
+        """
+        combined = dict(redfish_data)  # Start with Redfish data
+        
+        # Supplement with SNMP data for missing or incomplete sensors
+        snmp_supplements = [
+            # Chassis intrusion - often missing in Redfish
+            ("chassis_intrusion", "system_intrusion"),
+            # Memory health - may have more detail in SNMP
+            ("memory_health", "memory_health"),
+            # Storage components - often SNMP-only
+            ("virtual_disks", "virtual_disks"),
+            ("physical_disks", "physical_disks"),
+            ("storage_controllers", "storage_controllers"),
+            # Additional SNMP-only sensors
+            ("detailed_memory", "detailed_memory"),
+            ("system_voltages", "system_voltages"),
+            ("power_consumption", "power_consumption"),
+            ("system_intrusion", "system_intrusion"),
+            ("system_battery", "system_battery"),
+            ("processors", "processors"),
+            ("psu_redundancy", "psu_redundancy"),
+            ("system_health", "system_health"),
+        ]
+        
+        for combined_key, snmp_key in snmp_supplements:
+            if snmp_key in snmp_data:
+                if combined_key not in combined or not combined[combined_key]:
+                    # Use SNMP data if Redfish data is missing or empty
+                    combined[combined_key] = snmp_data[snmp_key]
+                    _LOGGER.debug("Supplemented %s with SNMP data", combined_key)
+                elif combined_key == "chassis_intrusion" and combined[combined_key].get("status") == "Unknown":
+                    # Special case: if Redfish intrusion is "Unknown", try SNMP
+                    snmp_intrusion = snmp_data.get(snmp_key)
+                    if snmp_intrusion is not None:
+                        # Convert SNMP intrusion format to Redfish-like format
+                        try:
+                            intrusion_int = int(snmp_intrusion)
+                            if intrusion_int == 1:
+                                status = "Normal"
+                            elif intrusion_int == 3:
+                                status = "HardwareIntrusion"
+                            else:
+                                status = "Unknown"
+                            
+                            combined[combined_key] = {
+                                "status": status,
+                                "sensor_number": None,
+                                "re_arm": None,
+                                "source": "snmp"
+                            }
+                            _LOGGER.debug("Supplemented chassis intrusion with SNMP data: %s", status)
+                        except (ValueError, TypeError):
+                            pass
+        
+        return combined
+
     async def async_reset_system(self, reset_type: str = "GracefulRestart") -> bool:
         """Reset the Dell server system via Redfish API.
         
-        This method sends a reset command to the server. Only available when
-        using Redfish API or hybrid connection modes.
+        This method sends a reset command to the server using the Redfish coordinator.
         
         Args:
             reset_type: Type of reset to perform. Common values include:
@@ -210,16 +306,9 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
         Returns:
             True if reset command was sent successfully, False otherwise.
         """
-        if self.connection_type not in ["redfish", "hybrid"]:
-            _LOGGER.error("System reset only available via Redfish API or hybrid mode")
-            return False
-        
         # Use Redfish coordinator for system reset
         try:
-            if self.connection_type == "hybrid":
-                result = await self.redfish_coordinator.reset_system(reset_type)
-            else:
-                result = await self.protocol_coordinator.reset_system(reset_type)
+            result = await self.redfish_coordinator.reset_system(reset_type)
             
             if result:
                 _LOGGER.info("Successfully sent %s command to iDRAC %s", reset_type, self._server_id)
@@ -234,8 +323,7 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
     async def async_set_indicator_led(self, state: str) -> bool:
         """Set the server's indicator LED state via Redfish API.
         
-        Controls the server's front panel indicator LED. Only available when
-        using Redfish API or hybrid connection modes.
+        Controls the server's front panel indicator LED using the Redfish coordinator.
         
         Args:
             state: LED state to set. Common values include:
@@ -246,16 +334,9 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
         Returns:
             True if LED state was set successfully, False otherwise.
         """
-        if self.connection_type not in ["redfish", "hybrid"]:
-            _LOGGER.error("LED control only available via Redfish API or hybrid mode")
-            return False
-        
         # Use Redfish coordinator for LED control
         try:
-            if self.connection_type == "hybrid":
-                result = await self.redfish_coordinator.set_indicator_led(state)
-            else:
-                result = await self.protocol_coordinator.set_indicator_led(state)
+            result = await self.redfish_coordinator.set_indicator_led(state)
             
             if result:
                 _LOGGER.info("Successfully set LED to %s on iDRAC %s", state, self._server_id)
@@ -280,16 +361,9 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
         Returns:
             True if the operation was successful, False otherwise.
         """
-        if self.connection_type not in ["snmp", "hybrid"]:
-            _LOGGER.error("SNMP operations only available in SNMP or hybrid connection modes")
-            return False
-        
         try:
             # Use SNMP coordinator for SNMP operations
-            if self.connection_type == "hybrid":
-                return await self.snmp_coordinator.set_snmp_value(oid, value)
-            else:
-                return await self.protocol_coordinator.set_snmp_value(oid, value)
+            return await self.snmp_coordinator.set_snmp_value(oid, value)
                 
         except Exception as exc:
             _LOGGER.error("Error setting SNMP value for OID %s: %s", oid, exc)
@@ -307,16 +381,9 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
         Returns:
             Integer value if successful, None otherwise.
         """
-        if self.connection_type not in ["snmp", "hybrid"]:
-            _LOGGER.error("SNMP operations only available in SNMP or hybrid connection modes")
-            return None
-        
         try:
             # Use SNMP coordinator for SNMP operations
-            if self.connection_type == "hybrid":
-                return await self.snmp_coordinator.get_snmp_value(oid)
-            else:
-                return await self.protocol_coordinator.get_snmp_value(oid)
+            return await self.snmp_coordinator.get_snmp_value(oid)
                 
         except Exception as exc:
             _LOGGER.error("Error getting SNMP value for OID %s: %s", oid, exc)
@@ -329,7 +396,6 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
         the integration is being unloaded. It ensures all network connections
         are properly closed to prevent resource leaks.
         """
-        await self.protocol_coordinator.close()
-        
-        if self.connection_type == "hybrid" and hasattr(self, 'redfish_coordinator'):
-            await self.redfish_coordinator.close()
+        # Close both coordinators in hybrid mode
+        await self.snmp_coordinator.close()
+        await self.redfish_coordinator.close()

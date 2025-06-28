@@ -183,6 +183,18 @@ class iDRACRedfishTester:
             logger.info(f"  - Memory (GB): {data.get('MemorySummary', {}).get('TotalSystemMemoryGiB', 'Unknown')}")
             logger.info(f"  - Processor Count: {data.get('ProcessorSummary', {}).get('Count', 'Unknown')}")
             
+            # Check for intrusion detection at system level
+            if 'PhysicalSecurity' in data:
+                physical_security = data['PhysicalSecurity']
+                logger.info(f"  - System Physical Security:")
+                logger.info(f"    • Intrusion Sensor: {physical_security.get('IntrusionSensor', 'Not found')}")
+                logger.info(f"    • Intrusion Sensor Number: {physical_security.get('IntrusionSensorNumber', 'Not found')}")
+            
+            # Check for any other intrusion-related fields
+            intrusion_fields = {k: v for k, v in data.items() if 'intrusion' in k.lower() or 'security' in k.lower()}
+            if intrusion_fields:
+                logger.info(f"  - Other security fields: {intrusion_fields}")
+            
         return result
     
     async def test_thermal_data(self) -> Dict[str, Any]:
@@ -268,7 +280,19 @@ class iDRACRedfishTester:
             logger.info(f"  - Chassis Type: {data.get('ChassisType', 'Unknown')}")
             logger.info(f"  - Model: {data.get('Model', 'Unknown')}")
             logger.info(f"  - Serial Number: {data.get('SerialNumber', 'Unknown')}")
-            logger.info(f"  - Intrusion Sensor: {physical_security.get('IntrusionSensor', 'Unknown')}")
+            logger.info(f"  - Chassis Physical Security:")
+            logger.info(f"    • Intrusion Sensor: {physical_security.get('IntrusionSensor', 'Not found')}")
+            logger.info(f"    • Intrusion Sensor Number: {physical_security.get('IntrusionSensorNumber', 'Not found')}")
+            logger.info(f"    • Intrusion Sensor Re-Arm: {physical_security.get('IntrusionSensorReArm', 'Not found')}")
+            
+            # Show ALL physical security data
+            if physical_security:
+                logger.info(f"  - All Physical Security fields: {physical_security}")
+            
+            # Check for any other intrusion-related fields in chassis
+            intrusion_fields = {k: v for k, v in data.items() if 'intrusion' in k.lower() or 'security' in k.lower()}
+            if intrusion_fields:
+                logger.info(f"  - Other chassis security fields: {intrusion_fields}")
             
         return result
     
@@ -301,17 +325,75 @@ class iDRACRedfishTester:
                     "error": str(e)
                 }
         
-        # Test additional endpoints
+        # Test additional endpoints including Dell-specific ones
         logger.info("🔍 Testing additional endpoints...")
         additional_endpoints = [
+            # Event and Status endpoints that might contain intrusion data
+            "/redfish/v1/EventService",
+            "/redfish/v1/Systems/System.Embedded.1/LogServices",
+            "/redfish/v1/Managers/iDRAC.Embedded.1/LogServices",
+            "/redfish/v1/Chassis",  # Collection to see available chassis endpoints
+            "/redfish/v1/Systems",  # Collection to see available system endpoints
+            # Secondary priority endpoints
             "/redfish/v1/Chassis/System.Embedded.1/PowerSubsystem",
             "/redfish/v1/Dell/Chassis/System.Embedded.1/Thermal",
             "/redfish/v1/Dell/Chassis/System.Embedded.1/Power",
+            "/redfish/v1/Systems/System.Embedded.1/SecureBoot",
+            "/redfish/v1/Dell/Systems/System.Embedded.1",
+            "/redfish/v1/Dell/Managers/iDRAC.Embedded.1",
+            "/redfish/v1/Dell/Chassis/System.Embedded.1",
+            "/redfish/v1/Systems/System.Embedded.1/Boot",
+            "/redfish/v1/Systems/System.Embedded.1/NetworkInterfaces",
+            "/redfish/v1/Chassis/System.Embedded.1/Sensors",
+            "/redfish/v1/Dell/Systems/System.Embedded.1/DellSystem",
         ]
+        
+        # Test sensor collections that might exist based on individual sensor references we found
+        sensor_collection_endpoints = [
+            "/redfish/v1/Chassis/System.Embedded.1/Sensors/Temperatures",
+            "/redfish/v1/Chassis/System.Embedded.1/Sensors/Voltages",
+            "/redfish/v1/Chassis/System.Embedded.1/Sensors/Intrusion",
+            "/redfish/v1/Systems/System.Embedded.1/Sensors",
+            "/redfish/v1/Chassis/System.Embedded.1/Sensors/Physical",
+            "/redfish/v1/Chassis/System.Embedded.1/Sensors/Security",
+        ]
+        
+        # Add sensor collections to additional endpoints
+        additional_endpoints.extend(sensor_collection_endpoints)
+        
+        # Test specific intrusion sensor endpoints based on Dell naming patterns
+        intrusion_sensor_endpoints = [
+            "/redfish/v1/Chassis/System.Embedded.1/Sensors/Intrusion/iDRAC.Embedded.1%23SystemBoardIntrusion",
+            "/redfish/v1/Chassis/System.Embedded.1/Sensors/Physical/iDRAC.Embedded.1%23SystemBoardIntrusion", 
+            "/redfish/v1/Chassis/System.Embedded.1/Sensors/iDRAC.Embedded.1%23SystemBoardIntrusion",
+            "/redfish/v1/Chassis/System.Embedded.1/Sensors/iDRAC.Embedded.1%23ChassisIntrusion",
+            "/redfish/v1/Systems/System.Embedded.1/Sensors/iDRAC.Embedded.1%23SystemBoardIntrusion",
+        ]
+        
+        # Add intrusion sensor endpoints to additional endpoints
+        additional_endpoints.extend(intrusion_sensor_endpoints)
         
         for endpoint in additional_endpoints:
             test_name = endpoint.split("/")[-1].lower()
             results[f"additional_{test_name}"] = await self.make_request(endpoint)
+        
+        # Search for intrusion detection in all successful endpoints
+        logger.info("🔍 Searching for intrusion detection data...")
+        intrusion_search_results = {}
+        
+        for test_name, result in results.items():
+            if result.get("success") and result.get("data"):
+                data = result["data"]
+                intrusion_data = self._search_for_intrusion_data(data, test_name)
+                if intrusion_data:
+                    intrusion_search_results[test_name] = intrusion_data
+        
+        if intrusion_search_results:
+            logger.info("📋 Found intrusion detection data:")
+            for endpoint, data in intrusion_search_results.items():
+                logger.info(f"  - {endpoint}: {data}")
+        else:
+            logger.warning("⚠️ No intrusion detection data found in any endpoint")
         
         total_time = time.time() - start_time
         logger.info(f"\n📊 Test Summary:")
@@ -328,6 +410,34 @@ class iDRACRedfishTester:
         
         return results
     
+    def _search_for_intrusion_data(self, data: Dict[str, Any], endpoint_name: str) -> Dict[str, Any] | None:
+        """Recursively search for intrusion detection data in API response."""
+        intrusion_data = {}
+        
+        def search_recursive(obj, path=""):
+            if isinstance(obj, dict):
+                for key, value in obj.items():
+                    current_path = f"{path}.{key}" if path else key
+                    
+                    # Look for intrusion-related keys
+                    if any(term in key.lower() for term in ['intrusion', 'security', 'board', 'chassis', 'physical']):
+                        intrusion_data[current_path] = value
+                    
+                    # Look for intrusion-related values
+                    if isinstance(value, str) and any(term in value.lower() for term in ['intrusion', 'board', 'security']):
+                        intrusion_data[current_path] = value
+                    
+                    # Continue recursive search
+                    if isinstance(value, (dict, list)):
+                        search_recursive(value, current_path)
+            elif isinstance(obj, list):
+                for i, item in enumerate(obj):
+                    current_path = f"{path}[{i}]" if path else f"[{i}]"
+                    search_recursive(item, current_path)
+        
+        search_recursive(data)
+        return intrusion_data if intrusion_data else None
+
     def generate_integration_improvements(self, results: Dict[str, Any]) -> List[str]:
         """Generate recommendations for improving the Redfish integration."""
         recommendations = []

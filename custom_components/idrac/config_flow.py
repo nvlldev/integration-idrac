@@ -72,16 +72,10 @@ from .redfish.redfish_client import RedfishClient, RedfishError
 _LOGGER = logging.getLogger(__name__)
 
 
-# Step 1: Host and connection type selection
+# Step 1: Host selection (hybrid mode by default)
 STEP_HOST_SCHEMA = vol.Schema({
     vol.Required(CONF_HOST): selector.TextSelector(
         selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
-    ),
-    vol.Required(CONF_CONNECTION_TYPE, default="redfish"): selector.SelectSelector(
-        selector.SelectSelectorConfig(
-            options=CONNECTION_TYPES,
-            mode=selector.SelectSelectorMode.DROPDOWN
-        )
     ),
     vol.Optional(CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL): selector.NumberSelector(
         selector.NumberSelectorConfig(
@@ -487,33 +481,27 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Handle the initial step - host and connection type selection."""
+        """Handle the initial step - host selection (always uses hybrid mode)."""
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            # Store the initial data
+            # Store the initial data and set hybrid mode by default
             self.data.update(user_input)
+            self.data[CONF_CONNECTION_TYPE] = "hybrid"
             
             # Check for existing entries with the same host
             await self.async_set_unique_id(user_input[CONF_HOST])
             self._abort_if_unique_id_configured()
 
-            connection_type = user_input[CONF_CONNECTION_TYPE]
-            
-            # Route to appropriate next step based on connection type
-            if connection_type == "redfish":
-                return await self.async_step_redfish()
-            elif connection_type == "snmp":
-                return await self.async_step_snmp_version()
-            elif connection_type == "hybrid":
-                return await self.async_step_hybrid_redfish()
+            # Always go to hybrid mode configuration
+            return await self.async_step_hybrid_redfish()
 
         return self.async_show_form(
             step_id="user",
             data_schema=STEP_HOST_SCHEMA,
             errors=errors,
             description_placeholders={
-                "connection_types": ", ".join(CONNECTION_TYPES)
+                "host": "iDRAC IP address or hostname"
             }
         )
 

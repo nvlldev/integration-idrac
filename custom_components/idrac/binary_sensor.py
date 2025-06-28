@@ -523,55 +523,60 @@ class IdracSystemIntrusionBinarySensor(IdracBinarySensor):
 
     @property
     def is_on(self) -> bool | None:
-        """Return True if chassis intrusion is detected."""
+        """Return True if chassis intrusion is detected, None if sensor status unknown."""
         if self.coordinator.data is None:
             return None
         
-        # Debug: Log available data keys
-        import logging
-        _LOGGER = logging.getLogger(__name__)
-        
         # Try Redfish data format first
         intrusion_data = self.coordinator.data.get("chassis_intrusion")
-        _LOGGER.debug("Chassis intrusion data: %s", intrusion_data)
-        
         if intrusion_data is not None:
             if isinstance(intrusion_data, dict):
                 status = intrusion_data.get("status")
-                _LOGGER.debug("Chassis intrusion status: %s", status)
                 if status:
-                    if status == "Unknown":
-                        # If intrusion sensor status is unknown, consider it as no intrusion (false)
-                        return False
+                    # According to Redfish spec, valid IntrusionSensor values are:
+                    # "Normal", "HardwareIntrusion", "TamperingDetected"
+                    if status in ["HardwareIntrusion", "TamperingDetected"]:
+                        return True  # Intrusion detected
+                    elif status == "Normal":
+                        return False  # No intrusion
                     else:
-                        # "HardwareIntrusion" or "TamperingDetected" means intrusion
-                        # "Normal" means no intrusion
-                        return status in ["HardwareIntrusion", "TamperingDetected"]
+                        # "Unknown" status likely means:
+                        # 1. Physical intrusion sensor not present on this chassis
+                        # 2. Sensor is not supported/enabled  
+                        # 3. Sensor malfunction
+                        # For security monitoring: return None (unavailable) is more accurate
+                        # than assuming False (no intrusion) when sensor status is unknown
+                        return None
         
         # Try alternative chassis info location
         chassis_info = self.coordinator.data.get("chassis_info", {})
         intrusion_sensor = chassis_info.get("intrusion_sensor")
-        _LOGGER.debug("Chassis info intrusion sensor: %s", intrusion_sensor)
-        
         if intrusion_sensor is not None:
-            if intrusion_sensor == "Unknown":
+            if intrusion_sensor in ["HardwareIntrusion", "TamperingDetected"]:
+                return True
+            elif intrusion_sensor == "Normal":
                 return False
             else:
-                return intrusion_sensor in ["HardwareIntrusion", "TamperingDetected"]
+                # "Unknown" - sensor status cannot be determined
+                return None
         
         # Fallback to SNMP data format
         intrusion_value = self.coordinator.data.get("system_intrusion")
         if intrusion_value is not None:
             try:
                 intrusion_int = int(intrusion_value)
-                # Dell iDRAC intrusion values: 1=secure, 2=breach_detected
-                return intrusion_int == 2
+                # Dell iDRAC intrusion values: 1=secure, 2=off (disabled), 3=breach_detected
+                if intrusion_int == 1:
+                    return False  # Secure
+                elif intrusion_int == 3:
+                    return True   # Breach detected
+                else:
+                    return None   # Unknown/disabled
             except (ValueError, TypeError):
-                pass
+                return None
         
-        # If no data found anywhere, assume no intrusion (safe default)
-        _LOGGER.debug("No chassis intrusion data found, defaulting to False (no intrusion)")
-        return False
+        # If no intrusion data found, sensor is not available
+        return None
 
 
 class IdracPsuRedundancyBinarySensor(IdracBinarySensor):
