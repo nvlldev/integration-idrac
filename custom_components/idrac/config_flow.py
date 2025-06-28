@@ -102,10 +102,7 @@ STEP_REDFISH_SCHEMA = vol.Schema({
         selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
     ),
     vol.Required(CONF_PASSWORD, default=DEFAULT_PASSWORD): selector.TextSelector(
-        selector.TextSelectorConfig(
-            type=selector.TextSelectorType.PASSWORD,
-            placeholder="Default Dell iDRAC password is 'calvin'"
-        )
+        selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
     ),
     vol.Optional(CONF_VERIFY_SSL, default=False): selector.BooleanSelector(),
     vol.Optional(CONF_REQUEST_TIMEOUT, default=DEFAULT_REQUEST_TIMEOUT): selector.NumberSelector(
@@ -190,10 +187,7 @@ STEP_HYBRID_REDFISH_SCHEMA = vol.Schema({
         selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
     ),
     vol.Required(CONF_PASSWORD, default=DEFAULT_PASSWORD): selector.TextSelector(
-        selector.TextSelectorConfig(
-            type=selector.TextSelectorType.PASSWORD,
-            placeholder="Default Dell iDRAC password is 'calvin'"
-        )
+        selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
     ),
     vol.Optional(CONF_VERIFY_SSL, default=False): selector.BooleanSelector(),
     vol.Optional(CONF_REQUEST_TIMEOUT, default=DEFAULT_REQUEST_TIMEOUT): selector.NumberSelector(
@@ -537,7 +531,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="redfish",
             data_schema=STEP_REDFISH_SCHEMA,
             errors=errors,
-            description_placeholders={"host": self.data[CONF_HOST]},
+            description_placeholders={
+                "host": self.data[CONF_HOST],
+                "default_password": "Default Dell iDRAC password is 'calvin'"
+            },
         )
 
     async def async_step_snmp_version(
@@ -645,7 +642,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="hybrid_redfish",
             data_schema=STEP_HYBRID_REDFISH_SCHEMA,
             errors=errors,
-            description_placeholders={"host": self.data[CONF_HOST]},
+            description_placeholders={
+                "host": self.data[CONF_HOST],
+                "default_password": "Default Dell iDRAC password is 'calvin'"
+            },
         )
 
     async def async_step_hybrid_snmp_version(
