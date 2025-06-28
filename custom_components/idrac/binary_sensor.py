@@ -8,6 +8,7 @@ from homeassistant.components.binary_sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -128,7 +129,7 @@ class IdracPsuStatusBinarySensor(IdracBinarySensor):
     ) -> None:
         """Initialize the PSU status binary sensor."""
         sensor_key = f"psu_{psu_index}"
-        sensor_name = f"PSU {psu_index} Status"
+        sensor_name = f"PSU {psu_index} Health"
         super().__init__(
             coordinator,
             config_entry,
@@ -136,6 +137,7 @@ class IdracPsuStatusBinarySensor(IdracBinarySensor):
             sensor_name,
             BinarySensorDeviceClass.PROBLEM,  # "On" means problem detected, "Off" means OK
         )
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
     @property
     def is_on(self) -> bool | None:
@@ -234,9 +236,10 @@ class IdracSystemHealthBinarySensor(IdracBinarySensor):
             coordinator,
             config_entry,
             "system_health",
-            "System Health",
+            "Overall System Health",
             BinarySensorDeviceClass.PROBLEM,  # "On" means problem detected, "Off" means OK
         )
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
     @property
     def is_on(self) -> bool | None:
@@ -303,7 +306,7 @@ class IdracVirtualDiskBinarySensor(IdracBinarySensor):
     ) -> None:
         """Initialize the virtual disk binary sensor."""
         sensor_key = f"vdisk_{vdisk_index}"
-        sensor_name = f"Virtual Disk {vdisk_index} Status"
+        sensor_name = f"Virtual Disk {vdisk_index} Health"
         super().__init__(
             coordinator,
             config_entry,
@@ -311,6 +314,7 @@ class IdracVirtualDiskBinarySensor(IdracBinarySensor):
             sensor_name,
             BinarySensorDeviceClass.PROBLEM,
         )
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self._vdisk_index = vdisk_index
 
     @property
@@ -356,7 +360,7 @@ class IdracPhysicalDiskBinarySensor(IdracBinarySensor):
     ) -> None:
         """Initialize the physical disk binary sensor."""
         sensor_key = f"pdisk_{pdisk_index}"
-        sensor_name = f"Physical Disk {pdisk_index} Status"
+        sensor_name = f"Physical Disk {pdisk_index} Health"
         super().__init__(
             coordinator,
             config_entry,
@@ -364,6 +368,7 @@ class IdracPhysicalDiskBinarySensor(IdracBinarySensor):
             sensor_name,
             BinarySensorDeviceClass.PROBLEM,
         )
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self._pdisk_index = pdisk_index
 
     @property
@@ -409,7 +414,7 @@ class IdracStorageControllerBinarySensor(IdracBinarySensor):
     ) -> None:
         """Initialize the storage controller binary sensor."""
         sensor_key = f"controller_{controller_index}"
-        sensor_name = f"Storage Controller {controller_index} Status"
+        sensor_name = f"Storage Controller {controller_index} Health"
         super().__init__(
             coordinator,
             config_entry,
@@ -417,6 +422,7 @@ class IdracStorageControllerBinarySensor(IdracBinarySensor):
             sensor_name,
             BinarySensorDeviceClass.PROBLEM,
         )
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self._controller_index = controller_index
 
     @property
@@ -495,7 +501,7 @@ class IdracControllerBatteryBinarySensor(IdracBinarySensor):
     ) -> None:
         """Initialize the controller battery binary sensor."""
         sensor_key = f"controller_{controller_index}_battery"
-        sensor_name = f"Storage Controller {controller_index} Battery"
+        sensor_name = f"Storage Controller {controller_index} Battery Health"
         super().__init__(
             coordinator,
             config_entry,
@@ -503,6 +509,7 @@ class IdracControllerBatteryBinarySensor(IdracBinarySensor):
             sensor_name,
             BinarySensorDeviceClass.BATTERY,
         )
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self._controller_index = controller_index
         self._controller_key = f"controller_{controller_index}"
 
@@ -552,7 +559,7 @@ class IdracSystemIntrusionBinarySensor(IdracBinarySensor):
             coordinator,
             config_entry,
             "system_intrusion",
-            "Chassis Intrusion",
+            "Chassis Intrusion Detection",
             BinarySensorDeviceClass.SAFETY,  # "On" means intrusion detected
         )
 
@@ -627,9 +634,10 @@ class IdracPsuRedundancyBinarySensor(IdracBinarySensor):
             coordinator,
             config_entry,
             "psu_redundancy",
-            "Power Supply Redundancy",
+            "PSU Redundancy Health",
             BinarySensorDeviceClass.PROBLEM,  # "On" means problem detected, "Off" means OK
         )
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
     @property
     def is_on(self) -> bool | None:
@@ -700,7 +708,7 @@ class IdracPowerStateBinarySensor(IdracBinarySensor):
             coordinator,
             config_entry,
             "power_state",
-            "Power State",
+            "Server Power State",
             BinarySensorDeviceClass.POWER,  # "On" means powered on, "Off" means powered off
         )
 
@@ -773,7 +781,7 @@ class IdracMemoryHealthBinarySensor(IdracBinarySensor):
     ) -> None:
         """Initialize the memory health binary sensor."""
         sensor_key = f"memory_{memory_index}"
-        sensor_name = f"Memory {memory_index} Health"
+        sensor_name = f"Memory Module {memory_index} Health"
         super().__init__(
             coordinator,
             config_entry,
@@ -781,6 +789,7 @@ class IdracMemoryHealthBinarySensor(IdracBinarySensor):
             sensor_name,
             BinarySensorDeviceClass.PROBLEM,  # "On" means problem detected, "Off" means OK
         )
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
     @property
     def is_on(self) -> bool | None:

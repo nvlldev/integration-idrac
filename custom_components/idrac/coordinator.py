@@ -264,6 +264,14 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
             # Combine data sources - prefer Redfish, supplement with SNMP
             combined_data = self._combine_sensor_data(redfish_data, snmp_data)
             
+            # Add collection timing data for performance monitoring
+            combined_data["update_latency"] = {
+                "collection_time_seconds": round(collection_time, 3),
+                "redfish_sensor_count": len(redfish_data),
+                "snmp_sensor_count": len(snmp_data),
+                "total_sensor_count": len(combined_data) - 1,  # Exclude update_latency itself
+            }
+            
             _LOGGER.debug("Hybrid data collection complete: %d Redfish fields, %d SNMP fields, %d combined fields",
                          len(redfish_data), len(snmp_data), len(combined_data))
             

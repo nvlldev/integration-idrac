@@ -146,6 +146,36 @@ async def async_setup_entry(
         if power_data.get("min_consumed_watts") is not None:
             entities.append(IdracMinPowerSensor(coordinator, config_entry))
 
+    # Add performance and analytical sensors (available for all connection types)
+    if coordinator.data:
+        # Update latency sensor - always available when coordinator has data
+        entities.append(IdracUpdateLatencySensor(coordinator, config_entry))
+        
+        # Average CPU temperature sensor - available when CPU temperature sensors exist
+        if "temperatures" in coordinator.data:
+            temp_data = coordinator.data["temperatures"]
+            cpu_temp_count = sum(1 for temp_data in temp_data.values() 
+                               if any(keyword in temp_data.get("name", "").lower() 
+                                    for keyword in ["cpu", "processor", "proc"]))
+            if cpu_temp_count > 0:
+                entities.append(IdracAverageCpuTemperatureSensor(coordinator, config_entry))
+        
+        # Average fan speed sensor - available when fan sensors exist  
+        if "fans" in coordinator.data and coordinator.data["fans"]:
+            entities.append(IdracAverageFanSpeedSensor(coordinator, config_entry))
+            
+        # Temperature delta sensor - available when inlet/outlet sensors exist
+        if "temperatures" in coordinator.data:
+            temp_data = coordinator.data["temperatures"]
+            has_inlet = any(any(keyword in temp_data.get("name", "").lower() 
+                              for keyword in ["inlet", "intake", "ambient"])
+                          for temp_data in temp_data.values())
+            has_outlet = any(any(keyword in temp_data.get("name", "").lower() 
+                               for keyword in ["outlet", "exhaust", "exit"])
+                           for temp_data in temp_data.values())
+            if has_inlet or has_outlet:  # Show sensor even if only one is available
+                entities.append(IdracTemperatureDeltaSensor(coordinator, config_entry))
+
     if entities:
         _LOGGER.info("Successfully created %d sensor entities for iDRAC %s", 
                     len(entities), coordinator.host)
@@ -239,11 +269,11 @@ class IdracPowerConsumptionSensor(IdracSensor):
         config_entry: ConfigEntry,
     ) -> None:
         """Initialize the power consumption sensor."""
-        super().__init__(coordinator, config_entry, "power_consumption", "Power Consumption")
+        super().__init__(coordinator, config_entry, "power_consumption", "System Power Consumption")
         self._attr_native_unit_of_measurement = UnitOfPower.WATT
         self._attr_device_class = SensorDeviceClass.POWER
         self._attr_state_class = SensorStateClass.MEASUREMENT
-        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_entity_category = None  # Primary power measurement - not diagnostic
 
     @property
     def native_value(self) -> float | None:
@@ -284,7 +314,7 @@ class IdracTemperatureSensor(IdracSensor):
         self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
         self._attr_device_class = SensorDeviceClass.TEMPERATURE
         self._attr_state_class = SensorStateClass.MEASUREMENT
-        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_entity_category = None  # Environmental measurement - not diagnostic
 
     @property
     def native_value(self) -> float | None:
@@ -322,7 +352,7 @@ class IdracFanSensor(IdracSensor):
         super().__init__(coordinator, config_entry, f"fan_{fan_id}", name)
         self.fan_id = fan_id
         self._attr_state_class = SensorStateClass.MEASUREMENT
-        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_entity_category = None  # Environmental measurement - not diagnostic
 
     @property
     def native_value(self) -> float | None:
@@ -377,7 +407,7 @@ class IdracVoltageSensor(IdracSensor):
         self._attr_native_unit_of_measurement = UnitOfElectricPotential.VOLT
         self._attr_device_class = SensorDeviceClass.VOLTAGE
         self._attr_state_class = SensorStateClass.MEASUREMENT
-        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_entity_category = None  # Electrical measurement - not diagnostic
 
     @property
     def native_value(self) -> float | None:
@@ -411,11 +441,11 @@ class IdracMemorySensor(IdracSensor):
         config_entry: ConfigEntry,
     ) -> None:
         """Initialize the memory sensor."""
-        super().__init__(coordinator, config_entry, "memory_total", "Total Memory")
+        super().__init__(coordinator, config_entry, "memory_total", "Total System Memory")
         self._attr_native_unit_of_measurement = "GB"
         self._attr_device_class = SensorDeviceClass.DATA_SIZE
         self._attr_state_class = SensorStateClass.MEASUREMENT
-        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_entity_category = EntityCategory.CONFIG
 
     @property
     def native_value(self) -> float | None:
@@ -435,9 +465,9 @@ class IdracProcessorCountSensor(IdracSensor):
         config_entry: ConfigEntry,
     ) -> None:
         """Initialize the processor count sensor."""
-        super().__init__(coordinator, config_entry, "processor_count", "Processor Count")
+        super().__init__(coordinator, config_entry, "processor_count", "Total Processors")
         self._attr_state_class = SensorStateClass.MEASUREMENT
-        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_entity_category = EntityCategory.CONFIG
 
     @property
     def native_value(self) -> int | None:
@@ -522,7 +552,7 @@ class IdracPSUStatusSensor(IdracSensor):
     ) -> None:
         """Initialize the PSU status sensor."""
         psu_name = psu_data.get("name", f"PSU {psu_id}")
-        super().__init__(coordinator, config_entry, f"psu_{psu_id}_status", f"{psu_name} Status")
+        super().__init__(coordinator, config_entry, f"psu_{psu_id}_status", f"{psu_name} Health Status")
         self.psu_id = psu_id
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
@@ -574,7 +604,7 @@ class IdracIntrusionSensor(IdracSensor):
     ) -> None:
         """Initialize the chassis intrusion sensor."""
         intrusion_name = intrusion_data.get("name", f"Intrusion {intrusion_id}")
-        super().__init__(coordinator, config_entry, f"intrusion_{intrusion_id}", f"{intrusion_name}")
+        super().__init__(coordinator, config_entry, f"intrusion_{intrusion_id}", f"{intrusion_name} Detection")
         self.intrusion_id = intrusion_id
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
@@ -625,7 +655,7 @@ class IdracBatterySensor(IdracSensor):
     ) -> None:
         """Initialize the battery sensor."""
         battery_name = battery_data.get("name", f"Battery {battery_id}")
-        super().__init__(coordinator, config_entry, f"battery_{battery_id}", f"{battery_name}")
+        super().__init__(coordinator, config_entry, f"battery_{battery_id}", f"{battery_name} Health")
         self.battery_id = battery_id
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
@@ -676,7 +706,7 @@ class IdracProcessorSensor(IdracSensor):
     ) -> None:
         """Initialize the processor sensor."""
         processor_name = processor_data.get("name", f"Processor {processor_id}")
-        super().__init__(coordinator, config_entry, f"processor_{processor_id}", f"{processor_name}")
+        super().__init__(coordinator, config_entry, f"processor_{processor_id}", f"{processor_name} Health")
         self.processor_id = processor_id
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
@@ -836,7 +866,7 @@ class IdracAveragePowerSensor(IdracSensor):
     
     def __init__(self, coordinator: IdracDataUpdateCoordinator, config_entry: ConfigEntry) -> None:
         """Initialize the sensor."""
-        super().__init__(coordinator, config_entry, "average_power_consumption", "Average Power Consumption")
+        super().__init__(coordinator, config_entry, "average_power_consumption", "System Average Power")
         self._attr_device_class = SensorDeviceClass.POWER
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_native_unit_of_measurement = UnitOfPower.WATT
@@ -855,7 +885,7 @@ class IdracMaxPowerSensor(IdracSensor):
     
     def __init__(self, coordinator: IdracDataUpdateCoordinator, config_entry: ConfigEntry) -> None:
         """Initialize the sensor."""
-        super().__init__(coordinator, config_entry, "max_power_consumption", "Maximum Power Consumption")
+        super().__init__(coordinator, config_entry, "max_power_consumption", "System Peak Power")
         self._attr_device_class = SensorDeviceClass.POWER
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_native_unit_of_measurement = UnitOfPower.WATT
@@ -874,7 +904,7 @@ class IdracMinPowerSensor(IdracSensor):
     
     def __init__(self, coordinator: IdracDataUpdateCoordinator, config_entry: ConfigEntry) -> None:
         """Initialize the sensor."""
-        super().__init__(coordinator, config_entry, "min_power_consumption", "Minimum Power Consumption")
+        super().__init__(coordinator, config_entry, "min_power_consumption", "System Minimum Power")
         self._attr_device_class = SensorDeviceClass.POWER
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_native_unit_of_measurement = UnitOfPower.WATT
@@ -886,3 +916,256 @@ class IdracMinPowerSensor(IdracSensor):
         if not self.coordinator.data or "power_consumption" not in self.coordinator.data:
             return None
         return self.coordinator.data["power_consumption"].get("min_consumed_watts")
+
+
+class IdracUpdateLatencySensor(IdracSensor):
+    """Response time sensor showing how long it takes to collect all sensor data."""
+    
+    def __init__(self, coordinator: IdracDataUpdateCoordinator, config_entry: ConfigEntry) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, config_entry, "update_latency", "Update Response Time")
+        self._attr_device_class = SensorDeviceClass.DURATION
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_native_unit_of_measurement = "s"
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_icon = "mdi:timer-outline"
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the data collection time in seconds."""
+        if not self.coordinator.data or "update_latency" not in self.coordinator.data:
+            return None
+        return self.coordinator.data["update_latency"].get("collection_time_seconds")
+    
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return additional attributes about the data collection."""
+        if not self.coordinator.data or "update_latency" not in self.coordinator.data:
+            return None
+        
+        latency_data = self.coordinator.data["update_latency"]
+        return {
+            "redfish_sensors": latency_data.get("redfish_sensor_count", 0),
+            "snmp_sensors": latency_data.get("snmp_sensor_count", 0), 
+            "total_sensors": latency_data.get("total_sensor_count", 0),
+            "collection_method": "concurrent",
+        }
+
+
+class IdracAverageCpuTemperatureSensor(IdracSensor):
+    """Overall CPU temperature averaged across all processor temperature sensors."""
+    
+    def __init__(self, coordinator: IdracDataUpdateCoordinator, config_entry: ConfigEntry) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, config_entry, "average_cpu_temperature", "CPU Average Temperature")
+        self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+        self._attr_device_class = SensorDeviceClass.TEMPERATURE
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_entity_category = None  # Primary thermal measurement
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the average CPU temperature."""
+        if not self.coordinator.data or "temperatures" not in self.coordinator.data:
+            return None
+        
+        temperatures = self.coordinator.data["temperatures"]
+        cpu_temps = []
+        
+        # Find all CPU temperature sensors
+        for temp_id, temp_data in temperatures.items():
+            temp_name = temp_data.get("name", "").lower()
+            temp_value = temp_data.get("temperature")
+            
+            # Include sensors that are clearly CPU-related
+            if temp_value is not None and any(keyword in temp_name for keyword in 
+                ["cpu", "processor", "proc"]):
+                cpu_temps.append(temp_value)
+        
+        if not cpu_temps:
+            return None
+            
+        return round(sum(cpu_temps) / len(cpu_temps), 1)
+    
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return additional attributes about CPU temperatures."""
+        if not self.coordinator.data or "temperatures" not in self.coordinator.data:
+            return None
+        
+        temperatures = self.coordinator.data["temperatures"]
+        cpu_temps = []
+        cpu_sensors = []
+        
+        for temp_id, temp_data in temperatures.items():
+            temp_name = temp_data.get("name", "").lower()
+            temp_value = temp_data.get("temperature")
+            
+            if temp_value is not None and any(keyword in temp_name for keyword in 
+                ["cpu", "processor", "proc"]):
+                cpu_temps.append(temp_value)
+                cpu_sensors.append(temp_data.get("name", temp_id))
+        
+        if not cpu_temps:
+            return None
+            
+        return {
+            "sensor_count": len(cpu_temps),
+            "min_temperature": round(min(cpu_temps), 1),
+            "max_temperature": round(max(cpu_temps), 1),
+            "cpu_sensors": cpu_sensors,
+        }
+
+
+class IdracAverageFanSpeedSensor(IdracSensor):
+    """System-wide fan performance showing average speed across all cooling fans."""
+    
+    def __init__(self, coordinator: IdracDataUpdateCoordinator, config_entry: ConfigEntry) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, config_entry, "average_fan_speed", "System Fan Speed Average")
+        self._attr_native_unit_of_measurement = REVOLUTIONS_PER_MINUTE
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_entity_category = None  # Primary environmental measurement
+        self._attr_icon = "mdi:fan"
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the average fan speed in RPM."""
+        if not self.coordinator.data or "fans" not in self.coordinator.data:
+            return None
+        
+        fans = self.coordinator.data["fans"]
+        fan_speeds = []
+        
+        # Collect all fan speeds (prefer RPM over percentage)
+        for fan_id, fan_data in fans.items():
+            rpm_speed = fan_data.get("speed_rpm")
+            percent_speed = fan_data.get("speed_percent")
+            
+            # Prefer RPM reading over percentage
+            if rpm_speed is not None and rpm_speed > 0:
+                fan_speeds.append(rpm_speed)
+            elif percent_speed is not None and percent_speed > 0:
+                # Convert percentage to approximate RPM (assuming ~3000 RPM max)
+                estimated_rpm = (percent_speed / 100) * 3000
+                fan_speeds.append(estimated_rpm)
+        
+        if not fan_speeds:
+            return None
+            
+        return round(sum(fan_speeds) / len(fan_speeds))
+    
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return additional attributes about fan speeds."""
+        if not self.coordinator.data or "fans" not in self.coordinator.data:
+            return None
+        
+        fans = self.coordinator.data["fans"]
+        fan_speeds = []
+        fan_names = []
+        rpm_count = 0
+        percent_count = 0
+        
+        for fan_id, fan_data in fans.items():
+            rpm_speed = fan_data.get("speed_rpm")
+            percent_speed = fan_data.get("speed_percent")
+            fan_name = fan_data.get("name", fan_id)
+            
+            if rpm_speed is not None and rpm_speed > 0:
+                fan_speeds.append(rpm_speed)
+                fan_names.append(f"{fan_name} ({rpm_speed} RPM)")
+                rpm_count += 1
+            elif percent_speed is not None and percent_speed > 0:
+                estimated_rpm = (percent_speed / 100) * 3000
+                fan_speeds.append(estimated_rpm)
+                fan_names.append(f"{fan_name} ({percent_speed}% ≈{int(estimated_rpm)} RPM)")
+                percent_count += 1
+        
+        if not fan_speeds:
+            return None
+            
+        return {
+            "fan_count": len(fan_speeds),
+            "min_speed": round(min(fan_speeds)),
+            "max_speed": round(max(fan_speeds)),
+            "rpm_sensors": rpm_count,
+            "percent_sensors": percent_count,
+            "fans": fan_names,
+        }
+
+
+class IdracTemperatureDeltaSensor(IdracSensor):
+    """Airflow thermal efficiency showing temperature rise from inlet to outlet."""
+    
+    def __init__(self, coordinator: IdracDataUpdateCoordinator, config_entry: ConfigEntry) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, config_entry, "temperature_delta", "Thermal Delta (Inlet-Outlet)")
+        self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+        self._attr_device_class = SensorDeviceClass.TEMPERATURE
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_entity_category = None  # Primary thermal measurement
+        self._attr_icon = "mdi:thermometer-lines"
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the temperature delta between inlet and outlet."""
+        if not self.coordinator.data or "temperatures" not in self.coordinator.data:
+            return None
+        
+        temperatures = self.coordinator.data["temperatures"]
+        inlet_temp = None
+        outlet_temp = None
+        
+        # Find inlet and outlet temperature sensors
+        for temp_id, temp_data in temperatures.items():
+            temp_name = temp_data.get("name", "").lower()
+            temp_value = temp_data.get("temperature")
+            
+            if temp_value is not None:
+                if any(keyword in temp_name for keyword in ["inlet", "intake", "ambient"]):
+                    inlet_temp = temp_value
+                elif any(keyword in temp_name for keyword in ["outlet", "exhaust", "exit"]):
+                    outlet_temp = temp_value
+        
+        # Calculate delta if both temperatures are available
+        if inlet_temp is not None and outlet_temp is not None:
+            return round(outlet_temp - inlet_temp, 1)
+        
+        return None
+    
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return additional attributes about the temperature delta."""
+        if not self.coordinator.data or "temperatures" not in self.coordinator.data:
+            return None
+        
+        temperatures = self.coordinator.data["temperatures"]
+        inlet_temp = None
+        outlet_temp = None
+        inlet_sensor = None
+        outlet_sensor = None
+        
+        # Find inlet and outlet temperature sensors
+        for temp_id, temp_data in temperatures.items():
+            temp_name = temp_data.get("name", "").lower()
+            temp_value = temp_data.get("temperature")
+            
+            if temp_value is not None:
+                if any(keyword in temp_name for keyword in ["inlet", "intake", "ambient"]):
+                    inlet_temp = temp_value
+                    inlet_sensor = temp_data.get("name", temp_id)
+                elif any(keyword in temp_name for keyword in ["outlet", "exhaust", "exit"]):
+                    outlet_temp = temp_value  
+                    outlet_sensor = temp_data.get("name", temp_id)
+        
+        if inlet_temp is not None or outlet_temp is not None:
+            return {
+                "inlet_temperature": inlet_temp,
+                "outlet_temperature": outlet_temp,
+                "inlet_sensor": inlet_sensor,
+                "outlet_sensor": outlet_sensor,
+                "delta_available": inlet_temp is not None and outlet_temp is not None,
+            }
+        
+        return None
