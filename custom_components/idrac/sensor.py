@@ -314,18 +314,26 @@ class IdracSensor(CoordinatorEntity[SNMPDataUpdateCoordinator | RedfishDataUpdat
         self,
         coordinator: SNMPDataUpdateCoordinator | RedfishDataUpdateCoordinator,
         config_entry: ConfigEntry,
-        sensor_type: str,
-        name: str,
+        sensor_key: str,
+        sensor_name: str,
+        unit: str | None = None,
+        device_class: SensorDeviceClass | None = None,
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
+        self._sensor_key = sensor_key
         self.config_entry = config_entry
-        self.sensor_type = sensor_type
+        host = coordinator.host
         
-        # Set entity name with device prefix for proper entity ID generation
-        # Home Assistant will automatically sanitize for entity IDs
-        self._attr_name = f"Dell iDRAC {coordinator.host} {name}"
-        self._attr_unique_id = f"{config_entry.entry_id}_{sensor_type}"
+        # Include device prefix in name for proper entity_id generation
+        device_prefix = get_device_name_prefix(coordinator)
+        self._attr_name = f"{device_prefix} {sensor_name}"
+        # Use stable unique_id based on host and sensor key (like original)
+        self._attr_unique_id = f"{host}_{sensor_key}"
+        self._attr_native_unit_of_measurement = unit
+        self._attr_device_class = device_class
+        if unit:  # Only set state class if we have a unit
+            self._attr_state_class = SensorStateClass.MEASUREMENT
 
     async def async_added_to_hass(self) -> None:
         """Run when entity is added to hass."""
@@ -346,6 +354,13 @@ class IdracSensor(CoordinatorEntity[SNMPDataUpdateCoordinator | RedfishDataUpdat
             }
 
     @property
+    def native_value(self) -> float | None:
+        """Return the state of the sensor."""
+        if self.coordinator.data is None:
+            return None
+        return self.coordinator.data.get(self._sensor_key)
+
+    @property
     def device_info(self):
         """Return device information."""
         # Always return device info - use fallback if not set
@@ -364,42 +379,7 @@ class IdracSensor(CoordinatorEntity[SNMPDataUpdateCoordinator | RedfishDataUpdat
     @property
     def available(self) -> bool:
         """Return if entity is available."""
-        # Individual sensor availability - check if this specific sensor has data
-        if not self.coordinator.data:
-            return False
-        
-        # For sensors with specific IDs, check if their data exists
-        if hasattr(self, 'temp_id'):
-            return self.coordinator.data.get("temperatures", {}).get(self.temp_id) is not None
-        elif hasattr(self, 'fan_id'):
-            return self.coordinator.data.get("fans", {}).get(self.fan_id) is not None
-        elif hasattr(self, 'voltage_id'):
-            return self.coordinator.data.get("voltages", {}).get(self.voltage_id) is not None
-        elif hasattr(self, 'memory_id'):
-            return self.coordinator.data.get("memory", {}).get(self.memory_id) is not None
-        elif hasattr(self, 'psu_id'):
-            return self.coordinator.data.get("power_supplies", {}).get(self.psu_id) is not None
-        elif hasattr(self, 'intrusion_id'):
-            return self.coordinator.data.get("intrusion_detection", {}).get(self.intrusion_id) is not None
-        elif hasattr(self, 'battery_id'):
-            return self.coordinator.data.get("battery", {}).get(self.battery_id) is not None
-        elif hasattr(self, 'processor_id'):
-            return self.coordinator.data.get("processors", {}).get(self.processor_id) is not None
-        
-        # For general sensors, check if their category exists and has data
-        if self.sensor_type == "power_consumption":
-            return "power_consumption" in self.coordinator.data and self.coordinator.data["power_consumption"]
-        elif self.sensor_type in ["memory_total", "processor_count", "power_state"]:
-            return "system_info" in self.coordinator.data and self.coordinator.data["system_info"]
-        elif self.sensor_type == "chassis_intrusion":
-            return "chassis_intrusion" in self.coordinator.data
-        elif self.sensor_type == "power_redundancy":
-            return "power_redundancy" in self.coordinator.data
-        elif self.sensor_type == "system_health":
-            return "system_health" in self.coordinator.data
-        
-        # Default: available if coordinator has any data
-        return self.coordinator.data is not None
+        return self.coordinator.last_update_success and self.native_value is not None
 
 
 class IdracPowerConsumptionSensor(IdracSensor):
