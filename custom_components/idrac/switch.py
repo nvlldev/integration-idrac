@@ -28,16 +28,18 @@ async def async_setup_entry(
     coordinators = hass.data[DOMAIN][config_entry.entry_id]
     redfish_coordinator = coordinators["redfish"]
     
+    entities: list[IdracSwitch] = []
+    
     # Only create control switches if Redfish coordinator is available
     # Control operations require Redfish API
     if redfish_coordinator and redfish_coordinator.last_update_success:
-        entities: list[IdracSwitch] = [
-            IdracIdentifyLEDSwitch(redfish_coordinator, config_entry),
-        ]
-        async_add_entities(entities)
+        entities.append(IdracIdentifyLEDSwitch(redfish_coordinator, config_entry))
+        _LOGGER.info("Successfully created %d switch entities for iDRAC", len(entities))
     else:
         # SNMP-only mode - no control switches
         _LOGGER.debug("Skipping switch creation for SNMP-only mode")
+
+    async_add_entities(entities)
 
 
 class IdracSwitch(CoordinatorEntity, SwitchEntity):

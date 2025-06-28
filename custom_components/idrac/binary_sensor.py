@@ -37,97 +37,82 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the Dell iDRAC binary sensors."""
+    from .sensor_setup import get_coordinator_for_category, log_coordinator_status
+    
     coordinators = hass.data[DOMAIN][config_entry.entry_id]
     snmp_coordinator = coordinators["snmp"]
     redfish_coordinator = coordinators["redfish"]
     
-    def get_coordinator_for_category(category: str):
-        """Determine which coordinator to use for a given data category."""
-        # SNMP categories
-        snmp_categories_list = [
-            "temperatures", "fans", "power_supplies", "voltages", "memory",
-            "virtual_disks", "physical_disks", "storage_controllers", 
-            "system_voltages", "power_consumption", "intrusion_detection",
-            "battery", "processors"
-        ]
-        
-        # Redfish categories
-        redfish_categories_list = [
-            "system_info", "manager_info", "chassis_info", "power_redundancy",
-            "system_health", "indicator_led_state", "chassis_intrusion"
-        ]
-        
-        # Check which coordinator actually has data for this category
-        if category in snmp_categories_list:
-            if snmp_coordinator.data and category in snmp_coordinator.data and snmp_coordinator.data[category]:
-                return snmp_coordinator
-        
-        if category in redfish_categories_list:
-            if redfish_coordinator.data and category in redfish_coordinator.data and redfish_coordinator.data[category]:
-                return redfish_coordinator
-                
-        # Fallback: use whichever coordinator has the data
-        if snmp_coordinator.data and category in snmp_coordinator.data and snmp_coordinator.data[category]:
-            return snmp_coordinator
-        elif redfish_coordinator.data and category in redfish_coordinator.data and redfish_coordinator.data[category]:
-            return redfish_coordinator
-            
-        return None
+    # Log coordinator status
+    log_coordinator_status(snmp_coordinator, redfish_coordinator)
     
     entities: list[IdracBinarySensor] = []
     
     # System health sensors (typically from Redfish)
-    system_coordinator = get_coordinator_for_category("system_health") or redfish_coordinator
-    entities.extend([
-        IdracSystemHealthBinarySensor(system_coordinator, config_entry),
-        IdracPowerStateBinarySensor(system_coordinator, config_entry),
-    ])
-    
-    # Intrusion sensors 
-    intrusion_coordinator = get_coordinator_for_category("chassis_intrusion") or redfish_coordinator
-    entities.append(IdracSystemIntrusionBinarySensor(intrusion_coordinator, config_entry))
-    
-    # PSU redundancy (typically from Redfish)
-    redundancy_coordinator = get_coordinator_for_category("power_redundancy") or redfish_coordinator
-    entities.append(IdracPsuRedundancyBinarySensor(redundancy_coordinator, config_entry))
-
-    # Add PSU status binary sensors
-    psu_coordinator = get_coordinator_for_category("power_supplies") or snmp_coordinator
-    for psu_index in config_entry.data.get(CONF_DISCOVERED_PSUS, []):
-        entities.append(
-            IdracPsuStatusBinarySensor(psu_coordinator, config_entry, psu_index)
-        )
-
-    # Add memory health binary sensors
-    memory_coordinator = get_coordinator_for_category("memory") or snmp_coordinator
-    for memory_index in config_entry.data.get(CONF_DISCOVERED_MEMORY, []):
-        entities.append(
-            IdracMemoryHealthBinarySensor(memory_coordinator, config_entry, memory_index)
-        )
-
-    # Add virtual disk binary sensors
-    vdisk_coordinator = get_coordinator_for_category("virtual_disks") or snmp_coordinator
-    for vdisk_index in config_entry.data.get(CONF_DISCOVERED_VIRTUAL_DISKS, []):
-        entities.append(
-            IdracVirtualDiskBinarySensor(vdisk_coordinator, config_entry, vdisk_index)
-        )
-
-    # Add physical disk binary sensors
-    pdisk_coordinator = get_coordinator_for_category("physical_disks") or snmp_coordinator
-    for pdisk_index in config_entry.data.get(CONF_DISCOVERED_PHYSICAL_DISKS, []):
-        entities.append(
-            IdracPhysicalDiskBinarySensor(pdisk_coordinator, config_entry, pdisk_index)
-        )
-
-    # Add storage controller binary sensors
-    controller_coordinator = get_coordinator_for_category("storage_controllers") or snmp_coordinator
-    for controller_index in config_entry.data.get(CONF_DISCOVERED_STORAGE_CONTROLLERS, []):
+    system_coordinator = get_coordinator_for_category("system_health", snmp_coordinator, redfish_coordinator, "redfish")
+    if system_coordinator:
         entities.extend([
-            IdracStorageControllerBinarySensor(controller_coordinator, config_entry, controller_index),
-            IdracControllerBatteryBinarySensor(controller_coordinator, config_entry, controller_index),
+            IdracSystemHealthBinarySensor(system_coordinator, config_entry),
+            IdracPowerStateBinarySensor(system_coordinator, config_entry),
         ])
     
+    # Intrusion sensors 
+    intrusion_coordinator = get_coordinator_for_category("chassis_intrusion", snmp_coordinator, redfish_coordinator, "redfish")
+    if intrusion_coordinator:
+        entities.append(IdracSystemIntrusionBinarySensor(intrusion_coordinator, config_entry))
+    
+    # PSU redundancy (typically from Redfish)
+    redundancy_coordinator = get_coordinator_for_category("power_redundancy", snmp_coordinator, redfish_coordinator, "redfish")
+    if redundancy_coordinator:
+        entities.append(IdracPsuRedundancyBinarySensor(redundancy_coordinator, config_entry))
+
+    # Add PSU status binary sensors
+    psu_coordinator = get_coordinator_for_category("power_supplies", snmp_coordinator, redfish_coordinator, "snmp")
+    if psu_coordinator:
+        for psu_index in config_entry.data.get(CONF_DISCOVERED_PSUS, []):
+            entities.append(
+                IdracPsuStatusBinarySensor(psu_coordinator, config_entry, psu_index)
+            )
+
+    # Add memory health binary sensors
+    memory_coordinator = get_coordinator_for_category("memory", snmp_coordinator, redfish_coordinator, "snmp")
+    if memory_coordinator:
+        for memory_index in config_entry.data.get(CONF_DISCOVERED_MEMORY, []):
+            entities.append(
+                IdracMemoryHealthBinarySensor(memory_coordinator, config_entry, memory_index)
+            )
+
+    # Add virtual disk binary sensors
+    vdisk_coordinator = get_coordinator_for_category("virtual_disks", snmp_coordinator, redfish_coordinator, "snmp")
+    if vdisk_coordinator:
+        for vdisk_index in config_entry.data.get(CONF_DISCOVERED_VIRTUAL_DISKS, []):
+            entities.append(
+                IdracVirtualDiskBinarySensor(vdisk_coordinator, config_entry, vdisk_index)
+            )
+
+    # Add physical disk binary sensors
+    pdisk_coordinator = get_coordinator_for_category("physical_disks", snmp_coordinator, redfish_coordinator, "snmp")
+    if pdisk_coordinator:
+        for pdisk_index in config_entry.data.get(CONF_DISCOVERED_PHYSICAL_DISKS, []):
+            entities.append(
+                IdracPhysicalDiskBinarySensor(pdisk_coordinator, config_entry, pdisk_index)
+            )
+
+    # Add storage controller binary sensors
+    controller_coordinator = get_coordinator_for_category("storage_controllers", snmp_coordinator, redfish_coordinator, "snmp")
+    if controller_coordinator:
+        for controller_index in config_entry.data.get(CONF_DISCOVERED_STORAGE_CONTROLLERS, []):
+            entities.extend([
+                IdracStorageControllerBinarySensor(controller_coordinator, config_entry, controller_index),
+                IdracControllerBatteryBinarySensor(controller_coordinator, config_entry, controller_index),
+            ])
+    
     # Note: Voltage status binary sensors removed - voltage status is covered by regular voltage sensors
+    
+    if entities:
+        _LOGGER.info("Successfully created %d binary sensor entities for iDRAC", len(entities))
+    else:
+        _LOGGER.warning("No binary sensor entities were created")
 
     async_add_entities(entities)
 

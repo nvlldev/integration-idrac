@@ -28,23 +28,27 @@ async def async_setup_entry(
     coordinators = hass.data[DOMAIN][config_entry.entry_id]
     redfish_coordinator = coordinators["redfish"]
     
+    entities: list[IdracButton] = []
+    
     # Only create control buttons if Redfish coordinator is available
     # Control operations require Redfish API
     if redfish_coordinator and redfish_coordinator.last_update_success:
-        entities: list[IdracButton] = [
+        entities.extend([
             IdracPowerOnButton(redfish_coordinator, config_entry),
             IdracPowerOffButton(redfish_coordinator, config_entry),
             IdracRebootButton(redfish_coordinator, config_entry),
-        ]
+        ])
         
         # Safe mode button only for SNMP-capable modes (currently disabled as not working reliably)
         # if coordinator.connection_type == "hybrid":
         #     entities.append(IdracSafeModeButton(coordinator, config_entry))
 
-        async_add_entities(entities)
+        _LOGGER.info("Successfully created %d button entities for iDRAC", len(entities))
     else:
         # SNMP-only mode - no control buttons
         _LOGGER.debug("Skipping button creation for SNMP-only mode")
+
+    async_add_entities(entities)
 
 
 class IdracButton(CoordinatorEntity, ButtonEntity):
