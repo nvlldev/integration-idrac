@@ -54,6 +54,7 @@ from ..const import (
     IDRAC_OIDS,
 )
 from .snmp_processor import SNMPDataProcessor
+from ..utils import format_oid_with_index
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -442,42 +443,42 @@ class SNMPClient:
             # Temperature probe OIDs
             for cpu_id in self.discovered_cpus:
                 all_value_oids.extend([
-                    IDRAC_OIDS["temp_probe_reading"].format(index=cpu_id),
-                    IDRAC_OIDS["temp_probe_status"].format(index=cpu_id),
-                    IDRAC_OIDS["temp_probe_upper_critical"].format(index=cpu_id),
-                    IDRAC_OIDS["temp_probe_upper_warning"].format(index=cpu_id),
+                    format_oid_with_index(IDRAC_OIDS["temp_probe_reading"], cpu_id),
+                    format_oid_with_index(IDRAC_OIDS["temp_probe_status"], cpu_id),
+                    format_oid_with_index(IDRAC_OIDS["temp_probe_upper_critical"], cpu_id),
+                    format_oid_with_index(IDRAC_OIDS["temp_probe_upper_warning"], cpu_id),
                 ])
-                all_string_oids.append(IDRAC_OIDS["temp_probe_location"].format(index=cpu_id))
+                all_string_oids.append(format_oid_with_index(IDRAC_OIDS["temp_probe_location"], cpu_id))
                 
             # Cooling device (fan) OIDs
             for fan_id in self.discovered_fans:
                 all_value_oids.extend([
-                    IDRAC_OIDS["cooling_device_reading"].format(index=fan_id),
-                    IDRAC_OIDS["cooling_device_status"].format(index=fan_id),
+                    format_oid_with_index(IDRAC_OIDS["cooling_device_reading"], fan_id),
+                    format_oid_with_index(IDRAC_OIDS["cooling_device_status"], fan_id),
                 ])
-                all_string_oids.append(IDRAC_OIDS["cooling_device_location"].format(index=fan_id))
+                all_string_oids.append(format_oid_with_index(IDRAC_OIDS["cooling_device_location"], fan_id))
                 
             # PSU OIDs
             for psu_id in self.discovered_psus:
                 all_value_oids.extend([
-                    IDRAC_OIDS["psu_status"].format(index=psu_id),
-                    IDRAC_OIDS["psu_max_output"].format(index=psu_id),
-                    IDRAC_OIDS["psu_current_output"].format(index=psu_id),
+                    format_oid_with_index(IDRAC_OIDS["psu_status"], psu_id),
+                    format_oid_with_index(IDRAC_OIDS["psu_max_output"], psu_id),
+                    format_oid_with_index(IDRAC_OIDS["psu_current_output"], psu_id),
                 ])
-                all_string_oids.append(IDRAC_OIDS["psu_location"].format(index=psu_id))
+                all_string_oids.append(format_oid_with_index(IDRAC_OIDS["psu_location"], psu_id))
                 
             # Memory OIDs
             for memory_id in self.discovered_memory:
                 all_value_oids.extend([
-                    IDRAC_OIDS["memory_status"].format(index=memory_id),
-                    IDRAC_OIDS["memory_size"].format(index=memory_id),
+                    format_oid_with_index(IDRAC_OIDS["memory_status"], memory_id),
+                    format_oid_with_index(IDRAC_OIDS["memory_size"], memory_id),
                 ])
-                all_string_oids.append(IDRAC_OIDS["memory_location"].format(index=memory_id))
+                all_string_oids.append(format_oid_with_index(IDRAC_OIDS["memory_location"], memory_id))
             
             # Voltage probe OIDs
             for voltage_id in self.discovered_voltage_probes:
-                all_value_oids.append(IDRAC_OIDS["psu_input_voltage"].format(index=voltage_id))
-                all_string_oids.append(IDRAC_OIDS["psu_location"].format(index=voltage_id))
+                all_value_oids.append(format_oid_with_index(IDRAC_OIDS["psu_input_voltage"], voltage_id))
+                all_string_oids.append(format_oid_with_index(IDRAC_OIDS["psu_location"], voltage_id))
                 
             # Power consumption OIDs (uses fixed OIDs, not indexed)
             if self.discovered_power_consumption:  # Check if any power consumption sensors were discovered
@@ -489,25 +490,25 @@ class SNMPClient:
             # Intrusion detection OIDs
             for intrusion_id in self.discovered_intrusion:
                 all_value_oids.extend([
-                    IDRAC_OIDS["intrusion_reading"].format(index=intrusion_id),
-                    IDRAC_OIDS["intrusion_status"].format(index=intrusion_id),
+                    format_oid_with_index(IDRAC_OIDS["intrusion_reading"], intrusion_id),
+                    format_oid_with_index(IDRAC_OIDS["intrusion_status"], intrusion_id),
                 ])
-                all_string_oids.append(IDRAC_OIDS["intrusion_location"].format(index=intrusion_id))
+                all_string_oids.append(format_oid_with_index(IDRAC_OIDS["intrusion_location"], intrusion_id))
                 
             # Battery OIDs
             for battery_id in self.discovered_battery:
                 all_value_oids.extend([
-                    IDRAC_OIDS["battery_reading"].format(index=battery_id),
-                    IDRAC_OIDS["battery_status"].format(index=battery_id),
+                    format_oid_with_index(IDRAC_OIDS["battery_reading"], battery_id),
+                    format_oid_with_index(IDRAC_OIDS["battery_status"], battery_id),
                 ])
                 
             # Processor OIDs
             for processor_id in self.discovered_processors:
                 all_value_oids.extend([
-                    IDRAC_OIDS["processor_reading"].format(index=processor_id),
-                    IDRAC_OIDS["processor_status"].format(index=processor_id),
+                    format_oid_with_index(IDRAC_OIDS["processor_reading"], processor_id),
+                    format_oid_with_index(IDRAC_OIDS["processor_status"], processor_id),
                 ])
-                all_string_oids.append(IDRAC_OIDS["processor_location"].format(index=processor_id))
+                all_string_oids.append(format_oid_with_index(IDRAC_OIDS["processor_location"], processor_id))
                 
             # Get ALL data using parallel bulk operations for improved performance
             _LOGGER.debug("Collecting %d value OIDs and %d string OIDs", len(all_value_oids), len(all_string_oids))

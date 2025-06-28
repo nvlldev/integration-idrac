@@ -52,3 +52,48 @@ def get_fallback_device_info(host: str) -> dict[str, any]:
         "model": "iDRAC",
         "configuration_url": f"https://{host}",
     }
+
+
+def map_dell_status(status_value: int | str | None, status_type: str = "health") -> str | None:
+    """Map Dell iDRAC status values to human-readable strings.
+    
+    Args:
+        status_value: The status value from SNMP or Redfish
+        status_type: Type of status mapping ("health", "temperature", "intrusion")
+        
+    Returns:
+        Human-readable status string or None if invalid
+    """
+    from .const import DELL_HEALTH_STATUS, DELL_TEMPERATURE_STATUS, DELL_INTRUSION_STATUS
+    
+    if status_value is None:
+        return None
+    
+    # Handle string status values (typically from Redfish)
+    if isinstance(status_value, str):
+        return status_value.lower()
+    
+    # Handle numeric status values (typically from SNMP)
+    try:
+        status_int = int(status_value)
+        if status_type == "temperature":
+            return DELL_TEMPERATURE_STATUS.get(status_int, "unknown")
+        elif status_type == "intrusion":
+            return DELL_INTRUSION_STATUS.get(status_int, "unknown")
+        else:  # Default to health status
+            return DELL_HEALTH_STATUS.get(status_int, "unknown")
+    except (ValueError, TypeError):
+        return "unknown"
+
+
+def format_oid_with_index(oid_template: str, index: int | str) -> str:
+    """Format an OID template with an index value using f-string style.
+    
+    Args:
+        oid_template: OID template with {index} placeholder
+        index: Index value to substitute
+        
+    Returns:
+        Formatted OID string
+    """
+    return oid_template.replace("{index}", str(index))

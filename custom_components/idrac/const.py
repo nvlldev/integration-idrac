@@ -209,26 +209,19 @@ SNMP_WALK_OIDS: Final = {
     "processors": "1.3.6.1.4.1.674.10892.5.4.1200.10.1.8.1",
 }
 
-# Status mappings for SNMP values
-PSU_STATUS: Final = {
+# Unified Dell iDRAC SNMP status mappings
+# Standard Dell health status mapping (used by most components)
+DELL_HEALTH_STATUS: Final = {
     1: "other",
-    2: "unknown", 
+    2: "unknown",
     3: "ok",
     4: "non_critical",
     5: "critical",
     6: "non_recoverable"
 }
 
-FAN_STATUS: Final = {
-    1: "other",
-    2: "unknown",
-    3: "ok", 
-    4: "non_critical",
-    5: "critical",
-    6: "non_recoverable"
-}
-
-TEMP_STATUS: Final = {
+# Temperature status has additional threshold indicators
+DELL_TEMPERATURE_STATUS: Final = {
     1: "other",
     2: "unknown",
     3: "ok",
@@ -241,45 +234,20 @@ TEMP_STATUS: Final = {
     10: "failed"
 }
 
-MEMORY_HEALTH_STATUS: Final = {
-    1: "other",
-    2: "unknown",
-    3: "ok",
-    4: "non_critical",
-    5: "critical",
-    6: "non_recoverable"
-}
-
-STORAGE_HEALTH_STATUS: Final = {
-    1: "other",
-    2: "unknown", 
-    3: "ok",
-    4: "non_critical",
-    5: "critical",
-    6: "non_recoverable"
-}
-
-INTRUSION_STATUS: Final = {
+# Intrusion detection has unique status values
+DELL_INTRUSION_STATUS: Final = {
     1: "breach",
     2: "no_breach", 
     3: "ok",
     4: "unknown"
 }
 
-BATTERY_STATUS: Final = {
-    1: "other",
-    2: "unknown",
-    3: "ok", 
-    4: "non_critical",
-    5: "critical",
-    6: "non_recoverable"
-}
-
-PROCESSOR_STATUS: Final = {
-    1: "other",
-    2: "unknown",
-    3: "ok",
-    4: "non_critical", 
-    5: "critical",
-    6: "non_recoverable"
-}
+# Legacy aliases for backward compatibility
+PSU_STATUS: Final = DELL_HEALTH_STATUS
+FAN_STATUS: Final = DELL_HEALTH_STATUS
+MEMORY_HEALTH_STATUS: Final = DELL_HEALTH_STATUS
+STORAGE_HEALTH_STATUS: Final = DELL_HEALTH_STATUS
+BATTERY_STATUS: Final = DELL_HEALTH_STATUS
+PROCESSOR_STATUS: Final = DELL_HEALTH_STATUS
+TEMP_STATUS: Final = DELL_TEMPERATURE_STATUS
+INTRUSION_STATUS: Final = DELL_INTRUSION_STATUS
