@@ -365,11 +365,17 @@ class SNMPDataProcessor:
                 voltage_location = strings.get(format_oid_with_index(IDRAC_OIDS["psu_location"], voltage_id))
                 
                 # Debug log all voltage sensors for troubleshooting
-                _LOGGER.info("Found voltage sensor ID %d: location='%s'", voltage_id, voltage_location or "No location")
+                _LOGGER.debug("Found voltage sensor ID %d: location='%s'", voltage_id, voltage_location or "No location")
                 
                 # Skip PSU voltage sensors per user request
                 if voltage_location and any(psu_term in voltage_location.lower() for psu_term in ["ps1", "ps2", "ps3", "psu"]):
                     _LOGGER.debug("Skipping PSU voltage sensor: %s", voltage_location)
+                    skipped_count += 1
+                    continue
+                
+                # Skip power consumption sensors that show up as voltage sensors
+                if voltage_location and any(power_term in voltage_location.lower() for power_term in ["pwr consumption", "power consumption", "consumption"]):
+                    _LOGGER.debug("Skipping power consumption voltage sensor: %s", voltage_location)
                     skipped_count += 1
                     continue
                 
