@@ -533,7 +533,7 @@ class IdracMemorySensor(IdracSensor):
         self._attr_native_unit_of_measurement = "GB"
         self._attr_device_class = SensorDeviceClass.DATA_SIZE
         self._attr_state_class = SensorStateClass.MEASUREMENT
-        self._attr_entity_category = EntityCategory.CONFIG
+        self._attr_entity_category = None
 
     @property
     def native_value(self) -> float | None:
@@ -563,7 +563,7 @@ class IdracProcessorCountSensor(IdracSensor):
         """Initialize the processor count sensor."""
         super().__init__(coordinator, config_entry, "processor_count", "Total Processors")
         self._attr_state_class = SensorStateClass.MEASUREMENT
-        self._attr_entity_category = EntityCategory.CONFIG
+        self._attr_entity_category = None
 
     @property
     def native_value(self) -> int | None:
@@ -607,7 +607,7 @@ class IdracMemoryHealthSensor(IdracSensor):
         memory_name = memory_data.get("name", f"Memory {memory_id}")
         super().__init__(coordinator, config_entry, f"memory_{memory_id}_health", f"{memory_name} Health")
         self.memory_id = memory_id
-        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_entity_category = None
 
     @property
     def native_value(self) -> str | None:
@@ -661,7 +661,7 @@ class IdracIntrusionSensor(IdracSensor):
         intrusion_name = intrusion_data.get("name", f"Intrusion {intrusion_id}")
         super().__init__(coordinator, config_entry, f"intrusion_{intrusion_id}", f"{intrusion_name} Detection")
         self.intrusion_id = intrusion_id
-        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_entity_category = None
 
     @property
     def native_value(self) -> str | None:
@@ -712,7 +712,7 @@ class IdracBatterySensor(IdracSensor):
         battery_name = battery_data.get("name", f"Battery {battery_id}")
         super().__init__(coordinator, config_entry, f"battery_{battery_id}", f"{battery_name} Health")
         self.battery_id = battery_id
-        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_entity_category = None
 
     @property
     def native_value(self) -> str | None:
@@ -763,7 +763,7 @@ class IdracProcessorSensor(IdracSensor):
         processor_name = processor_data.get("name", f"Processor {processor_id}")
         super().__init__(coordinator, config_entry, f"processor_{processor_id}", f"{processor_name} Health")
         self.processor_id = processor_id
-        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_entity_category = None
 
     @property
     def native_value(self) -> str | None:
@@ -809,7 +809,7 @@ class IdracFirmwareVersionSensor(IdracSensor):
         device_name_prefix = _get_device_name_prefix(coordinator)
         self._attr_name = f"{device_name_prefix} iDRAC Firmware Version"
         self._attr_unique_id = f"{coordinator.host}_idrac_firmware_version"
-        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_entity_category = None
         self._attr_icon = "mdi:chip"
 
     @property
@@ -829,7 +829,7 @@ class IdracDateTimeSensor(IdracSensor):
         device_name_prefix = _get_device_name_prefix(coordinator)
         self._attr_name = f"{device_name_prefix} System Date Time"
         self._attr_unique_id = f"{coordinator.host}_system_datetime"
-        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_entity_category = None
         self._attr_device_class = SensorDeviceClass.TIMESTAMP
         self._attr_icon = "mdi:clock-outline"
 
@@ -960,7 +960,7 @@ class IdracUpdateLatencySensor(IdracSensor):
         self._attr_device_class = SensorDeviceClass.DURATION
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_native_unit_of_measurement = "s"
-        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_entity_category = None
         self._attr_icon = "mdi:timer-outline"
 
     @property
@@ -1214,7 +1214,7 @@ class IdracProcessorModelSensor(IdracSensor):
     ) -> None:
         """Initialize the processor model sensor."""
         super().__init__(coordinator, config_entry, "processor_model", "CPU Model")
-        self._attr_entity_category = EntityCategory.CONFIG
+        self._attr_entity_category = None
 
     @property
     def native_value(self) -> str | None:
@@ -1243,7 +1243,7 @@ class IdracMemoryMirroringSensor(IdracSensor):
     ) -> None:
         """Initialize the memory mirroring sensor."""
         super().__init__(coordinator, config_entry, "memory_mirroring", "Memory Mirroring")
-        self._attr_entity_category = EntityCategory.CONFIG
+        self._attr_entity_category = None
 
     @property
     def native_value(self) -> str | None:
@@ -1263,7 +1263,7 @@ class IdracMemoryMirroringSensor(IdracSensor):
 
 
 class IdracProcessorStatusSensor(IdracSensor):
-    """Processor status configuration sensor."""
+    """Processor status diagnostic sensor."""
 
     def __init__(
         self,
@@ -1292,7 +1292,7 @@ class IdracProcessorStatusSensor(IdracSensor):
 
 
 class IdracMemoryStatusSensor(IdracSensor):
-    """Memory status configuration sensor."""
+    """Memory status diagnostic sensor."""
 
     def __init__(
         self,
