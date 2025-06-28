@@ -17,6 +17,8 @@ Most test scripts require direct SNMP access to your iDRAC. Ensure you have:
 - Python dependencies: `pip install pysnmp python-dotenv`
 
 ### Configuration
+
+**Option 1: Use .env.local (Recommended for personalized settings)**
 1. **Copy the test environment file**:
    ```bash
    cp .env.test .env.local
@@ -31,20 +33,24 @@ Most test scripts require direct SNMP access to your iDRAC. Ensure you have:
    IDRAC_PASSWORD=calvin
    ```
 
-3. **Ensure `.env.local` is in .gitignore** (it should be already)
+3. **`.env.local` is automatically ignored by git** (your private config stays private)
+
+**Option 2: Use .env.test directly (Quick testing with defaults)**
+- Tests will automatically use the default configuration from `.env.test`
+- Good for quick testing if the defaults match your environment
 
 ### Running Tests
 
-**Recommended (using .env.test configuration)**:
+**Automatic configuration loading**:
 ```bash
-# Tests will automatically load configuration from .env.test
+# Tests will load .env.local first, fallback to .env.test
 python tests/debug_intrusion.py
 python tests/test_all_intrusion_oids.py
 ```
 
-**Alternative (command line arguments)**:
+**Command line override**:
 ```bash
-# Override .env.test values with command line arguments
+# Override environment values with command line arguments
 python tests/debug_intrusion.py --host 192.168.1.100 --community public
 python tests/test_all_intrusion_oids.py --host 192.168.1.100 --community public
 ```

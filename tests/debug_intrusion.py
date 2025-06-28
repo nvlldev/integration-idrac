@@ -1,12 +1,24 @@
 #!/usr/bin/env python3
 """
 Purpose: Debug script to diagnose intrusion detection sensor issues
-Usage: python tests/debug_intrusion.py <idrac_ip> <community_string>
+Usage: python tests/debug_intrusion.py (uses .env.local or .env.test)
+Requirements: python-dotenv, pysnmp
 Author: Claude Code Assistant  
 Date: 2025-01-28
 """
 import asyncio
 import logging
+import os
+import sys
+
+try:
+    from dotenv import load_dotenv
+    # Load environment variables (.env.local preferred, .env.test fallback)
+    load_dotenv('.env.local')
+    load_dotenv('.env.test')
+except ImportError:
+    print("Warning: python-dotenv not installed. Using command line arguments only.")
+    load_dotenv = None
 from pysnmp.hlapi.asyncio import (
     CommunityData,
     ContextData,
@@ -71,16 +83,24 @@ async def test_intrusion_sensor(host: str, community: str = "public", port: int 
     engine.close()
 
 if __name__ == "__main__":
-    # Update these values for your iDRAC
-    import sys
+    # Get configuration from environment files or command line
     if len(sys.argv) > 1:
         HOST = sys.argv[1]
+        COMMUNITY = sys.argv[2] if len(sys.argv) > 2 else "public"
+        PORT = int(sys.argv[3]) if len(sys.argv) > 3 else 161
     else:
-        HOST = "10.0.1.17"  # Default iDRAC IP
+        # Get from environment variables
+        HOST = os.getenv('IDRAC_HOST')
+        COMMUNITY = os.getenv('IDRAC_COMMUNITY', 'public')
+        PORT = int(os.getenv('IDRAC_PORT', '161'))
     
-    COMMUNITY = sys.argv[2] if len(sys.argv) > 2 else "public"
-    PORT = int(sys.argv[3]) if len(sys.argv) > 3 else 161
+    if not HOST:
+        print("Error: Please provide iDRAC host via:")
+        print("  1. Command line: python tests/debug_intrusion.py <host> [community] [port]")
+        print("  2. Environment: Configure IDRAC_HOST in .env.local or .env.test")
+        sys.exit(1)
     
+    print(f"Testing intrusion sensors on {HOST}:{PORT} with community '{COMMUNITY}'")
     print(f"Usage: {sys.argv[0]} [host] [community] [port]")
     
     asyncio.run(test_intrusion_sensor(HOST, COMMUNITY, PORT))

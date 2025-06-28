@@ -10,8 +10,8 @@
    - Diagnostic files: `tests/diag_*.py`
    - Example files: `tests/example_*.py`
 
-2. **Environment Configuration**: ALWAYS use `.env.test` for test configuration
-   - Load test environment variables: `load_dotenv('.env.test')`
+2. **Environment Configuration**: ALWAYS use environment files for test configuration
+   - Load `.env.local` first (private config), fallback to `.env.test` (template)
    - Access variables with `os.getenv('VARIABLE_NAME')`
    - Never hardcode IP addresses, passwords, or connection details
    - Example:
@@ -19,7 +19,10 @@
    from dotenv import load_dotenv
    import os
    
+   # Load .env.local first (private), fallback to .env.test (template)
+   load_dotenv('.env.local')  
    load_dotenv('.env.test')
+   
    idrac_host = os.getenv('IDRAC_HOST')
    community = os.getenv('IDRAC_COMMUNITY')
    ```
@@ -34,7 +37,7 @@
    ```python
    """
    Purpose: Brief description of what this test/script does
-   Usage: How to run it (python tests/script.py or with .env.test variables)
+   Usage: python tests/script.py (uses .env.local or .env.test for config)
    Requirements: List any external dependencies (pysnmp, python-dotenv, etc.)
    Author: Claude Code Assistant
    Date: YYYY-MM-DD
@@ -68,7 +71,7 @@
 #!/usr/bin/env python3
 """
 Purpose: Debug script for [component name]
-Usage: python tests/debug_[component].py (uses .env.test for configuration)
+Usage: python tests/debug_[component].py (uses .env.local or .env.test)
 Requirements: python-dotenv, pysnmp
 Author: Claude Code Assistant
 Date: [current date]
@@ -78,7 +81,8 @@ from dotenv import load_dotenv
 import os
 import sys
 
-# Load test environment variables
+# Load environment variables (.env.local preferred, .env.test fallback)
+load_dotenv('.env.local')
 load_dotenv('.env.test')
 
 # Get configuration from environment
@@ -86,7 +90,7 @@ idrac_host = os.getenv('IDRAC_HOST')
 community = os.getenv('IDRAC_COMMUNITY')
 
 if not idrac_host or not community:
-    print("Error: Please configure IDRAC_HOST and IDRAC_COMMUNITY in .env.test")
+    print("Error: Please configure IDRAC_HOST and IDRAC_COMMUNITY in .env.local or .env.test")
     sys.exit(1)
 
 # ... rest of script
@@ -97,7 +101,7 @@ if not idrac_host or not community:
 #!/usr/bin/env python3
 """
 Purpose: Diagnostic tool for troubleshooting [issue]
-Usage: python tests/diag_[issue].py (uses .env.test for configuration)
+Usage: python tests/diag_[issue].py (uses .env.local or .env.test)
 Requirements: python-dotenv, pysnmp
 Author: Claude Code Assistant
 Date: [current date]
@@ -108,20 +112,21 @@ import os
 import sys
 import argparse
 
-# Load test environment variables
+# Load environment variables (.env.local preferred, .env.test fallback)
+load_dotenv('.env.local')
 load_dotenv('.env.test')
 
 def main():
     parser = argparse.ArgumentParser(description='Diagnostic tool for [issue]')
     parser.add_argument('--host', default=os.getenv('IDRAC_HOST'), 
-                       help='iDRAC host (default from .env.test)')
+                       help='iDRAC host (default from .env.local/.env.test)')
     parser.add_argument('--community', default=os.getenv('IDRAC_COMMUNITY'),
-                       help='SNMP community (default from .env.test)')
+                       help='SNMP community (default from .env.local/.env.test)')
     
     args = parser.parse_args()
     
     if not args.host or not args.community:
-        print("Error: Please provide --host and --community or configure .env.test")
+        print("Error: Please provide --host and --community or configure .env.local/.env.test")
         sys.exit(1)
     
     # ... rest of script
