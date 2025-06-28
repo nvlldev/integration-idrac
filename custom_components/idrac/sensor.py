@@ -533,7 +533,7 @@ class IdracMemorySensor(IdracSensor):
         self._attr_native_unit_of_measurement = "GB"
         self._attr_device_class = SensorDeviceClass.DATA_SIZE
         self._attr_state_class = SensorStateClass.MEASUREMENT
-        self._attr_entity_category = None
+        self._attr_entity_category = EntityCategory.CONFIG
 
     @property
     def native_value(self) -> float | None:
@@ -563,7 +563,7 @@ class IdracProcessorCountSensor(IdracSensor):
         """Initialize the processor count sensor."""
         super().__init__(coordinator, config_entry, "processor_count", "Total Processors")
         self._attr_state_class = SensorStateClass.MEASUREMENT
-        self._attr_entity_category = None
+        self._attr_entity_category = EntityCategory.CONFIG
 
     @property
     def native_value(self) -> int | None:
@@ -960,7 +960,7 @@ class IdracUpdateLatencySensor(IdracSensor):
         self._attr_device_class = SensorDeviceClass.DURATION
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_native_unit_of_measurement = "s"
-        self._attr_entity_category = None
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self._attr_icon = "mdi:timer-outline"
 
     @property
@@ -1214,7 +1214,7 @@ class IdracProcessorModelSensor(IdracSensor):
     ) -> None:
         """Initialize the processor model sensor."""
         super().__init__(coordinator, config_entry, "processor_model", "CPU Model")
-        self._attr_entity_category = None
+        self._attr_entity_category = EntityCategory.CONFIG
 
     @property
     def native_value(self) -> str | None:
