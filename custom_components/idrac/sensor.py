@@ -321,22 +321,19 @@ class IdracSensor(CoordinatorEntity[SNMPDataUpdateCoordinator | RedfishDataUpdat
         self.config_entry = config_entry
         self.sensor_type = sensor_type
         
-        # Include device prefix in name for proper entity_id generation
-        # We'll set the name later in async_added_to_hass since device_info requires async call
-        self._sensor_name = name
+        # Set the entity name directly - Home Assistant will handle device prefixing
+        self._attr_name = name
         self._attr_unique_id = f"{config_entry.entry_id}_{sensor_type}"
 
     async def async_added_to_hass(self) -> None:
         """Run when entity is added to hass."""
         await super().async_added_to_hass()
         
-        # Set device info and name now that we can make async calls
+        # Set device info now that we can make async calls
         try:
-            self._attr_name = self._sensor_name
             self._attr_device_info = await self.coordinator.get_device_info()
         except Exception as exc:
             _LOGGER.warning("Failed to get device info for sensor: %s", exc)
-            self._attr_name = self._sensor_name
             # Provide fallback device info to ensure device is created
             self._attr_device_info = {
                 "identifiers": {("idrac", self.coordinator.host)},

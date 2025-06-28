@@ -150,9 +150,8 @@ class IdracBinarySensor(CoordinatorEntity, BinarySensorEntity):
         port = config_entry.data[CONF_PORT]
         device_id = f"{host}:{port}"
         
-        # Include device prefix in name for proper entity_id generation
-        # We'll set the name later in async_added_to_hass since device_info requires async call
-        self._sensor_name = sensor_name
+        # Set the entity name directly - Home Assistant will handle device prefixing
+        self._attr_name = sensor_name
         # Use stable unique_id based on device_id and sensor key
         self._attr_unique_id = f"{device_id}_{sensor_key}"
         self._attr_device_class = device_class
@@ -163,13 +162,11 @@ class IdracBinarySensor(CoordinatorEntity, BinarySensorEntity):
         """Run when entity is added to hass."""
         await super().async_added_to_hass()
         
-        # Set device info and name now that we can make async calls
+        # Set device info now that we can make async calls
         try:
-            self._attr_name = self._sensor_name
             self._attr_device_info = await self.coordinator.get_device_info()
         except Exception as exc:
             _LOGGER.warning("Failed to get device info for binary sensor: %s", exc)
-            self._attr_name = self._sensor_name
             # Provide fallback device info to ensure device is created
             self._attr_device_info = {
                 "identifiers": {("idrac", self.coordinator.host)},
