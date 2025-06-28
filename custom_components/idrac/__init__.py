@@ -11,7 +11,6 @@ from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
 
 from .const import DOMAIN
-from .coordinator import IdracDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -31,27 +30,72 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     
     hass.data.setdefault(DOMAIN, {})
 
+    # Create independent coordinators for SNMP and Redfish
+    # This allows each protocol to update on its own schedule and fail independently
+    coordinators = {}
+    
     try:
-        _LOGGER.debug("Creating IdracDataUpdateCoordinator")
-        coordinator = IdracDataUpdateCoordinator(hass, entry)
-        _LOGGER.debug("Coordinator created successfully")
+        _LOGGER.debug("Creating independent SNMP and Redfish coordinators")
+        
+        # Create SNMP coordinator with faster update interval (SNMP is typically fast)
+        snmp_scan_interval = entry.options.get("snmp_scan_interval", entry.data.get("snmp_scan_interval", 15))  # Default 15s for SNMP
+        from .coordinator_snmp import SNMPDataUpdateCoordinator
+        snmp_coordinator = SNMPDataUpdateCoordinator(hass, entry, snmp_scan_interval)
+        coordinators["snmp"] = snmp_coordinator
+        _LOGGER.debug("SNMP coordinator created with %ds update interval", snmp_scan_interval)
+        
+        # Create Redfish coordinator with standard update interval  
+        redfish_scan_interval = entry.options.get("redfish_scan_interval", entry.data.get("redfish_scan_interval", 45))  # Default 45s for Redfish
+        from .coordinator_redfish import RedfishDataUpdateCoordinator
+        redfish_coordinator = RedfishDataUpdateCoordinator(hass, entry, redfish_scan_interval)
+        coordinators["redfish"] = redfish_coordinator
+        _LOGGER.debug("Redfish coordinator created with %ds update interval", redfish_scan_interval)
+        
     except Exception as exc:
-        _LOGGER.error("Failed to create IdracDataUpdateCoordinator: %s", exc, exc_info=True)
+        _LOGGER.error("Failed to create independent coordinators: %s", exc, exc_info=True)
         raise ConfigEntryNotReady from exc
 
+    # Initialize both coordinators
     try:
-        _LOGGER.debug("Performing first coordinator refresh")
-        await coordinator.async_config_entry_first_refresh()
-        _LOGGER.debug("First refresh completed, success: %s", coordinator.last_update_success)
+        _LOGGER.debug("Performing first refresh for both coordinators")
+        
+        # Start both coordinators in parallel but don't fail if one fails
+        import asyncio
+        snmp_task = asyncio.create_task(coordinators["snmp"].async_config_entry_first_refresh())
+        redfish_task = asyncio.create_task(coordinators["redfish"].async_config_entry_first_refresh())
+        
+        # Wait for both with individual error handling
+        snmp_success = False
+        redfish_success = False
+        
+        try:
+            await snmp_task
+            snmp_success = coordinators["snmp"].last_update_success
+            _LOGGER.debug("SNMP coordinator first refresh completed, success: %s", snmp_success)
+        except Exception as exc:
+            _LOGGER.warning("SNMP coordinator first refresh failed: %s", exc)
+            
+        try:
+            await redfish_task  
+            redfish_success = coordinators["redfish"].last_update_success
+            _LOGGER.debug("Redfish coordinator first refresh completed, success: %s", redfish_success)
+        except Exception as exc:
+            _LOGGER.warning("Redfish coordinator first refresh failed: %s", exc)
+            
+        # Ensure at least one coordinator is working
+        if not snmp_success and not redfish_success:
+            raise ConfigEntryNotReady("Both SNMP and Redfish coordinators failed to initialize")
+            
+        _LOGGER.info("Independent coordinators initialized - SNMP: %s, Redfish: %s", 
+                    "✓" if snmp_success else "✗", "✓" if redfish_success else "✗")
+            
+    except ConfigEntryNotReady:
+        raise
     except Exception as exc:
-        _LOGGER.error("Failed during first coordinator refresh: %s", exc, exc_info=True)
+        _LOGGER.error("Failed during coordinator initialization: %s", exc, exc_info=True)
         raise ConfigEntryNotReady from exc
 
-    if not coordinator.last_update_success:
-        _LOGGER.error("Coordinator first refresh failed - marking entry as not ready")
-        raise ConfigEntryNotReady
-
-    hass.data[DOMAIN][entry.entry_id] = coordinator
+    hass.data[DOMAIN][entry.entry_id] = coordinators
     _LOGGER.debug("Coordinator stored in hass.data")
 
     # Set up update listener for options changes

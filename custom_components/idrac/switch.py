@@ -12,12 +12,12 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import CONF_COMMUNITY, CONF_CONNECTION_TYPE, DOMAIN, IDRAC_OIDS
-from .coordinator import IdracDataUpdateCoordinator
+from .coordinator_redfish import RedfishDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
 
-def _get_device_name_prefix(coordinator: IdracDataUpdateCoordinator) -> str:
+def _get_device_name_prefix(coordinator: RedfishDataUpdateCoordinator) -> str:
     """Get device name prefix for entity naming."""
     device_info = coordinator.device_info
     if device_info and "model" in device_info and device_info["model"] != "iDRAC":
@@ -32,13 +32,14 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the Dell iDRAC switches."""
-    coordinator: IdracDataUpdateCoordinator = hass.data[DOMAIN][config_entry.entry_id]
+    coordinators = hass.data[DOMAIN][config_entry.entry_id]
+    redfish_coordinator = coordinators["redfish"]
     
-    # Only create control switches for redfish and hybrid modes
-    # SNMP-only mode should not have control switches
-    if coordinator.connection_type in ["redfish", "hybrid"]:
+    # Only create control switches if Redfish coordinator is available
+    # Control operations require Redfish API
+    if redfish_coordinator and redfish_coordinator.last_update_success:
         entities: list[IdracSwitch] = [
-            IdracIdentifyLEDSwitch(coordinator, config_entry),
+            IdracIdentifyLEDSwitch(redfish_coordinator, config_entry),
         ]
         async_add_entities(entities)
     else:
@@ -51,7 +52,7 @@ class IdracSwitch(CoordinatorEntity, SwitchEntity):
 
     def __init__(
         self,
-        coordinator: IdracDataUpdateCoordinator,
+        coordinator: RedfishDataUpdateCoordinator,
         config_entry: ConfigEntry,
         switch_key: str,
         switch_name: str,
@@ -106,7 +107,7 @@ class IdracIdentifyLEDSwitch(IdracSwitch):
 
     def __init__(
         self,
-        coordinator: IdracDataUpdateCoordinator,
+        coordinator: RedfishDataUpdateCoordinator,
         config_entry: ConfigEntry,
     ) -> None:
         """Initialize the identify LED switch."""

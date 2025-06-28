@@ -21,10 +21,11 @@ from .const import (
     CONF_DISCOVERED_SYSTEM_VOLTAGES,
     DOMAIN,
 )
-from .coordinator import IdracDataUpdateCoordinator
+from .coordinator_snmp import SNMPDataUpdateCoordinator
+from .coordinator_redfish import RedfishDataUpdateCoordinator
 
 
-def _get_device_name_prefix(coordinator: IdracDataUpdateCoordinator) -> str:
+def _get_device_name_prefix(coordinator: SNMPDataUpdateCoordinator | RedfishDataUpdateCoordinator) -> str:
     """Get device name prefix for entity naming."""
     device_info = coordinator.device_info
     if device_info and "model" in device_info and device_info["model"] != "iDRAC":
@@ -39,45 +40,94 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the Dell iDRAC binary sensors."""
-    coordinator: IdracDataUpdateCoordinator = hass.data[DOMAIN][config_entry.entry_id]
+    coordinators = hass.data[DOMAIN][config_entry.entry_id]
+    snmp_coordinator = coordinators["snmp"]
+    redfish_coordinator = coordinators["redfish"]
     
-    entities: list[IdracBinarySensor] = [
-        # System health sensors
-        IdracSystemHealthBinarySensor(coordinator, config_entry),
-        IdracSystemIntrusionBinarySensor(coordinator, config_entry),
-        IdracPsuRedundancyBinarySensor(coordinator, config_entry),
-        IdracPowerStateBinarySensor(coordinator, config_entry),
-    ]
+    def get_coordinator_for_category(category: str):
+        """Determine which coordinator to use for a given data category."""
+        # SNMP categories
+        snmp_categories_list = [
+            "temperatures", "fans", "power_supplies", "voltages", "memory",
+            "virtual_disks", "physical_disks", "storage_controllers", 
+            "system_voltages", "power_consumption", "intrusion_detection",
+            "battery", "processors"
+        ]
+        
+        # Redfish categories
+        redfish_categories_list = [
+            "system_info", "manager_info", "chassis_info", "power_redundancy",
+            "system_health", "indicator_led_state", "chassis_intrusion"
+        ]
+        
+        # Check which coordinator actually has data for this category
+        if category in snmp_categories_list:
+            if snmp_coordinator.data and category in snmp_coordinator.data and snmp_coordinator.data[category]:
+                return snmp_coordinator
+        
+        if category in redfish_categories_list:
+            if redfish_coordinator.data and category in redfish_coordinator.data and redfish_coordinator.data[category]:
+                return redfish_coordinator
+                
+        # Fallback: use whichever coordinator has the data
+        if snmp_coordinator.data and category in snmp_coordinator.data and snmp_coordinator.data[category]:
+            return snmp_coordinator
+        elif redfish_coordinator.data and category in redfish_coordinator.data and redfish_coordinator.data[category]:
+            return redfish_coordinator
+            
+        return None
+    
+    entities: list[IdracBinarySensor] = []
+    
+    # System health sensors (typically from Redfish)
+    system_coordinator = get_coordinator_for_category("system_health") or redfish_coordinator
+    entities.extend([
+        IdracSystemHealthBinarySensor(system_coordinator, config_entry),
+        IdracPowerStateBinarySensor(system_coordinator, config_entry),
+    ])
+    
+    # Intrusion sensors 
+    intrusion_coordinator = get_coordinator_for_category("chassis_intrusion") or redfish_coordinator
+    entities.append(IdracSystemIntrusionBinarySensor(intrusion_coordinator, config_entry))
+    
+    # PSU redundancy (typically from Redfish)
+    redundancy_coordinator = get_coordinator_for_category("power_redundancy") or redfish_coordinator
+    entities.append(IdracPsuRedundancyBinarySensor(redundancy_coordinator, config_entry))
 
     # Add PSU status binary sensors
+    psu_coordinator = get_coordinator_for_category("power_supplies") or snmp_coordinator
     for psu_index in config_entry.data.get(CONF_DISCOVERED_PSUS, []):
         entities.append(
-            IdracPsuStatusBinarySensor(coordinator, config_entry, psu_index)
+            IdracPsuStatusBinarySensor(psu_coordinator, config_entry, psu_index)
         )
 
     # Add memory health binary sensors
+    memory_coordinator = get_coordinator_for_category("memory") or snmp_coordinator
     for memory_index in config_entry.data.get(CONF_DISCOVERED_MEMORY, []):
         entities.append(
-            IdracMemoryHealthBinarySensor(coordinator, config_entry, memory_index)
+            IdracMemoryHealthBinarySensor(memory_coordinator, config_entry, memory_index)
         )
 
     # Add virtual disk binary sensors
+    vdisk_coordinator = get_coordinator_for_category("virtual_disks") or snmp_coordinator
     for vdisk_index in config_entry.data.get(CONF_DISCOVERED_VIRTUAL_DISKS, []):
         entities.append(
-            IdracVirtualDiskBinarySensor(coordinator, config_entry, vdisk_index)
+            IdracVirtualDiskBinarySensor(vdisk_coordinator, config_entry, vdisk_index)
         )
 
     # Add physical disk binary sensors
+    pdisk_coordinator = get_coordinator_for_category("physical_disks") or snmp_coordinator
     for pdisk_index in config_entry.data.get(CONF_DISCOVERED_PHYSICAL_DISKS, []):
         entities.append(
-            IdracPhysicalDiskBinarySensor(coordinator, config_entry, pdisk_index)
+            IdracPhysicalDiskBinarySensor(pdisk_coordinator, config_entry, pdisk_index)
         )
 
     # Add storage controller binary sensors
+    controller_coordinator = get_coordinator_for_category("storage_controllers") or snmp_coordinator
     for controller_index in config_entry.data.get(CONF_DISCOVERED_STORAGE_CONTROLLERS, []):
         entities.extend([
-            IdracStorageControllerBinarySensor(coordinator, config_entry, controller_index),
-            IdracControllerBatteryBinarySensor(coordinator, config_entry, controller_index),
+            IdracStorageControllerBinarySensor(controller_coordinator, config_entry, controller_index),
+            IdracControllerBatteryBinarySensor(controller_coordinator, config_entry, controller_index),
         ])
     
     # Note: Voltage status binary sensors removed - voltage status is covered by regular voltage sensors
@@ -90,7 +140,7 @@ class IdracBinarySensor(CoordinatorEntity, BinarySensorEntity):
 
     def __init__(
         self,
-        coordinator: IdracDataUpdateCoordinator,
+        coordinator: SNMPDataUpdateCoordinator | RedfishDataUpdateCoordinator,
         config_entry: ConfigEntry,
         sensor_key: str,
         sensor_name: str,
@@ -123,7 +173,7 @@ class IdracPsuStatusBinarySensor(IdracBinarySensor):
 
     def __init__(
         self,
-        coordinator: IdracDataUpdateCoordinator,
+        coordinator: SNMPDataUpdateCoordinator | RedfishDataUpdateCoordinator,
         config_entry: ConfigEntry,
         psu_index: int,
     ) -> None:
@@ -231,7 +281,7 @@ class IdracSystemHealthBinarySensor(IdracBinarySensor):
 
     def __init__(
         self,
-        coordinator: IdracDataUpdateCoordinator,
+        coordinator: SNMPDataUpdateCoordinator | RedfishDataUpdateCoordinator,
         config_entry: ConfigEntry,
     ) -> None:
         """Initialize the system health binary sensor."""
@@ -304,7 +354,7 @@ class IdracVirtualDiskBinarySensor(IdracBinarySensor):
 
     def __init__(
         self,
-        coordinator: IdracDataUpdateCoordinator,
+        coordinator: SNMPDataUpdateCoordinator | RedfishDataUpdateCoordinator,
         config_entry: ConfigEntry,
         vdisk_index: int,
     ) -> None:
@@ -359,7 +409,7 @@ class IdracPhysicalDiskBinarySensor(IdracBinarySensor):
 
     def __init__(
         self,
-        coordinator: IdracDataUpdateCoordinator,
+        coordinator: SNMPDataUpdateCoordinator | RedfishDataUpdateCoordinator,
         config_entry: ConfigEntry,
         pdisk_index: int,
     ) -> None:
@@ -414,7 +464,7 @@ class IdracStorageControllerBinarySensor(IdracBinarySensor):
 
     def __init__(
         self,
-        coordinator: IdracDataUpdateCoordinator,
+        coordinator: SNMPDataUpdateCoordinator | RedfishDataUpdateCoordinator,
         config_entry: ConfigEntry,
         controller_index: int,
     ) -> None:
@@ -502,7 +552,7 @@ class IdracControllerBatteryBinarySensor(IdracBinarySensor):
 
     def __init__(
         self,
-        coordinator: IdracDataUpdateCoordinator,
+        coordinator: SNMPDataUpdateCoordinator | RedfishDataUpdateCoordinator,
         config_entry: ConfigEntry,
         controller_index: int,
     ) -> None:
@@ -559,7 +609,7 @@ class IdracSystemIntrusionBinarySensor(IdracBinarySensor):
 
     def __init__(
         self,
-        coordinator: IdracDataUpdateCoordinator,
+        coordinator: SNMPDataUpdateCoordinator | RedfishDataUpdateCoordinator,
         config_entry: ConfigEntry,
     ) -> None:
         """Initialize the system intrusion binary sensor."""
@@ -635,7 +685,7 @@ class IdracPsuRedundancyBinarySensor(IdracBinarySensor):
 
     def __init__(
         self,
-        coordinator: IdracDataUpdateCoordinator,
+        coordinator: SNMPDataUpdateCoordinator | RedfishDataUpdateCoordinator,
         config_entry: ConfigEntry,
     ) -> None:
         """Initialize the PSU redundancy binary sensor."""
@@ -710,7 +760,7 @@ class IdracPowerStateBinarySensor(IdracBinarySensor):
 
     def __init__(
         self,
-        coordinator: IdracDataUpdateCoordinator,
+        coordinator: SNMPDataUpdateCoordinator | RedfishDataUpdateCoordinator,
         config_entry: ConfigEntry,
     ) -> None:
         """Initialize the power state binary sensor."""
@@ -786,7 +836,7 @@ class IdracMemoryHealthBinarySensor(IdracBinarySensor):
 
     def __init__(
         self,
-        coordinator: IdracDataUpdateCoordinator,
+        coordinator: SNMPDataUpdateCoordinator | RedfishDataUpdateCoordinator,
         config_entry: ConfigEntry,
         memory_index: int,
     ) -> None:

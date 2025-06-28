@@ -200,16 +200,20 @@
         "title": "Dell iDRAC Options",
         "description": "Configure advanced options for your Dell iDRAC integration.",
         "data": {
-          "scan_interval": "Scan Interval (seconds)",
+          "scan_interval": "Scan Interval (seconds) - Legacy",
           "request_timeout": "Request Timeout (seconds)",
           "session_timeout": "Session Timeout (seconds)",
-          "snmp_timeout": "SNMP Timeout (seconds)"
+          "snmp_timeout": "SNMP Timeout (seconds)",
+          "snmp_scan_interval": "SNMP Scan Interval (seconds)",
+          "redfish_scan_interval": "Redfish Scan Interval (seconds)"
         },
         "data_description": {
-          "scan_interval": "How often to refresh sensor data (10-300 seconds)",
+          "scan_interval": "Legacy scan interval setting (deprecated)",
           "request_timeout": "Timeout for individual Redfish HTTP requests (5-120 seconds)",
           "session_timeout": "Timeout for Redfish session connections (30-600 seconds)",
-          "snmp_timeout": "Timeout for individual SNMP requests (1-30 seconds)"
+          "snmp_timeout": "Timeout for individual SNMP requests (1-30 seconds)",
+          "snmp_scan_interval": "How often to update SNMP sensors like temperatures, fans, power (5-300 seconds)",
+          "redfish_scan_interval": "How often to update Redfish sensors like system info, controls (15-600 seconds)"
         }
       }
     }

@@ -166,6 +166,8 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
         Raises:
             UpdateFailed: If data collection fails for any reason.
         """
+        _LOGGER.debug("Starting data update for %s (connection_type: %s)", self._server_id, self.connection_type)
+        
         try:
             # Fetch device info on first run
             if self._device_info is None:
@@ -177,7 +179,7 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
                            f"(Serial: {self._device_info.get('serial_number', 'Unknown')})")
             
             # Collect data from both sources in parallel for maximum efficiency
-            _LOGGER.debug("Starting concurrent data collection: Redfish + SNMP")
+            _LOGGER.info("Starting concurrent hybrid data collection for %s: Redfish + SNMP", self._server_id)
             
             import asyncio
             import time as time_module
@@ -185,15 +187,18 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
             collection_start = time_module.time()
             
             # Create tasks immediately to start both coordinators in parallel
-            _LOGGER.debug("Launching Redfish and SNMP tasks concurrently...")
+            _LOGGER.info("Launching Redfish and SNMP tasks concurrently for %s...", self._server_id)
+            redfish_start = time_module.time()
             redfish_task = asyncio.create_task(
                 self.redfish_coordinator.get_sensor_data(), 
                 name="redfish_data_collection"
             )
+            snmp_start = time_module.time()
             snmp_task = asyncio.create_task(
                 self.snmp_coordinator.get_sensor_data(), 
                 name="snmp_data_collection"
             )
+            _LOGGER.debug("Both tasks launched, waiting for completion...")
             
             # Use asyncio.wait with return_when=ALL_COMPLETED for better control
             try:
@@ -212,16 +217,20 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
                         result = await task
                         if task.get_name() == "redfish_data_collection":
                             redfish_data = result
-                            _LOGGER.debug("Redfish collection completed successfully")
+                            redfish_time = time_module.time() - redfish_start
+                            _LOGGER.info("Redfish collection completed in %.2fs with %d data categories", 
+                                       redfish_time, len(redfish_data))
                         elif task.get_name() == "snmp_data_collection":
                             snmp_data = result  
-                            _LOGGER.debug("SNMP collection completed successfully")
+                            snmp_time = time_module.time() - snmp_start
+                            _LOGGER.info("SNMP collection completed in %.2fs with %d data categories", 
+                                       snmp_time, len(snmp_data))
                     except Exception as exc:
                         if task.get_name() == "redfish_data_collection":
-                            _LOGGER.warning("Redfish collection failed: %s", exc)
+                            _LOGGER.warning("Redfish collection failed: %s", exc, exc_info=True)
                             redfish_data = {}
                         elif task.get_name() == "snmp_data_collection":
-                            _LOGGER.warning("SNMP collection failed: %s", exc)
+                            _LOGGER.warning("SNMP collection failed: %s", exc, exc_info=True)
                             snmp_data = {}
                 
                 # Handle any pending (timed out) tasks
@@ -242,9 +251,9 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
                             _LOGGER.debug("Task exception during cleanup: %s", exc)
                             
             except Exception as exc:
-                _LOGGER.error("Unexpected error during concurrent data collection: %s", exc)
+                _LOGGER.error("Unexpected error during concurrent data collection: %s", exc, exc_info=True)
                 # Emergency fallback - try sequential collection with short timeouts
-                _LOGGER.info("Falling back to sequential collection...")
+                _LOGGER.warning("Falling back to sequential collection for %s due to: %s", self._server_id, exc)
                 try:
                     redfish_data = await asyncio.wait_for(
                         self.redfish_coordinator.get_sensor_data(), timeout=25.0)
@@ -259,7 +268,8 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
                     snmp_data = {}
             
             collection_time = time_module.time() - collection_start
-            _LOGGER.debug("Concurrent data collection completed in %.2fs", collection_time)
+            _LOGGER.info("Hybrid data collection completed in %.2fs for %s (Redfish: %d categories, SNMP: %d categories)", 
+                        collection_time, self._server_id, len(redfish_data), len(snmp_data))
             
             # Combine data sources - prefer Redfish, supplement with SNMP
             combined_data = self._combine_sensor_data(redfish_data, snmp_data)

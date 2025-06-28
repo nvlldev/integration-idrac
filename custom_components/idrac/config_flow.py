@@ -39,6 +39,11 @@ from .const import (
     CONF_CONNECTION_TYPE,
     CONF_REQUEST_TIMEOUT,
     CONF_SESSION_TIMEOUT,
+    CONF_SNMP_TIMEOUT,
+    CONF_SNMP_SCAN_INTERVAL,
+    CONF_REDFISH_SCAN_INTERVAL,
+    DEFAULT_SNMP_SCAN_INTERVAL,
+    DEFAULT_REDFISH_SCAN_INTERVAL,
     CONF_DISCOVERED_CPUS,
     CONF_DISCOVERED_FANS,
     CONF_DISCOVERED_MEMORY,
@@ -61,6 +66,7 @@ from .const import (
     DEFAULT_SNMP_VERSION,
     DEFAULT_REQUEST_TIMEOUT,
     DEFAULT_SESSION_TIMEOUT,
+    DEFAULT_SNMP_TIMEOUT,
     DEFAULT_PASSWORD,
     SNMP_VERSIONS,
     SNMP_AUTH_PROTOCOLS,
@@ -768,6 +774,14 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             CONF_SNMP_TIMEOUT,
             self.config_entry.data.get(CONF_SNMP_TIMEOUT, DEFAULT_SNMP_TIMEOUT)
         )
+        current_snmp_scan_interval = self.config_entry.options.get(
+            CONF_SNMP_SCAN_INTERVAL,
+            self.config_entry.data.get(CONF_SNMP_SCAN_INTERVAL, DEFAULT_SNMP_SCAN_INTERVAL)
+        )
+        current_redfish_scan_interval = self.config_entry.options.get(
+            CONF_REDFISH_SCAN_INTERVAL,
+            self.config_entry.data.get(CONF_REDFISH_SCAN_INTERVAL, DEFAULT_REDFISH_SCAN_INTERVAL)
+        )
 
         options_schema = vol.Schema({
             vol.Optional(CONF_SCAN_INTERVAL, default=current_scan_interval): selector.NumberSelector(
@@ -806,16 +820,36 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                     mode=selector.NumberSelectorMode.BOX
                 )
             ),
+            vol.Optional(CONF_SNMP_SCAN_INTERVAL, default=current_snmp_scan_interval): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=5,
+                    max=300,
+                    step=5,
+                    unit_of_measurement="seconds",
+                    mode=selector.NumberSelectorMode.BOX
+                )
+            ),
+            vol.Optional(CONF_REDFISH_SCAN_INTERVAL, default=current_redfish_scan_interval): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=15,
+                    max=600,
+                    step=5,
+                    unit_of_measurement="seconds",
+                    mode=selector.NumberSelectorMode.BOX
+                )
+            ),
         })
 
         return self.async_show_form(
             step_id="init",
             data_schema=options_schema,
             description_placeholders={
-                "scan_interval_desc": "How often to poll the iDRAC for sensor updates",
+                "scan_interval_desc": "Legacy scan interval (deprecated)",
                 "request_timeout_desc": "Timeout for individual Redfish HTTP requests",
                 "session_timeout_desc": "Timeout for Redfish session connections",
-                "snmp_timeout_desc": "Timeout for individual SNMP requests"
+                "snmp_timeout_desc": "Timeout for individual SNMP requests",
+                "snmp_scan_interval_desc": "How often to update SNMP sensors (temperatures, fans, power)",
+                "redfish_scan_interval_desc": "How often to update Redfish sensors (system info, controls)"
             }
         )
 
