@@ -35,8 +35,8 @@ class IdracEntityBase(CoordinatorEntity):
         device_id = f"{host}:{port}"
         
         # Set entity name with device prefix for proper entity ID generation
-        # Home Assistant will automatically sanitize for entity IDs
-        self._attr_name = f"Dell iDRAC {coordinator.host} {entity_name}"
+        # Home Assistant will automatically sanitize for entity IDs and shorten names when they match device name
+        self._attr_name = f"Dell iDRAC ({coordinator.host}) {entity_name}"
         # Use stable unique_id based on device_id and entity key
         self._attr_unique_id = f"{device_id}_{entity_key}"
 
