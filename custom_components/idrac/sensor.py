@@ -42,8 +42,9 @@ async def async_setup_entry(
     # Log sensor setup progress
     if coordinator.data:
         categories_with_data = [k for k, v in coordinator.data.items() if v]
-        _LOGGER.debug("Setting up sensors from %d data categories: %s", 
+        _LOGGER.info("Setting up sensors from %d data categories: %s", 
                      len(categories_with_data), ", ".join(categories_with_data))
+        _LOGGER.debug("Full coordinator data structure: %s", coordinator.data)
     else:
         _LOGGER.error("Cannot set up sensors - no data available from coordinator")
 
@@ -108,25 +109,67 @@ async def async_setup_entry(
             entities.append(IdracProcessorSensor(coordinator, config_entry, processor_id, processor_data))
 
     # Add system info sensors
+    _LOGGER.info("Checking for system_info - coordinator.data exists: %s, system_info in data: %s", 
+                bool(coordinator.data), "system_info" in coordinator.data if coordinator.data else False)
+    
     if coordinator.data and "system_info" in coordinator.data:
         system_info = coordinator.data["system_info"]
-        if system_info.get("memory_gb"):
+        _LOGGER.info("System info available for sensor creation: %s", system_info)
+        _LOGGER.info("Connection type: %s", getattr(coordinator, 'connection_type', 'unknown'))
+        
+        # Debug each field individually
+        memory_gb = system_info.get("memory_gb")
+        processor_count = system_info.get("processor_count") 
+        processor_model = system_info.get("processor_model")
+        
+        _LOGGER.info("System info fields - memory_gb: %s, processor_count: %s, processor_model: %s", 
+                    memory_gb, processor_count, processor_model)
+        
+        if memory_gb:
+            _LOGGER.info("Creating IdracMemorySensor")
             entities.append(IdracMemorySensor(coordinator, config_entry))
-        if system_info.get("processor_count"):
+        else:
+            _LOGGER.warning("Memory GB not available: %s", memory_gb)
+            
+        if processor_count:
+            _LOGGER.info("Creating IdracProcessorCountSensor") 
             entities.append(IdracProcessorCountSensor(coordinator, config_entry))
-        if system_info.get("processor_model"):
+        else:
+            _LOGGER.warning("Processor count not available: %s", processor_count)
+            
+        if processor_model:
+            _LOGGER.info("Creating IdracProcessorModelSensor")
             entities.append(IdracProcessorModelSensor(coordinator, config_entry))
-        if system_info.get("memory_mirroring"):
+        else:
+            _LOGGER.warning("Processor model not available: %s", processor_model)
+        # Debug the new sensors we added
+        memory_mirroring = system_info.get("memory_mirroring")
+        memory_type = system_info.get("memory_type")
+        processor_status = system_info.get("processor_status")
+        memory_status = system_info.get("memory_status")
+        processor_max_speed = system_info.get("processor_max_speed_mhz")
+        processor_current_speed = system_info.get("processor_current_speed_mhz")
+        
+        _LOGGER.info("New sensor fields - memory_mirroring: %s, memory_type: %s, processor_status: %s, memory_status: %s, processor_max_speed: %s, processor_current_speed: %s",
+                    memory_mirroring, memory_type, processor_status, memory_status, processor_max_speed, processor_current_speed)
+        
+        if memory_mirroring:
+            _LOGGER.info("Creating IdracMemoryMirroringSensor")
             entities.append(IdracMemoryMirroringSensor(coordinator, config_entry))
-        if system_info.get("memory_type"):
+        if memory_type:
+            _LOGGER.info("Creating IdracMemoryTypeSensor")
             entities.append(IdracMemoryTypeSensor(coordinator, config_entry))
-        if system_info.get("processor_status"):
+        if processor_status:
+            _LOGGER.info("Creating IdracProcessorStatusSensor")
             entities.append(IdracProcessorStatusSensor(coordinator, config_entry))
-        if system_info.get("memory_status"):
+        if memory_status:
+            _LOGGER.info("Creating IdracMemoryStatusSensor")
             entities.append(IdracMemoryStatusSensor(coordinator, config_entry))
-        if system_info.get("processor_max_speed_mhz"):
+        if processor_max_speed:
+            _LOGGER.info("Creating IdracProcessorMaxSpeedSensor")
             entities.append(IdracProcessorMaxSpeedSensor(coordinator, config_entry))
-        if system_info.get("processor_current_speed_mhz"):
+        if processor_current_speed:
+            _LOGGER.info("Creating IdracProcessorCurrentSpeedSensor")
             entities.append(IdracProcessorCurrentSpeedSensor(coordinator, config_entry))
         # Note: Power state, chassis intrusion, power redundancy, and system health 
         # are handled by binary sensors - no duplicate regular sensors needed

@@ -61,6 +61,7 @@ from .const import (
     DEFAULT_SNMP_VERSION,
     DEFAULT_REQUEST_TIMEOUT,
     DEFAULT_SESSION_TIMEOUT,
+    DEFAULT_PASSWORD,
     SNMP_VERSIONS,
     SNMP_AUTH_PROTOCOLS,
     SNMP_PRIV_PROTOCOLS,
@@ -100,8 +101,11 @@ STEP_REDFISH_SCHEMA = vol.Schema({
     vol.Required(CONF_USERNAME, default="root"): selector.TextSelector(
         selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
     ),
-    vol.Required(CONF_PASSWORD): selector.TextSelector(
-        selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
+    vol.Required(CONF_PASSWORD, default=DEFAULT_PASSWORD): selector.TextSelector(
+        selector.TextSelectorConfig(
+            type=selector.TextSelectorType.PASSWORD,
+            placeholder="Default Dell iDRAC password is 'calvin'"
+        )
     ),
     vol.Optional(CONF_VERIFY_SSL, default=False): selector.BooleanSelector(),
     vol.Optional(CONF_REQUEST_TIMEOUT, default=DEFAULT_REQUEST_TIMEOUT): selector.NumberSelector(
@@ -185,8 +189,11 @@ STEP_HYBRID_REDFISH_SCHEMA = vol.Schema({
     vol.Required(CONF_USERNAME, default="root"): selector.TextSelector(
         selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
     ),
-    vol.Required(CONF_PASSWORD): selector.TextSelector(
-        selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
+    vol.Required(CONF_PASSWORD, default=DEFAULT_PASSWORD): selector.TextSelector(
+        selector.TextSelectorConfig(
+            type=selector.TextSelectorType.PASSWORD,
+            placeholder="Default Dell iDRAC password is 'calvin'"
+        )
     ),
     vol.Optional(CONF_VERIFY_SSL, default=False): selector.BooleanSelector(),
     vol.Optional(CONF_REQUEST_TIMEOUT, default=DEFAULT_REQUEST_TIMEOUT): selector.NumberSelector(

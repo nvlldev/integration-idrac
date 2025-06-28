@@ -285,6 +285,7 @@ class RedfishCoordinator:
 
         # Process system information
         if system_data:
+            _LOGGER.debug("Raw system_data from Redfish: %s", system_data)
             data["system_info"] = {
                 "power_state": system_data.get("PowerState"),
                 "health": system_data.get("Status", {}).get("Health"),
@@ -293,17 +294,19 @@ class RedfishCoordinator:
                 "model": system_data.get("Model"),
                 "serial_number": system_data.get("SerialNumber"),
                 "bios_version": system_data.get("BiosVersion"),
-                "memory_gb": system_data.get("MemorySummary", {}).get("TotalSystemMemoryGiB"),
+                "memory_gb": system_data.get("MemorySummary", {}).get("TotalSystemMemoryGiB") or system_data.get("MemorySummary", {}).get("TotalSystemMemoryGB"),
                 "memory_status": system_data.get("MemorySummary", {}).get("Status", {}).get("Health"),
                 "memory_mirroring": system_data.get("MemorySummary", {}).get("MemoryMirroring"),
                 "memory_modules_populated": system_data.get("MemorySummary", {}).get("TotalSystemPersistentMemoryGiB"),
-                "processor_count": system_data.get("ProcessorSummary", {}).get("Count"),
-                "processor_model": system_data.get("ProcessorSummary", {}).get("Model"),
+                "processor_count": system_data.get("ProcessorSummary", {}).get("Count") or system_data.get("ProcessorSummary", {}).get("ProcessorCount"),
+                "processor_model": system_data.get("ProcessorSummary", {}).get("Model") or system_data.get("ProcessorSummary", {}).get("ProcessorModel"),
                 "processor_status": system_data.get("ProcessorSummary", {}).get("Status", {}).get("Health"),
                 "processor_max_speed_mhz": system_data.get("ProcessorSummary", {}).get("MaxSpeedMHz"),
                 "processor_current_speed_mhz": system_data.get("ProcessorSummary", {}).get("SpeedMHz"),
                 "memory_type": system_data.get("MemorySummary", {}).get("MemoryType"),
             }
+            
+            _LOGGER.debug("Processed system_info data: %s", data["system_info"])
             
             # Store LED state separately for easy access
             data["indicator_led_state"] = system_data.get("IndicatorLED")

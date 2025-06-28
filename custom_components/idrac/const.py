@@ -42,8 +42,9 @@ DEFAULT_COMMUNITY: Final = "public"
 DEFAULT_SCAN_INTERVAL: Final = 30  # Reasonable default for hardware monitoring
 DEFAULT_SNMP_VERSION: Final = "v2c"
 DEFAULT_CONNECTION_TYPE: Final = "hybrid"
-DEFAULT_REQUEST_TIMEOUT: Final = 8  # Much faster timeout for Redfish
-DEFAULT_SESSION_TIMEOUT: Final = 15  # Much faster session timeout
+DEFAULT_REQUEST_TIMEOUT: Final = 30  # Standard timeout for Redfish requests
+DEFAULT_SESSION_TIMEOUT: Final = 300  # Extended session timeout for better connection reuse
+DEFAULT_PASSWORD: Final = "calvin"  # Default Dell iDRAC password
 
 # Connection type options
 CONNECTION_TYPES: Final = ["redfish", "snmp", "hybrid"]
