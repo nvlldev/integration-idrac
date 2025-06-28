@@ -385,26 +385,39 @@ class SNMPDataProcessor:
                     skipped_count += 1
                     continue
                 
-                # Handle System Board voltage sensors as binary sensors (they're status indicators, not real voltages)
-                if voltage_location and "system board" in voltage_location.lower():
+                # Handle voltage status indicators as binary sensors (they're status indicators, not real voltages)
+                # This includes System Board voltages and CPU PG (Power Good) signals
+                location_lower = voltage_location.lower() if voltage_location else ""
+                is_status_indicator = (
+                    "system board" in location_lower or
+                    " pg" in location_lower or
+                    location_lower.endswith(" pg") or
+                    "power good" in location_lower
+                )
+                
+                if is_status_indicator:
                     # Convert voltage reading (typically in millivolts)  
                     voltage_volts = self._convert_voltage(voltage_reading)
                     
-                    # System board voltages are binary status indicators (1V = OK, 0V = Not OK)
+                    # Voltage status indicators are binary signals (1V = OK, 0V = Not OK)
                     is_ok = voltage_volts > 0.5  # Consider > 0.5V as "OK"
                     
+                    # Clean up the sensor name
+                    clean_name = voltage_location.replace(" Voltage", "").replace(" PG", " Power Good")
+                    
                     sensor_data = {
-                        "name": voltage_location.replace(" Voltage", ""),  # Remove "Voltage" from name
+                        "name": clean_name,
                         "reading": 1 if is_ok else 0,  # Binary reading for binary sensor
                         "status": "ok" if is_ok else "critical",
                         "voltage_value": voltage_volts,  # Keep original voltage for debugging
+                        "sensor_type": "power_good" if " pg" in location_lower else "system_voltage",
                     }
                     
                     # Store in system_voltages for binary sensor processing
                     if "system_voltages" not in data:
                         data["system_voltages"] = {}
                     data["system_voltages"][f"system_voltage_{voltage_id}"] = sensor_data
-                    _LOGGER.debug("Added system board voltage as binary sensor: %s", voltage_location)
+                    _LOGGER.debug("Added voltage status indicator as binary sensor: %s -> %s", voltage_location, clean_name)
                     processed_count += 1
                     continue
                 

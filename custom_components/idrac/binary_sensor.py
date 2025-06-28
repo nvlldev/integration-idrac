@@ -1298,16 +1298,25 @@ class IdracSystemVoltageBinarySensor(IdracBinarySensor):
         """Initialize the system voltage binary sensor."""
         voltage_name = voltage_data.get("name", f"System Voltage {voltage_id}")
         
+        # Determine device class and icon based on sensor type
+        sensor_type = voltage_data.get("sensor_type", "system_voltage")
+        if sensor_type == "power_good":
+            device_class = BinarySensorDeviceClass.POWER
+            icon = "mdi:cpu-64-bit"
+        else:
+            device_class = BinarySensorDeviceClass.PROBLEM
+            icon = "mdi:flash-triangle"
+        
         super().__init__(
             coordinator,
             config_entry,
             voltage_id,
             voltage_name,
-            BinarySensorDeviceClass.PROBLEM,  # "On" means voltage problem, "Off" means voltage OK
+            device_class,  # POWER for CPU PG, PROBLEM for system voltages
         )
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self._attr_entity_enabled_default = False  # Disabled by default
-        self._attr_icon = "mdi:flash-triangle"
+        self._attr_icon = icon
 
     @property
     def is_on(self) -> bool | None:
@@ -1348,6 +1357,14 @@ class IdracSystemVoltageBinarySensor(IdracBinarySensor):
         status = voltage_data.get("status")
         if status:
             attributes["status"] = status
+        
+        # Add sensor type for clarity
+        sensor_type = voltage_data.get("sensor_type")
+        if sensor_type:
+            if sensor_type == "power_good":
+                attributes["description"] = "CPU Power Good signal"
+            else:
+                attributes["description"] = "System voltage status"
         
         return attributes if attributes else None
 
