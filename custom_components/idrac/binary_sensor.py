@@ -140,6 +140,7 @@ class IdracPsuStatusBinarySensor(IdracBinarySensor):
             BinarySensorDeviceClass.PROBLEM,  # "On" means problem detected, "Off" means OK
         )
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_icon = "mdi:power-plug"
 
     @property
     def is_on(self) -> bool | None:
@@ -242,6 +243,7 @@ class IdracSystemHealthBinarySensor(IdracBinarySensor):
             BinarySensorDeviceClass.PROBLEM,  # "On" means problem detected, "Off" means OK
         )
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_icon = "mdi:server"
 
     @property
     def is_on(self) -> bool | None:
@@ -317,6 +319,7 @@ class IdracVirtualDiskBinarySensor(IdracBinarySensor):
             BinarySensorDeviceClass.PROBLEM,
         )
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_icon = "mdi:harddisk"
         self._vdisk_index = vdisk_index
 
     @property
@@ -371,6 +374,7 @@ class IdracPhysicalDiskBinarySensor(IdracBinarySensor):
             BinarySensorDeviceClass.PROBLEM,
         )
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_icon = "mdi:harddisk"
         self._pdisk_index = pdisk_index
 
     @property
@@ -425,6 +429,7 @@ class IdracStorageControllerBinarySensor(IdracBinarySensor):
             BinarySensorDeviceClass.PROBLEM,
         )
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_icon = "mdi:expansion-card"
         self._controller_index = controller_index
 
     @property
@@ -512,6 +517,7 @@ class IdracControllerBatteryBinarySensor(IdracBinarySensor):
             BinarySensorDeviceClass.BATTERY,
         )
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_icon = "mdi:battery"
         self._controller_index = controller_index
         self._controller_key = f"controller_{controller_index}"
 
@@ -564,6 +570,7 @@ class IdracSystemIntrusionBinarySensor(IdracBinarySensor):
             "Chassis Intrusion Detection",
             BinarySensorDeviceClass.SAFETY,  # "On" means intrusion detected
         )
+        self._attr_icon = "mdi:shield-alert"
 
     @property
     def is_on(self) -> bool | None:
@@ -640,6 +647,7 @@ class IdracPsuRedundancyBinarySensor(IdracBinarySensor):
             BinarySensorDeviceClass.PROBLEM,  # "On" means problem detected, "Off" means OK
         )
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_icon = "mdi:power-plug-battery"
 
     @property
     def is_on(self) -> bool | None:
@@ -713,6 +721,7 @@ class IdracPowerStateBinarySensor(IdracBinarySensor):
             "Server Power State",
             BinarySensorDeviceClass.POWER,  # "On" means powered on, "Off" means powered off
         )
+        self._attr_icon = "mdi:power"
 
     @property
     def is_on(self) -> bool | None:
@@ -792,6 +801,7 @@ class IdracMemoryHealthBinarySensor(IdracBinarySensor):
             BinarySensorDeviceClass.PROBLEM,  # "On" means problem detected, "Off" means OK
         )
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_icon = "mdi:memory"
 
     @property
     def is_on(self) -> bool | None:

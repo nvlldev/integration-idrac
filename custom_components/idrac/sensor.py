@@ -331,6 +331,7 @@ class IdracPowerConsumptionSensor(IdracSensor):
         self._attr_device_class = SensorDeviceClass.POWER
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_entity_category = None  # Primary power measurement - not diagnostic
+        self._attr_icon = "mdi:flash"
 
     @property
     def native_value(self) -> float | None:
@@ -384,6 +385,7 @@ class IdracTemperatureSensor(IdracSensor):
         self._attr_device_class = SensorDeviceClass.TEMPERATURE
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_entity_category = None  # Environmental measurement - not diagnostic
+        self._attr_icon = "mdi:thermometer"
 
     @property
     def native_value(self) -> float | None:
@@ -441,6 +443,7 @@ class IdracFanSpeedSensor(IdracSensor):
         self.fan_id = fan_id
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_entity_category = None  # Environmental measurement - not diagnostic
+        self._attr_icon = "mdi:fan"
 
     @property
     def native_value(self) -> float | None:
@@ -496,6 +499,7 @@ class IdracVoltageSensor(IdracSensor):
         self._attr_device_class = SensorDeviceClass.VOLTAGE
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_entity_category = None  # Electrical measurement - not diagnostic
+        self._attr_icon = "mdi:lightning-bolt"
 
     @property
     def native_value(self) -> float | None:
@@ -534,6 +538,7 @@ class IdracMemorySensor(IdracSensor):
         self._attr_device_class = SensorDeviceClass.DATA_SIZE
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_icon = "mdi:memory"
 
     @property
     def native_value(self) -> float | None:
@@ -564,6 +569,7 @@ class IdracProcessorCountSensor(IdracSensor):
         super().__init__(coordinator, config_entry, "processor_count", "Total Processors")
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_icon = "mdi:cpu-64-bit"
 
     @property
     def native_value(self) -> int | None:
@@ -995,6 +1001,7 @@ class IdracAverageCpuTemperatureSensor(IdracSensor):
         self._attr_device_class = SensorDeviceClass.TEMPERATURE
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_entity_category = None  # Primary thermal measurement
+        self._attr_icon = "mdi:thermometer-chevron-up"
 
     @property
     def native_value(self) -> float | None:
@@ -1215,6 +1222,7 @@ class IdracProcessorModelSensor(IdracSensor):
         """Initialize the processor model sensor."""
         super().__init__(coordinator, config_entry, "processor_model", "CPU Model")
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_icon = "mdi:chip"
 
     @property
     def native_value(self) -> str | None:
@@ -1244,6 +1252,7 @@ class IdracMemoryMirroringSensor(IdracSensor):
         """Initialize the memory mirroring sensor."""
         super().__init__(coordinator, config_entry, "memory_mirroring", "Memory Mirroring")
         self._attr_entity_category = None
+        self._attr_icon = "mdi:content-duplicate"
 
     @property
     def native_value(self) -> str | None:
@@ -1273,6 +1282,7 @@ class IdracProcessorStatusSensor(IdracSensor):
         """Initialize the processor status sensor."""
         super().__init__(coordinator, config_entry, "processor_status", "Processor Status")
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_icon = "mdi:chip-check"
 
     @property
     def native_value(self) -> str | None:
@@ -1302,6 +1312,7 @@ class IdracMemoryStatusSensor(IdracSensor):
         """Initialize the memory status sensor."""
         super().__init__(coordinator, config_entry, "memory_status", "Memory Status")
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_icon = "mdi:memory-check"
 
     @property
     def native_value(self) -> str | None:
@@ -1330,7 +1341,8 @@ class IdracMemoryTypeSensor(IdracSensor):
     ) -> None:
         """Initialize the memory type sensor."""
         super().__init__(coordinator, config_entry, "memory_type", "Memory Type")
-        self._attr_entity_category = EntityCategory.CONFIG
+        self._attr_entity_category = None
+        self._attr_icon = "mdi:memory-arrow-down"
 
     @property
     def native_value(self) -> str | None:
@@ -1362,7 +1374,8 @@ class IdracProcessorMaxSpeedSensor(IdracSensor):
         self._attr_native_unit_of_measurement = "MHz"
         self._attr_device_class = SensorDeviceClass.FREQUENCY
         self._attr_state_class = SensorStateClass.MEASUREMENT
-        self._attr_entity_category = EntityCategory.CONFIG
+        self._attr_entity_category = None
+        self._attr_icon = "mdi:speedometer"
 
     @property
     def native_value(self) -> int | None:
@@ -1395,6 +1408,7 @@ class IdracProcessorCurrentSpeedSensor(IdracSensor):
         self._attr_device_class = SensorDeviceClass.FREQUENCY
         self._attr_state_class = SensorStateClass.MEASUREMENT
         # No entity_category - appears in main sensors section
+        self._attr_icon = "mdi:speedometer-medium"
 
     @property
     def native_value(self) -> int | None:
