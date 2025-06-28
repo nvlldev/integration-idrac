@@ -176,34 +176,90 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
                            f"{self._device_info.get('model', 'Unknown Model')} "
                            f"(Serial: {self._device_info.get('serial_number', 'Unknown')})")
             
-            # Collect data from both sources in parallel for efficiency
-            _LOGGER.debug("Updating sensor data via hybrid approach (Redfish + SNMP)")
+            # Collect data from both sources in parallel for maximum efficiency
+            _LOGGER.debug("Starting concurrent data collection: Redfish + SNMP")
             
             import asyncio
+            import time as time_module
             
-            # Start both data collection tasks concurrently
-            redfish_task = self.redfish_coordinator.get_sensor_data()
-            snmp_task = self.snmp_coordinator.get_sensor_data()
+            collection_start = time_module.time()
             
-            # Wait for both with timeout
+            # Create tasks immediately to start both coordinators in parallel
+            _LOGGER.debug("Launching Redfish and SNMP tasks concurrently...")
+            redfish_task = asyncio.create_task(
+                self.redfish_coordinator.get_sensor_data(), 
+                name="redfish_data_collection"
+            )
+            snmp_task = asyncio.create_task(
+                self.snmp_coordinator.get_sensor_data(), 
+                name="snmp_data_collection"
+            )
+            
+            # Use asyncio.wait with return_when=ALL_COMPLETED for better control
             try:
-                redfish_data, snmp_data = await asyncio.wait_for(
-                    asyncio.gather(redfish_task, snmp_task, return_exceptions=True),
-                    timeout=60.0  # Total timeout for both sources
+                done, pending = await asyncio.wait(
+                    {redfish_task, snmp_task},
+                    timeout=45.0,  # Reasonable timeout for both sources
+                    return_when=asyncio.ALL_COMPLETED
                 )
-            except asyncio.TimeoutError:
-                _LOGGER.warning("Hybrid data collection timeout for %s, trying individual sources", self._server_id)
-                # Fallback to individual collection with shorter timeouts
-                redfish_data = await asyncio.wait_for(self.redfish_coordinator.get_sensor_data(), timeout=30.0)
-                snmp_data = await asyncio.wait_for(self.snmp_coordinator.get_sensor_data(), timeout=30.0)
-            
-            # Handle exceptions from individual coordinators
-            if isinstance(redfish_data, Exception):
-                _LOGGER.warning("Redfish data collection failed: %s", redfish_data)
+                
+                # Process results from completed tasks
                 redfish_data = {}
-            if isinstance(snmp_data, Exception):
-                _LOGGER.warning("SNMP data collection failed: %s", snmp_data)
                 snmp_data = {}
+                
+                for task in done:
+                    try:
+                        result = await task
+                        if task.get_name() == "redfish_data_collection":
+                            redfish_data = result
+                            _LOGGER.debug("Redfish collection completed successfully")
+                        elif task.get_name() == "snmp_data_collection":
+                            snmp_data = result  
+                            _LOGGER.debug("SNMP collection completed successfully")
+                    except Exception as exc:
+                        if task.get_name() == "redfish_data_collection":
+                            _LOGGER.warning("Redfish collection failed: %s", exc)
+                            redfish_data = {}
+                        elif task.get_name() == "snmp_data_collection":
+                            _LOGGER.warning("SNMP collection failed: %s", exc)
+                            snmp_data = {}
+                
+                # Handle any pending (timed out) tasks
+                if pending:
+                    _LOGGER.warning("Some data collection tasks timed out, cancelling...")
+                    for task in pending:
+                        task.cancel()
+                        try:
+                            await task
+                        except asyncio.CancelledError:
+                            if task.get_name() == "redfish_data_collection":
+                                _LOGGER.warning("Redfish collection timed out after 45s")
+                                redfish_data = {}
+                            elif task.get_name() == "snmp_data_collection":
+                                _LOGGER.warning("SNMP collection timed out after 45s")
+                                snmp_data = {}
+                        except Exception as exc:
+                            _LOGGER.debug("Task exception during cleanup: %s", exc)
+                            
+            except Exception as exc:
+                _LOGGER.error("Unexpected error during concurrent data collection: %s", exc)
+                # Emergency fallback - try sequential collection with short timeouts
+                _LOGGER.info("Falling back to sequential collection...")
+                try:
+                    redfish_data = await asyncio.wait_for(
+                        self.redfish_coordinator.get_sensor_data(), timeout=25.0)
+                except Exception as rf_exc:
+                    _LOGGER.warning("Sequential Redfish fallback failed: %s", rf_exc)
+                    redfish_data = {}
+                try:
+                    snmp_data = await asyncio.wait_for(
+                        self.snmp_coordinator.get_sensor_data(), timeout=10.0)
+                except Exception as snmp_exc:
+                    _LOGGER.warning("Sequential SNMP fallback failed: %s", snmp_exc)
+                    snmp_data = {}
+            
+            collection_time = time_module.time() - collection_start
+            _LOGGER.debug("Concurrent data collection completed in %.2fs", collection_time)
             
             # Combine data sources - prefer Redfish, supplement with SNMP
             combined_data = self._combine_sensor_data(redfish_data, snmp_data)
@@ -241,8 +297,6 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
         
         # Supplement with SNMP data for missing or incomplete sensors
         snmp_supplements = [
-            # Chassis intrusion - often missing in Redfish
-            ("chassis_intrusion", "system_intrusion"),
             # Memory health - may have more detail in SNMP
             ("memory_health", "memory"),
             # Storage components - often SNMP-only
@@ -253,7 +307,6 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
             ("detailed_memory", "detailed_memory"),
             ("system_voltages", "system_voltages"),
             ("power_consumption", "power_consumption"),
-            ("system_intrusion", "system_intrusion"),
             ("system_battery", "system_battery"),
             ("processors", "processors"),
             ("psu_redundancy", "psu_redundancy"),
@@ -266,13 +319,25 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
                     # Use SNMP data if Redfish data is missing or empty
                     combined[combined_key] = snmp_data[snmp_key]
                     _LOGGER.debug("Supplemented %s with SNMP data", combined_key)
-                elif combined_key == "chassis_intrusion" and combined[combined_key].get("status") == "Unknown":
-                    # Special case: if Redfish intrusion is "Unknown", try SNMP
-                    snmp_intrusion = snmp_data.get(snmp_key)
-                    if snmp_intrusion is not None:
-                        # Convert SNMP intrusion format to Redfish-like format
+        
+        # Special handling for chassis intrusion - convert SNMP intrusion_detection to chassis_intrusion format
+        if "intrusion_detection" in snmp_data and snmp_data["intrusion_detection"]:
+            # Check if Redfish intrusion is missing or unknown
+            redfish_intrusion = combined.get("chassis_intrusion", {})
+            if not redfish_intrusion or redfish_intrusion.get("status") == "Unknown":
+                # Find the first intrusion sensor from SNMP data
+                intrusion_sensors = snmp_data["intrusion_detection"]
+                if intrusion_sensors:
+                    # Get the first intrusion sensor (usually intrusion_1)
+                    first_sensor_key = next(iter(intrusion_sensors))
+                    intrusion_data = intrusion_sensors[first_sensor_key]
+                    
+                    # Convert SNMP intrusion reading to Redfish-like format
+                    intrusion_reading = intrusion_data.get("reading")
+                    if intrusion_reading is not None:
                         try:
-                            intrusion_int = int(snmp_intrusion)
+                            intrusion_int = int(intrusion_reading)
+                            # Dell iDRAC intrusion values: 1=secure, 2=disabled, 3=breach_detected
                             if intrusion_int == 1:
                                 status = "Normal"
                             elif intrusion_int == 3:
@@ -280,15 +345,19 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
                             else:
                                 status = "Unknown"
                             
-                            combined[combined_key] = {
+                            combined["chassis_intrusion"] = {
                                 "status": status,
-                                "sensor_number": None,
+                                "sensor_number": first_sensor_key.split("_")[-1] if "_" in first_sensor_key else None,
                                 "re_arm": None,
                                 "source": "snmp"
                             }
-                            _LOGGER.debug("Supplemented chassis intrusion with SNMP data: %s", status)
-                        except (ValueError, TypeError):
-                            pass
+                            
+                            # Also provide system_intrusion for backward compatibility
+                            combined["system_intrusion"] = intrusion_reading
+                            
+                            _LOGGER.debug("Supplemented chassis intrusion with SNMP data: %s (reading: %d)", status, intrusion_int)
+                        except (ValueError, TypeError) as exc:
+                            _LOGGER.debug("Failed to convert SNMP intrusion reading: %s", exc)
         
         return combined
 
