@@ -1,0 +1,24 @@
+# Test Dependencies for Dell iDRAC Integration
+# Install with: pip install -r tests/requirements.txt
+
+# SNMP library for direct iDRAC communication
+pysnmp>=4.4.0
+
+# Environment variable management
+python-dotenv>=0.19.0
+
+# HTTP requests for Redfish API testing (if needed)
+requests>=2.25.0
+
+# Async HTTP client (if needed for async tests)
+aiohttp>=3.8.0
+
+# JSON pretty printing and data manipulation
+ujson>=4.0.0
+
+# Logging and debugging utilities
+colorlog>=6.0.0
+
+# Test framework (if adding unit tests)
+pytest>=6.0.0
+pytest-asyncio>=0.18.0

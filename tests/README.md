@@ -14,21 +14,39 @@ This directory contains test scripts, debugging tools, and diagnostic utilities 
 Most test scripts require direct SNMP access to your iDRAC. Ensure you have:
 - Network connectivity to the iDRAC
 - Valid SNMP community string (usually 'public' for read-only)
-- Python with pysnmp installed: `pip install pysnmp`
+- Python dependencies: `pip install pysnmp python-dotenv`
+
+### Configuration
+1. **Copy the test environment file**:
+   ```bash
+   cp .env.test .env.local
+   ```
+
+2. **Edit `.env.local` with your iDRAC settings**:
+   ```bash
+   # Update these values for your environment
+   IDRAC_HOST=192.168.1.100
+   IDRAC_COMMUNITY=public
+   IDRAC_USERNAME=root
+   IDRAC_PASSWORD=calvin
+   ```
+
+3. **Ensure `.env.local` is in .gitignore** (it should be already)
 
 ### Running Tests
 
+**Recommended (using .env.test configuration)**:
 ```bash
-# Basic intrusion debug
-python tests/debug_intrusion.py <idrac_ip> <community_string>
-
-# Comprehensive intrusion OID test  
-python tests/test_all_intrusion_oids.py <idrac_ip> <community_string>
+# Tests will automatically load configuration from .env.test
+python tests/debug_intrusion.py
+python tests/test_all_intrusion_oids.py
 ```
 
-### Example
+**Alternative (command line arguments)**:
 ```bash
-python tests/debug_intrusion.py 192.168.1.100 public
+# Override .env.test values with command line arguments
+python tests/debug_intrusion.py --host 192.168.1.100 --community public
+python tests/test_all_intrusion_oids.py --host 192.168.1.100 --community public
 ```
 
 ## Development
