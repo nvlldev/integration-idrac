@@ -13,17 +13,11 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import CONF_COMMUNITY, CONF_CONNECTION_TYPE, DOMAIN, IDRAC_OIDS
 from .coordinator_redfish import RedfishDataUpdateCoordinator
+from .utils import get_device_name_prefix
 
 _LOGGER = logging.getLogger(__name__)
 
 
-def _get_device_name_prefix(coordinator: RedfishDataUpdateCoordinator) -> str:
-    """Get device name prefix for entity naming."""
-    device_info = coordinator.device_info
-    if device_info and "model" in device_info and device_info["model"] != "iDRAC":
-        return f"Dell {device_info['model']} ({coordinator.host})"
-    else:
-        return f"Dell iDRAC ({coordinator.host})"
 
 
 async def async_setup_entry(
@@ -73,8 +67,8 @@ class IdracButton(CoordinatorEntity, ButtonEntity):
         device_id = f"{host}:{port}"
         
         # Include device prefix in name for proper entity_id generation
-        device_prefix = _get_device_name_prefix(coordinator)
-        self._attr_name = f"{device_prefix} {button_name}"
+        # We'll set the name later in async_added_to_hass since device_info requires async call
+        self._button_name = button_name
         # Use stable unique_id based on device_id and button key
         self._attr_unique_id = f"{device_id}_{button_key}"
         self._attr_device_class = device_class
@@ -83,7 +77,7 @@ class IdracButton(CoordinatorEntity, ButtonEntity):
         self._host = host
         self._port = port
 
-        self._attr_device_info = coordinator.device_info
+        # Device info will be set in async_added_to_hass
 
     async def _async_redfish_action(self, action: str) -> bool:
         """Execute Redfish power action using coordinator."""
@@ -102,6 +96,20 @@ class IdracButton(CoordinatorEntity, ButtonEntity):
     def available(self) -> bool:
         """Return if entity is available."""
         return self.coordinator.last_update_success
+
+    async def async_added_to_hass(self) -> None:
+        """Run when entity is added to hass."""
+        await super().async_added_to_hass()
+        
+        # Set device info and name now that we can make async calls
+        try:
+            device_info = await self.coordinator.get_device_info()
+            device_prefix = await get_device_name_prefix(self.coordinator)
+            self._attr_name = f"{device_prefix} {self._button_name}"
+            self._attr_device_info = device_info
+        except Exception as exc:
+            _LOGGER.warning("Failed to get device info for button: %s", exc)
+            self._attr_name = f"Dell iDRAC ({self._host}) {self._button_name}"
 
     def _get_current_power_state(self) -> int | None:
         """Get current power state from coordinator data."""

@@ -58,6 +58,11 @@ class SNMPDataUpdateCoordinator(DataUpdateCoordinator):
             name=f"{DOMAIN}_snmp_{self.host}",
             update_interval=timedelta(seconds=scan_interval),
         )
+    
+    @property
+    def connection_type(self) -> str:
+        """Return the connection type."""
+        return "snmp"
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch SNMP data from the Dell iDRAC device.
@@ -86,3 +91,21 @@ class SNMPDataUpdateCoordinator(DataUpdateCoordinator):
     async def get_device_info(self) -> dict[str, Any]:
         """Get device information via SNMP."""
         return await self.snmp_coordinator.get_device_info()
+        
+    async def async_set_snmp_value(self, oid: str, value: int) -> bool:
+        """Set SNMP value via SNMP coordinator."""
+        return await self.snmp_coordinator.set_snmp_value(oid, value)
+        
+    async def async_get_snmp_value(self, oid: str) -> int | None:
+        """Get SNMP value via SNMP coordinator."""
+        return await self.snmp_coordinator.get_snmp_value(oid)
+        
+    async def async_set_indicator_led(self, state: str) -> bool:
+        """Indicator LED control not available via SNMP."""
+        _LOGGER.warning("Indicator LED control not available via SNMP")
+        return False
+        
+    async def async_reset_system(self, reset_type: str = "GracefulRestart") -> bool:
+        """System reset not available via SNMP."""
+        _LOGGER.warning("System reset not available via SNMP")
+        return False

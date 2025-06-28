@@ -26,6 +26,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import DOMAIN, REDFISH_HEALTH_STATUS
 from .coordinator_snmp import SNMPDataUpdateCoordinator
 from .coordinator_redfish import RedfishDataUpdateCoordinator
+from .utils import get_device_name_prefix
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -120,11 +121,7 @@ async def async_setup_entry(
     # Define sensor mappings for automated creation
     sensor_mappings = [
         ("voltages", "voltage", IdracVoltageSensor),
-        ("system_voltages", "system_voltage", IdracSystemVoltageSensor),
         ("memory", "memory", IdracMemorySensor),
-        ("virtual_disks", "virtual_disk", IdracVirtualDiskSensor),
-        ("physical_disks", "physical_disk", IdracPhysicalDiskSensor),
-        ("storage_controllers", "storage_controller", IdracStorageControllerSensor),
         ("intrusion_detection", "intrusion", IdracIntrusionSensor),
         ("battery", "battery", IdracBatterySensor),
         ("processors", "processor", IdracProcessorSensor),
@@ -281,13 +278,6 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
-def _get_device_name_prefix(coordinator: SNMPDataUpdateCoordinator | RedfishDataUpdateCoordinator) -> str:
-    """Get device name prefix for entity naming."""
-    device_info = coordinator.device_info
-    if device_info and "model" in device_info and device_info["model"] != "iDRAC":
-        return f"Dell {device_info['model']} ({coordinator.host})"
-    else:
-        return f"Dell iDRAC ({coordinator.host})"
 
 
 class IdracSensor(CoordinatorEntity[SNMPDataUpdateCoordinator | RedfishDataUpdateCoordinator], SensorEntity):
@@ -306,14 +296,27 @@ class IdracSensor(CoordinatorEntity[SNMPDataUpdateCoordinator | RedfishDataUpdat
         self.sensor_type = sensor_type
         
         # Include device prefix in name for proper entity_id generation
-        device_prefix = _get_device_name_prefix(coordinator)
-        self._attr_name = f"{device_prefix} {name}"
+        # We'll set the name later in async_added_to_hass since device_info requires async call
+        self._sensor_name = name
         self._attr_unique_id = f"{config_entry.entry_id}_{sensor_type}"
+
+    async def async_added_to_hass(self) -> None:
+        """Run when entity is added to hass."""
+        await super().async_added_to_hass()
+        
+        # Set device info and name now that we can make async calls
+        try:
+            device_prefix = await get_device_name_prefix(self.coordinator)
+            self._attr_name = f"{device_prefix} {self._sensor_name}"
+            self._attr_device_info = await self.coordinator.get_device_info()
+        except Exception as exc:
+            _LOGGER.warning("Failed to get device info for sensor: %s", exc)
+            self._attr_name = f"Dell iDRAC ({self.coordinator.host}) {self._sensor_name}"
 
     @property
     def device_info(self):
         """Return device information."""
-        return self.coordinator.device_info
+        return getattr(self, '_attr_device_info', None)
 
     @property
     def available(self) -> bool:
@@ -850,9 +853,7 @@ class IdracFirmwareVersionSensor(IdracSensor):
     
     def __init__(self, coordinator: SNMPDataUpdateCoordinator | RedfishDataUpdateCoordinator, config_entry: ConfigEntry) -> None:
         """Initialize the sensor."""
-        super().__init__(coordinator, config_entry)
-        device_name_prefix = _get_device_name_prefix(coordinator)
-        self._attr_name = f"{device_name_prefix} iDRAC Firmware Version"
+        super().__init__(coordinator, config_entry, "idrac_firmware_version", "iDRAC Firmware Version")
         self._attr_unique_id = f"{coordinator.host}_idrac_firmware_version"
         self._attr_entity_category = None
         self._attr_icon = "mdi:chip"
@@ -870,9 +871,7 @@ class IdracDateTimeSensor(IdracSensor):
     
     def __init__(self, coordinator: SNMPDataUpdateCoordinator | RedfishDataUpdateCoordinator, config_entry: ConfigEntry) -> None:
         """Initialize the sensor."""
-        super().__init__(coordinator, config_entry)
-        device_name_prefix = _get_device_name_prefix(coordinator)
-        self._attr_name = f"{device_name_prefix} System Date Time"
+        super().__init__(coordinator, config_entry, "system_datetime", "System Date Time")
         self._attr_unique_id = f"{coordinator.host}_system_datetime"
         self._attr_entity_category = None
         self._attr_device_class = SensorDeviceClass.TIMESTAMP

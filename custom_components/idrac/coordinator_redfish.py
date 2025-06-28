@@ -58,6 +58,11 @@ class RedfishDataUpdateCoordinator(DataUpdateCoordinator):
             name=f"{DOMAIN}_redfish_{self.host}",
             update_interval=timedelta(seconds=scan_interval),
         )
+    
+    @property
+    def connection_type(self) -> str:
+        """Return the connection type."""
+        return "redfish"
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch Redfish data from the Dell iDRAC device.
@@ -94,3 +99,22 @@ class RedfishDataUpdateCoordinator(DataUpdateCoordinator):
     async def set_indicator_led(self, state: str) -> bool:
         """Set indicator LED via Redfish."""
         return await self.redfish_coordinator.set_indicator_led(state)
+        
+    async def async_set_indicator_led(self, state: str) -> bool:
+        """Set indicator LED via Redfish (async alias)."""
+        return await self.set_indicator_led(state)
+        
+    async def async_reset_system(self, reset_type: str = "GracefulRestart") -> bool:
+        """Reset system via Redfish (async alias)."""
+        return await self.reset_system(reset_type)
+        
+    async def async_set_snmp_value(self, oid: str, value: int) -> bool:
+        """SNMP operations not available in Redfish-only mode."""
+        _LOGGER.warning("SNMP operations not available in Redfish-only mode")
+        return False
+        
+    async def async_get_snmp_value(self, oid: str) -> int | None:
+        """SNMP operations not available in Redfish-only mode."""
+        _LOGGER.warning("SNMP operations not available in Redfish-only mode")
+        return None
+        

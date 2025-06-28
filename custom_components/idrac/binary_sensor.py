@@ -1,6 +1,8 @@
 """Binary sensor platform for Dell iDRAC integration."""
 from __future__ import annotations
 
+import logging
+
 from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
     BinarySensorEntity,
@@ -23,15 +25,11 @@ from .const import (
 )
 from .coordinator_snmp import SNMPDataUpdateCoordinator
 from .coordinator_redfish import RedfishDataUpdateCoordinator
+from .utils import get_device_name_prefix
+
+_LOGGER = logging.getLogger(__name__)
 
 
-def _get_device_name_prefix(coordinator: SNMPDataUpdateCoordinator | RedfishDataUpdateCoordinator) -> str:
-    """Get device name prefix for entity naming."""
-    device_info = coordinator.device_info
-    if device_info and "model" in device_info and device_info["model"] != "iDRAC":
-        return f"Dell {device_info['model']} ({coordinator.host})"
-    else:
-        return f"Dell iDRAC ({coordinator.host})"
 
 
 async def async_setup_entry(
@@ -154,13 +152,26 @@ class IdracBinarySensor(CoordinatorEntity, BinarySensorEntity):
         device_id = f"{host}:{port}"
         
         # Include device prefix in name for proper entity_id generation
-        device_prefix = _get_device_name_prefix(coordinator)
-        self._attr_name = f"{device_prefix} {sensor_name}"
+        # We'll set the name later in async_added_to_hass since device_info requires async call
+        self._sensor_name = sensor_name
         # Use stable unique_id based on device_id and sensor key
         self._attr_unique_id = f"{device_id}_{sensor_key}"
         self._attr_device_class = device_class
 
-        self._attr_device_info = coordinator.device_info
+        # Device info will be set in async_added_to_hass
+
+    async def async_added_to_hass(self) -> None:
+        """Run when entity is added to hass."""
+        await super().async_added_to_hass()
+        
+        # Set device info and name now that we can make async calls
+        try:
+            device_prefix = await get_device_name_prefix(self.coordinator)
+            self._attr_name = f"{device_prefix} {self._sensor_name}"
+            self._attr_device_info = await self.coordinator.get_device_info()
+        except Exception as exc:
+            _LOGGER.warning("Failed to get device info for binary sensor: %s", exc)
+            self._attr_name = f"Dell iDRAC ({self.coordinator.host}) {self._sensor_name}"
 
     @property
     def available(self) -> bool:
