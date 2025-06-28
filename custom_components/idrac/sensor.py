@@ -122,8 +122,15 @@ async def async_setup_entry(
             entities.append(IdracAverageCpuTemperatureSensor(temp_coordinator, config_entry))
         
         # Temperature delta (inlet/outlet)
-        if has_temperature_patterns(temp_data, ["inlet", "outlet"]):
+        inlet_found = any("inlet" in item.get("name", "").lower() or "intake" in item.get("name", "").lower() or "ambient" in item.get("name", "").lower() for item in temp_data.values())
+        outlet_found = any("outlet" in item.get("name", "").lower() or "exhaust" in item.get("name", "").lower() or "exit" in item.get("name", "").lower() for item in temp_data.values())
+        
+        _LOGGER.debug("Temperature Rise sensor check: inlet_found=%s, outlet_found=%s", inlet_found, outlet_found)
+        if inlet_found and outlet_found:
             entities.append(IdracTemperatureDeltaSensor(temp_coordinator, config_entry))
+            _LOGGER.info("Created Temperature Rise sensor with inlet and outlet temperature sensors")
+        else:
+            _LOGGER.debug("Temperature Rise sensor not created - missing inlet (%s) or outlet (%s) sensors", inlet_found, outlet_found)
     
     # Average fan speed
     fan_coordinator = get_coordinator_for_category("fans", snmp_coordinator, redfish_coordinator, "snmp")

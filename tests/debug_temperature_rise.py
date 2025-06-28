@@ -89,6 +89,9 @@ async def walk_temperature_sensors(host: str, community: str = "public", port: i
     inlet_patterns = ["inlet", "intake", "ambient"]
     outlet_patterns = ["outlet", "exhaust", "exit"]
     
+    # Also check for broader temperature patterns that might be suitable
+    airflow_patterns = ["system", "board", "cpu", "intake", "exhaust", "front", "rear", "back"]
+    
     inlet_sensors = []
     outlet_sensors = []
     
@@ -133,10 +136,41 @@ async def walk_temperature_sensors(host: str, community: str = "public", port: i
             print("  - No outlet/exhaust/exit temperature sensors found")
         print("  - Temperature Rise requires both inlet and outlet sensors")
     
+    # Check for potential airflow-related sensors
+    print("\n4. Potential airflow/thermal sensors:")
+    airflow_sensors = []
+    for index, location in temp_locations.items():
+        location_lower = location.lower()
+        for pattern in airflow_patterns:
+            if pattern in location_lower:
+                airflow_sensors.append((index, location))
+                print(f"  AIRFLOW - Index {index}: {location}")
+                break
+    
+    if not airflow_sensors:
+        print("  No airflow-related temperature sensors found")
+    
     # Show all sensors for reference
-    print("\n4. All temperature sensors (for reference):")
+    print("\n5. All temperature sensors (for reference):")
     for index, location in sorted(temp_locations.items(), key=lambda x: int(x[0]) if x[0].isdigit() else 999):
         print(f"  Index {index}: {location}")
+    
+    # Recommendations
+    print("\n6. Recommendations:")
+    if not inlet_sensors and not outlet_sensors:
+        print("  - No traditional inlet/outlet sensors found")
+        print("  - This is common on many Dell servers")
+        print("  - Temperature Rise sensor requires specific inlet/outlet naming")
+        
+        if airflow_sensors:
+            print("  - Consider mapping airflow sensors to inlet/outlet if appropriate:")
+            for index, location in airflow_sensors[:2]:  # Show first 2 as examples
+                print(f"    * {location} could potentially be used for thermal analysis")
+        
+        print("  - Alternative: Use individual temperature sensors for monitoring")
+        print("  - The Temperature Rise sensor is primarily useful for rack thermal efficiency")
+    else:
+        print("  - Temperature Rise sensor should be available with found sensors")
     
     engine.close()
 
