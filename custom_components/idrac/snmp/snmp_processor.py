@@ -83,6 +83,7 @@ class SNMPDataProcessor:
             "intrusion_detection": {},
             "battery": {},
             "processors": {},
+            "system_info": {},
         }
         
         # Sanitize data types before processing
@@ -291,6 +292,24 @@ class SNMPDataProcessor:
         
         if processed_count > 0:
             _LOGGER.debug("Processed %d memory sensors", processed_count)
+            
+            # Calculate total system memory from individual memory modules
+            total_memory_kb = 0
+            for memory_data in data["memory"].values():
+                if isinstance(memory_data, dict) and "size_kb" in memory_data:
+                    size_kb = memory_data["size_kb"]
+                    if size_kb is not None:
+                        try:
+                            total_memory_kb += int(size_kb)
+                        except (ValueError, TypeError):
+                            _LOGGER.debug("Invalid memory size value: %s", size_kb)
+            
+            # Convert KB to GB and store in system_info for compatibility with Redfish
+            if total_memory_kb > 0:
+                total_memory_gb = round(total_memory_kb / (1024 * 1024), 2)  # KB to GB
+                data["system_info"]["memory_gb"] = total_memory_gb
+                _LOGGER.debug("Calculated total system memory: %.2f GB from %d modules", 
+                             total_memory_gb, processed_count)
     
     def _process_voltage_sensors(self, data: Dict[str, Any], values: Dict[str, int], strings: Dict[str, str]) -> None:
         """Process voltage sensor data from SNMP values."""

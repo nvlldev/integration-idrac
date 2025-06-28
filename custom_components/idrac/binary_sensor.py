@@ -55,8 +55,10 @@ async def async_setup_entry(
             IdracPowerStateBinarySensor(system_coordinator, config_entry),
         ])
     
-    # Intrusion sensors 
+    # Intrusion sensors - try chassis_intrusion (Redfish) first, then intrusion_detection (SNMP)
     intrusion_coordinator = get_coordinator_for_category("chassis_intrusion", snmp_coordinator, redfish_coordinator, "redfish")
+    if not intrusion_coordinator:
+        intrusion_coordinator = get_coordinator_for_category("intrusion_detection", snmp_coordinator, redfish_coordinator, "snmp")
     if intrusion_coordinator:
         entities.append(IdracSystemIntrusionBinarySensor(intrusion_coordinator, config_entry))
     
@@ -630,7 +632,28 @@ class IdracSystemIntrusionBinarySensor(IdracBinarySensor):
                 # "Unknown" - sensor status cannot be determined
                 return None
         
-        # Fallback to SNMP data format
+        # Try SNMP intrusion_detection data format
+        intrusion_detection = self.coordinator.data.get("intrusion_detection")
+        if intrusion_detection:
+            # SNMP stores multiple intrusion sensors, check if any detect intrusion
+            for sensor_key, sensor_data in intrusion_detection.items():
+                if isinstance(sensor_data, dict):
+                    reading = sensor_data.get("reading")
+                    if reading is not None:
+                        try:
+                            reading_int = int(reading)
+                            # Dell iDRAC intrusion values: 1=other, 2=unknown, 3=ok, 4=non_critical, 5=critical, 6=non_recoverable
+                            # Also: 1=secure, 2=off (disabled), 3=breach_detected in some models
+                            if reading_int in [3, 5, 6]:  # breach_detected, critical, non_recoverable
+                                return True   # Intrusion detected
+                            elif reading_int == 1:
+                                return False  # Secure/OK
+                        except (ValueError, TypeError):
+                            continue
+            # If we processed sensors but none showed intrusion, return False
+            return False
+        
+        # Fallback to SNMP system_intrusion data format (legacy)
         intrusion_value = self.coordinator.data.get("system_intrusion")
         if intrusion_value is not None:
             try:
@@ -811,7 +834,11 @@ class IdracMemoryHealthBinarySensor(IdracBinarySensor):
     ) -> None:
         """Initialize the memory health binary sensor."""
         sensor_key = f"memory_{memory_index}"
-        sensor_name = f"Memory Module {memory_index} Health"
+        
+        # Get actual DIMM socket name from coordinator data
+        dimm_name = self._get_dimm_socket_name(coordinator, memory_index)
+        sensor_name = f"{dimm_name} Health"
+        
         super().__init__(
             coordinator,
             config_entry,
@@ -822,19 +849,36 @@ class IdracMemoryHealthBinarySensor(IdracBinarySensor):
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self._attr_icon = "mdi:memory"
 
+    def _get_dimm_socket_name(self, coordinator, memory_index: int) -> str:
+        """Get the DIMM socket name from coordinator data."""
+        if coordinator.data and "memory" in coordinator.data:
+            memory_key = f"memory_{memory_index}"
+            memory_data = coordinator.data["memory"].get(memory_key)
+            if memory_data and "name" in memory_data:
+                dimm_name = memory_data["name"]
+                # Convert "DIMM.Socket.A1" to "DIMM Socket A1"
+                if "DIMM.Socket." in dimm_name:
+                    socket_id = dimm_name.split(".")[-1]  # Extract the socket ID (A1, B1, etc.)
+                    return f"DIMM Socket {socket_id}"
+                elif "DIMM" in dimm_name:
+                    return dimm_name.replace(".", " ")
+        
+        # Fallback to generic name
+        return f"Memory Module {memory_index}"
+
     @property
     def is_on(self) -> bool | None:
         """Return True if memory module has a problem."""
-        if self.coordinator.data is None or "memory_health" not in self.coordinator.data:
+        if self.coordinator.data is None or "memory" not in self.coordinator.data:
             return None
         
-        memory_data = self.coordinator.data["memory_health"].get(self._sensor_key)
+        memory_data = self.coordinator.data["memory"].get(self._entity_key)
         if memory_data is None:
             return None
         
         # Handle both SNMP nested format and direct status format
         if isinstance(memory_data, dict):
-            health_value = memory_data.get("status")
+            health_value = memory_data.get("health_status")
         else:
             health_value = memory_data
             
@@ -857,10 +901,10 @@ class IdracMemoryHealthBinarySensor(IdracBinarySensor):
     @property
     def extra_state_attributes(self) -> dict[str, str] | None:
         """Return additional state attributes."""
-        if self.coordinator.data is None or "memory_health" not in self.coordinator.data:
+        if self.coordinator.data is None or "memory" not in self.coordinator.data:
             return None
         
-        memory_data = self.coordinator.data["memory_health"].get(self._sensor_key)
+        memory_data = self.coordinator.data["memory"].get(self._entity_key)
         if memory_data is None:
             return None
         
@@ -868,7 +912,7 @@ class IdracMemoryHealthBinarySensor(IdracBinarySensor):
         
         # Handle nested memory data structure
         if isinstance(memory_data, dict):
-            health_value = memory_data.get("status")
+            health_value = memory_data.get("health_status")
             # Add additional memory information if available
             if "name" in memory_data:
                 attributes["memory_name"] = memory_data["name"]
@@ -902,4 +946,14 @@ class IdracMemoryHealthBinarySensor(IdracBinarySensor):
                     attributes["raw_value"] = str(health_value)
         
         return attributes if attributes else None
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        return (
+            self.coordinator.last_update_success
+            and self.coordinator.data is not None
+            and "memory" in self.coordinator.data
+            and self._entity_key in self.coordinator.data["memory"]
+        )
 

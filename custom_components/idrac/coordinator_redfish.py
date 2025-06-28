@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from datetime import timedelta
 from typing import Any
 
@@ -58,6 +59,9 @@ class RedfishDataUpdateCoordinator(DataUpdateCoordinator):
             name=f"{DOMAIN}_redfish_{self.host}",
             update_interval=timedelta(seconds=scan_interval),
         )
+        
+        # Track update duration
+        self.last_update_duration = None
     
     @property
     def connection_type(self) -> str:
@@ -73,19 +77,26 @@ class RedfishDataUpdateCoordinator(DataUpdateCoordinator):
         Raises:
             UpdateFailed: If Redfish data collection fails.
         """
+        start_time = time.time()
         _LOGGER.debug("Starting Redfish data collection for %s", self._server_id)
         
         try:
             # Get Redfish sensor data
             redfish_data = await self.redfish_coordinator.get_sensor_data()
             
-            _LOGGER.debug("Redfish data collection completed for %s: %d categories", 
-                         self._server_id, len(redfish_data))
+            # Track update duration
+            self.last_update_duration = round(time.time() - start_time, 3)
+            
+            _LOGGER.debug("Redfish data collection completed for %s: %d categories in %.3fs", 
+                         self._server_id, len(redfish_data), self.last_update_duration)
             
             return redfish_data
             
         except Exception as exc:
-            _LOGGER.error("Redfish data collection failed for %s: %s", self._server_id, exc)
+            # Track duration even on failure
+            self.last_update_duration = round(time.time() - start_time, 3)
+            _LOGGER.error("Redfish data collection failed for %s: %s (%.3fs)", 
+                         self._server_id, exc, self.last_update_duration)
             raise UpdateFailed(f"Failed to fetch Redfish data: {exc}") from exc
 
     async def get_device_info(self) -> dict[str, Any]:

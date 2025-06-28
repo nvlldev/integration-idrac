@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from datetime import timedelta
 from typing import Any
 
@@ -58,6 +59,9 @@ class SNMPDataUpdateCoordinator(DataUpdateCoordinator):
             name=f"{DOMAIN}_snmp_{self.host}",
             update_interval=timedelta(seconds=scan_interval),
         )
+        
+        # Track update duration
+        self.last_update_duration = None
     
     @property
     def connection_type(self) -> str:
@@ -73,19 +77,26 @@ class SNMPDataUpdateCoordinator(DataUpdateCoordinator):
         Raises:
             UpdateFailed: If SNMP data collection fails.
         """
+        start_time = time.time()
         _LOGGER.debug("Starting SNMP data collection for %s", self._server_id)
         
         try:
             # Get SNMP sensor data
             snmp_data = await self.snmp_coordinator.get_sensor_data()
             
-            _LOGGER.debug("SNMP data collection completed for %s: %d categories", 
-                         self._server_id, len(snmp_data))
+            # Track update duration
+            self.last_update_duration = round(time.time() - start_time, 3)
+            
+            _LOGGER.debug("SNMP data collection completed for %s: %d categories in %.3fs", 
+                         self._server_id, len(snmp_data), self.last_update_duration)
             
             return snmp_data
             
         except Exception as exc:
-            _LOGGER.error("SNMP data collection failed for %s: %s", self._server_id, exc)
+            # Track duration even on failure
+            self.last_update_duration = round(time.time() - start_time, 3)
+            _LOGGER.error("SNMP data collection failed for %s: %s (%.3fs)", 
+                         self._server_id, exc, self.last_update_duration)
             raise UpdateFailed(f"Failed to fetch SNMP data: {exc}") from exc
 
     async def get_device_info(self) -> dict[str, Any]:

@@ -71,11 +71,7 @@ async def async_setup_entry(
                 for item_id, item_data in items.items():
                     entities.append(sensor_class(coordinator, config_entry, item_id, item_data))
     
-    # Memory health sensors (uses memory data)
-    memory_coordinator = get_coordinator_for_category("memory", snmp_coordinator, redfish_coordinator, "snmp")
-    if memory_coordinator and memory_coordinator.data and "memory" in memory_coordinator.data:
-        for memory_id, memory_data in memory_coordinator.data["memory"].items():
-            entities.append(IdracMemoryHealthSensor(memory_coordinator, config_entry, memory_id, memory_data))
+    # Memory health sensors removed - now handled by binary_sensor.py as DIMM Socket Health binary sensors
     
     # PSU specific sensors
     psu_coordinator = get_coordinator_for_category("power_supplies", snmp_coordinator, redfish_coordinator, "snmp")
@@ -128,7 +124,6 @@ async def async_setup_entry(
             IdracAveragePowerSensor,
             IdracMaxPowerSensor, 
             IdracMinPowerSensor,
-            IdracUpdateLatencySensor,
         ]
         for sensor_class in power_sensors:
             entities.append(sensor_class(power_coordinator, config_entry))
@@ -150,6 +145,15 @@ async def async_setup_entry(
     fan_coordinator = get_coordinator_for_category("fans", snmp_coordinator, redfish_coordinator, "snmp")
     if fan_coordinator and fan_coordinator.data and "fans" in fan_coordinator.data and fan_coordinator.data["fans"]:
         entities.append(IdracAverageFanSpeedSensor(fan_coordinator, config_entry))
+
+    # Add response time sensors for each coordinator
+    if snmp_coordinator:
+        entities.append(IdracSnmpResponseTimeSensor(snmp_coordinator, config_entry))
+        _LOGGER.debug("Created SNMP response time sensor")
+    
+    if redfish_coordinator:
+        entities.append(IdracRedfishResponseTimeSensor(redfish_coordinator, config_entry))
+        _LOGGER.debug("Created Redfish response time sensor")
 
     if entities:
         _LOGGER.info("Successfully created %d sensor entities for iDRAC", len(entities))
@@ -475,55 +479,7 @@ class IdracProcessorCountSensor(IdracSensor):
 
 
 
-class IdracMemoryHealthSensor(IdracSensor):
-    """Memory health sensor."""
-
-    def __init__(
-        self,
-        coordinator: SNMPDataUpdateCoordinator | RedfishDataUpdateCoordinator,
-        config_entry: ConfigEntry,
-        memory_id: str,
-        memory_data: dict[str, Any],
-    ) -> None:
-        """Initialize the memory health sensor."""
-        memory_name = memory_data.get("name", f"Memory {memory_id}")
-        super().__init__(coordinator, config_entry, f"memory_{memory_id}_health", f"{memory_name} Health")
-        self.memory_id = memory_id
-        self._attr_entity_category = None
-
-    @property
-    def native_value(self) -> str | None:
-        """Return the state of the sensor."""
-        if not self.coordinator.data or "memory" not in self.coordinator.data:
-            return None
-        memory_data = self.coordinator.data["memory"].get(self.memory_id)
-        if not memory_data:
-            return None
-        return memory_data.get("status", "Unknown")
-
-    @property
-    def icon(self) -> str:
-        """Return the icon for the sensor."""
-        status = self.native_value
-        if status == "ok":
-            return "mdi:memory"
-        elif status in ["non_critical", "critical", "non_recoverable"]:
-            return "mdi:memory-alert"
-        else:
-            return "mdi:memory-off"
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any] | None:
-        """Return additional state attributes."""
-        if not self.coordinator.data or "memory" not in self.coordinator.data:
-            return None
-        memory_data = self.coordinator.data["memory"].get(self.memory_id)
-        if not memory_data:
-            return None
-        return {
-            "size_kb": memory_data.get("size_kb"),
-            "name": memory_data.get("name"),
-        }
+# Memory health sensors removed - now handled by binary_sensor.py as DIMM Socket Health binary sensors
 
 
 # PSU status sensors are handled by binary sensors - regular PSU status sensor class removed
@@ -829,12 +785,12 @@ class IdracMinPowerSensor(IdracSensor):
         return self.coordinator.data["power_consumption"].get("min_consumed_watts")
 
 
-class IdracUpdateLatencySensor(IdracSensor):
-    """Response time sensor showing how long it takes to collect all sensor data."""
+class IdracSnmpResponseTimeSensor(IdracSensor):
+    """SNMP response time sensor showing how long SNMP data collection takes."""
     
-    def __init__(self, coordinator: SNMPDataUpdateCoordinator | RedfishDataUpdateCoordinator, config_entry: ConfigEntry) -> None:
-        """Initialize the sensor."""
-        super().__init__(coordinator, config_entry, "update_latency", "Update Response Time")
+    def __init__(self, coordinator: SNMPDataUpdateCoordinator, config_entry: ConfigEntry) -> None:
+        """Initialize the SNMP response time sensor."""
+        super().__init__(coordinator, config_entry, "snmp_response_time", "SNMP Response Time")
         self._attr_device_class = SensorDeviceClass.DURATION
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_native_unit_of_measurement = "s"
@@ -843,24 +799,58 @@ class IdracUpdateLatencySensor(IdracSensor):
 
     @property
     def native_value(self) -> float | None:
-        """Return the data collection time in seconds."""
-        if not self.coordinator.data or "update_latency" not in self.coordinator.data:
-            return None
-        return self.coordinator.data["update_latency"].get("collection_time_seconds")
+        """Return the SNMP data collection time in seconds."""
+        return getattr(self.coordinator, 'last_update_duration', None)
     
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
-        """Return additional attributes about the data collection."""
-        if not self.coordinator.data or "update_latency" not in self.coordinator.data:
-            return None
-        
-        latency_data = self.coordinator.data["update_latency"]
-        return {
-            "redfish_sensors": latency_data.get("redfish_sensor_count", 0),
-            "snmp_sensors": latency_data.get("snmp_sensor_count", 0), 
-            "total_sensors": latency_data.get("total_sensor_count", 0),
-            "collection_method": "concurrent",
+        """Return additional attributes about SNMP data collection."""
+        attributes = {
+            "protocol": "SNMP",
+            "coordinator_type": type(self.coordinator).__name__,
         }
+        
+        # Add last update information
+        if hasattr(self.coordinator, 'last_update_success'):
+            attributes["last_update_success"] = self.coordinator.last_update_success
+        if hasattr(self.coordinator, 'last_exception'):
+            attributes["last_exception"] = str(self.coordinator.last_exception) if self.coordinator.last_exception else None
+            
+        return attributes
+
+
+class IdracRedfishResponseTimeSensor(IdracSensor):
+    """Redfish response time sensor showing how long Redfish data collection takes."""
+    
+    def __init__(self, coordinator: RedfishDataUpdateCoordinator, config_entry: ConfigEntry) -> None:
+        """Initialize the Redfish response time sensor."""
+        super().__init__(coordinator, config_entry, "redfish_response_time", "Redfish Response Time")
+        self._attr_device_class = SensorDeviceClass.DURATION
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_native_unit_of_measurement = "s"
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_icon = "mdi:timer-outline"
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the Redfish data collection time in seconds."""
+        return getattr(self.coordinator, 'last_update_duration', None)
+    
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return additional attributes about Redfish data collection."""
+        attributes = {
+            "protocol": "Redfish",
+            "coordinator_type": type(self.coordinator).__name__,
+        }
+        
+        # Add last update information
+        if hasattr(self.coordinator, 'last_update_success'):
+            attributes["last_update_success"] = self.coordinator.last_update_success
+        if hasattr(self.coordinator, 'last_exception'):
+            attributes["last_exception"] = str(self.coordinator.last_exception) if self.coordinator.last_exception else None
+            
+        return attributes
 
 
 class IdracAverageCpuTemperatureSensor(IdracSensor):
