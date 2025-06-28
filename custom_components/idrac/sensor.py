@@ -205,7 +205,7 @@ class IdracPowerConsumptionSensor(IdracSensor):
         config_entry: ConfigEntry,
     ) -> None:
         """Initialize the power consumption sensor."""
-        super().__init__(coordinator, config_entry, "power_consumption", "System Power Consumption")
+        super().__init__(coordinator, config_entry, "power_consumption", "Power Consumption")
         self._attr_native_unit_of_measurement = UnitOfPower.WATT
         self._attr_device_class = SensorDeviceClass.POWER
         self._attr_state_class = SensorStateClass.MEASUREMENT
@@ -412,7 +412,7 @@ class IdracMemorySensor(IdracSensor):
         config_entry: ConfigEntry,
     ) -> None:
         """Initialize the memory sensor."""
-        super().__init__(coordinator, config_entry, "memory_total", "Total System Memory")
+        super().__init__(coordinator, config_entry, "memory_total", "Total Memory")
         self._attr_native_unit_of_measurement = "GB"
         self._attr_device_class = SensorDeviceClass.DATA_SIZE
         self._attr_state_class = SensorStateClass.MEASUREMENT
@@ -726,7 +726,7 @@ class IdracAverageFanSpeedSensor(IdracSensor):
     
     def __init__(self, coordinator: SNMPDataUpdateCoordinator | RedfishDataUpdateCoordinator, config_entry: ConfigEntry) -> None:
         """Initialize the sensor."""
-        super().__init__(coordinator, config_entry, "average_fan_speed", "System Fan Speed Average")
+        super().__init__(coordinator, config_entry, "average_fan_speed", "Average Fan Speed")
         self._attr_native_unit_of_measurement = REVOLUTIONS_PER_MINUTE
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_entity_category = None  # Primary environmental measurement
@@ -1114,7 +1114,7 @@ class IdracEnergyConsumptionSensor(IdracSensor):
         config_entry: ConfigEntry,
     ) -> None:
         """Initialize the energy consumption sensor."""
-        super().__init__(coordinator, config_entry, "energy_consumption", "System Energy Consumption")
+        super().__init__(coordinator, config_entry, "energy_consumption", "Energy Consumption")
         self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
         self._attr_device_class = SensorDeviceClass.ENERGY
         self._attr_state_class = SensorStateClass.TOTAL_INCREASING
