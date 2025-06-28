@@ -143,6 +143,38 @@ if __name__ == "__main__":
 3. Include both positive and negative test cases
 4. Test with actual iDRAC hardware when possible
 
+### Automatic Testing and Debugging
+
+When investigating sensor availability issues or user-reported problems:
+
+1. **ALWAYS run relevant test scripts** to gather data before making code changes
+2. **Create diagnostic scripts** for new types of issues encountered
+3. **Document findings** in the test results and commit messages
+
+#### Common Diagnostic Scripts:
+- `tests/debug_temperature_rise_simple.py` - Explains Temperature Rise sensor requirements
+- `tests/debug_processor_speeds.py` - Diagnose processor speed sensor issues via Redfish API
+- `tests/debug_intrusion.py` - Basic intrusion detection sensor debugging
+- `tests/test_all_intrusion_oids.py` - Comprehensive intrusion sensor OID testing
+
+#### Temperature Rise Sensor Troubleshooting:
+The Temperature Rise sensor requires BOTH inlet AND outlet temperature sensors with specific naming patterns:
+- **Inlet patterns**: "inlet", "intake", "ambient"
+- **Outlet patterns**: "outlet", "exhaust", "exit"
+
+Many Dell servers don't have sensors with these naming patterns, which is normal. Run `python3 tests/debug_temperature_rise_simple.py` for complete explanation.
+
+#### Processor Speed Sensor Troubleshooting:
+If processor speed sensors show as unavailable:
+1. Run `python3 tests/debug_processor_speeds.py` to check Redfish ProcessorSummary data
+2. Look for MaxSpeedMHz and SpeedMHz fields in the API response
+3. Some iDRAC versions may not expose processor speeds via ProcessorSummary
+
+#### PSU Sensor Filtering:
+PSU voltage sensors (PS1, PS2, PS3 Status voltage) and PSU output power sensors are filtered out per user requirements. The filtering logic is in:
+- `custom_components/idrac/snmp/snmp_processor.py` - `_process_voltage_sensors()`
+- `custom_components/idrac/sensor.py` - PSU sensor setup section
+
 ## Cleanup Policy
 
 - Keep test files that provide ongoing diagnostic value

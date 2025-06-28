@@ -50,32 +50,36 @@ async def walk_temperature_sensors(host: str, community: str = "public", port: i
     print("\n1. Walking temperature sensor locations...")
     temp_locations = {}
     
-    async for error_indication, error_status, error_index, var_binds in nextCmd(
-        engine,
-        auth_data,
-        transport_target,
-        context_data,
-        ObjectType(ObjectIdentity(TEMP_PROBE_LOCATION_OID)),
-        lexicographicMode=False
-    ):
-        if error_indication:
-            _LOGGER.error("Walk error: %s", error_indication)
-            break
-        elif error_status:
-            _LOGGER.error("Walk error status: %s", error_status.prettyPrint())
-            break
-        else:
-            for var_bind in var_binds:
-                oid = str(var_bind[0])
-                value = str(var_bind[1])
-                # Stop if we've walked past our base OID
-                if not oid.startswith(TEMP_PROBE_LOCATION_OID):
-                    break
-                
-                # Extract index from OID
-                index = oid.replace(TEMP_PROBE_LOCATION_OID + ".", "")
-                temp_locations[index] = value
-                print(f"  Index {index}: {value}")
+    try:
+        async for error_indication, error_status, error_index, var_binds in nextCmd(
+            engine,
+            auth_data,
+            transport_target,
+            context_data,
+            ObjectType(ObjectIdentity(TEMP_PROBE_LOCATION_OID)),
+            lexicographicMode=False
+        ):
+            if error_indication:
+                _LOGGER.error("Walk error: %s", error_indication)
+                break
+            elif error_status:
+                _LOGGER.error("Walk error status: %s", error_status.prettyPrint())
+                break
+            else:
+                for var_bind in var_binds:
+                    oid = str(var_bind[0])
+                    value = str(var_bind[1])
+                    # Stop if we've walked past our base OID
+                    if not oid.startswith(TEMP_PROBE_LOCATION_OID):
+                        break
+                    
+                    # Extract index from OID
+                    index = oid.replace(TEMP_PROBE_LOCATION_OID + ".", "")
+                    temp_locations[index] = value
+                    print(f"  Index {index}: {value}")
+    except Exception as e:
+        print(f"Error walking temperature sensors: {e}")
+        print("This might be due to SNMP connectivity issues or missing pysnmp dependencies")
     
     if not temp_locations:
         print("  No temperature sensors found")
