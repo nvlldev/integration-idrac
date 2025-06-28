@@ -151,9 +151,8 @@ class IdracBinarySensor(CoordinatorEntity, BinarySensorEntity):
         device_id = f"{host}:{port}"
         
         # Set entity name with device prefix for proper entity ID generation
-        # Home Assistant will still display clean names in device context
-        host = coordinator.host.replace(".", "_").replace(":", "_")
-        self._attr_name = f"Dell iDRAC {host} {sensor_name}"
+        # Home Assistant will automatically sanitize for entity IDs
+        self._attr_name = f"Dell iDRAC {coordinator.host} {sensor_name}"
         # Use stable unique_id based on device_id and sensor key
         self._attr_unique_id = f"{device_id}_{sensor_key}"
         self._attr_device_class = device_class

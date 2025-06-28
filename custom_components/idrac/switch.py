@@ -59,9 +59,8 @@ class IdracSwitch(CoordinatorEntity, SwitchEntity):
         device_id = f"{host}:{port}"
         
         # Set entity name with device prefix for proper entity ID generation
-        # Home Assistant will still display clean names in device context
-        host = coordinator.host.replace(".", "_").replace(":", "_")
-        self._attr_name = f"Dell iDRAC {host} {switch_name}"
+        # Home Assistant will automatically sanitize for entity IDs
+        self._attr_name = f"Dell iDRAC {coordinator.host} {switch_name}"
         # Use stable unique_id based on device_id and switch key
         self._attr_unique_id = f"{device_id}_{switch_key}"
         self._attr_device_class = device_class

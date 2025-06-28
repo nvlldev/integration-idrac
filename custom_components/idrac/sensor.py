@@ -322,9 +322,8 @@ class IdracSensor(CoordinatorEntity[SNMPDataUpdateCoordinator | RedfishDataUpdat
         self.sensor_type = sensor_type
         
         # Set entity name with device prefix for proper entity ID generation
-        # Home Assistant will still display clean names in device context
-        host = coordinator.host.replace(".", "_").replace(":", "_")
-        self._attr_name = f"Dell iDRAC {host} {name}"
+        # Home Assistant will automatically sanitize for entity IDs
+        self._attr_name = f"Dell iDRAC {coordinator.host} {name}"
         self._attr_unique_id = f"{config_entry.entry_id}_{sensor_type}"
 
     async def async_added_to_hass(self) -> None:
