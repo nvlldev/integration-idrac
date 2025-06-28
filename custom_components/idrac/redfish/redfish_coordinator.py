@@ -300,6 +300,9 @@ class RedfishCoordinator:
                 "processor_count": system_data.get("ProcessorSummary", {}).get("Count"),
                 "processor_model": system_data.get("ProcessorSummary", {}).get("Model"),
                 "processor_status": system_data.get("ProcessorSummary", {}).get("Status", {}).get("Health"),
+                "processor_max_speed_mhz": system_data.get("ProcessorSummary", {}).get("MaxSpeedMHz"),
+                "processor_current_speed_mhz": system_data.get("ProcessorSummary", {}).get("SpeedMHz"),
+                "memory_type": system_data.get("MemorySummary", {}).get("MemoryType"),
             }
             
             # Store LED state separately for easy access

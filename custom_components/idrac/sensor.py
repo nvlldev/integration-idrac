@@ -118,10 +118,16 @@ async def async_setup_entry(
             entities.append(IdracProcessorModelSensor(coordinator, config_entry))
         if system_info.get("memory_mirroring"):
             entities.append(IdracMemoryMirroringSensor(coordinator, config_entry))
+        if system_info.get("memory_type"):
+            entities.append(IdracMemoryTypeSensor(coordinator, config_entry))
         if system_info.get("processor_status"):
             entities.append(IdracProcessorStatusSensor(coordinator, config_entry))
         if system_info.get("memory_status"):
             entities.append(IdracMemoryStatusSensor(coordinator, config_entry))
+        if system_info.get("processor_max_speed_mhz"):
+            entities.append(IdracProcessorMaxSpeedSensor(coordinator, config_entry))
+        if system_info.get("processor_current_speed_mhz"):
+            entities.append(IdracProcessorCurrentSpeedSensor(coordinator, config_entry))
         # Note: Power state, chassis intrusion, power redundancy, and system health 
         # are handled by binary sensors - no duplicate regular sensors needed
 
@@ -1223,7 +1229,7 @@ class IdracProcessorStatusSensor(IdracSensor):
     ) -> None:
         """Initialize the processor status sensor."""
         super().__init__(coordinator, config_entry, "processor_status", "Processor Status")
-        self._attr_entity_category = EntityCategory.CONFIG
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
     @property
     def native_value(self) -> str | None:
@@ -1252,7 +1258,7 @@ class IdracMemoryStatusSensor(IdracSensor):
     ) -> None:
         """Initialize the memory status sensor."""
         super().__init__(coordinator, config_entry, "memory_status", "Memory Status")
-        self._attr_entity_category = EntityCategory.CONFIG
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
     @property
     def native_value(self) -> str | None:
@@ -1269,5 +1275,98 @@ class IdracMemoryStatusSensor(IdracSensor):
             return False
         system_info = self.coordinator.data.get("system_info", {})
         return system_info.get("memory_status") is not None
+
+
+class IdracMemoryTypeSensor(IdracSensor):
+    """Memory type configuration sensor."""
+
+    def __init__(
+        self,
+        coordinator: IdracDataUpdateCoordinator,
+        config_entry: ConfigEntry,
+    ) -> None:
+        """Initialize the memory type sensor."""
+        super().__init__(coordinator, config_entry, "memory_type", "Memory Type")
+        self._attr_entity_category = EntityCategory.CONFIG
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the state of the sensor."""
+        if not self.coordinator.data:
+            return None
+        system_info = self.coordinator.data.get("system_info", {})
+        return system_info.get("memory_type")
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        if not self.coordinator.data:
+            return False
+        system_info = self.coordinator.data.get("system_info", {})
+        return system_info.get("memory_type") is not None
+
+
+class IdracProcessorMaxSpeedSensor(IdracSensor):
+    """Processor max speed configuration sensor."""
+
+    def __init__(
+        self,
+        coordinator: IdracDataUpdateCoordinator,
+        config_entry: ConfigEntry,
+    ) -> None:
+        """Initialize the processor max speed sensor."""
+        super().__init__(coordinator, config_entry, "processor_max_speed", "Processor Max Speed")
+        self._attr_native_unit_of_measurement = "MHz"
+        self._attr_device_class = SensorDeviceClass.FREQUENCY
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_entity_category = EntityCategory.CONFIG
+
+    @property
+    def native_value(self) -> int | None:
+        """Return the state of the sensor."""
+        if not self.coordinator.data:
+            return None
+        system_info = self.coordinator.data.get("system_info", {})
+        return system_info.get("processor_max_speed_mhz")
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        if not self.coordinator.data:
+            return False
+        system_info = self.coordinator.data.get("system_info", {})
+        return system_info.get("processor_max_speed_mhz") is not None
+
+
+class IdracProcessorCurrentSpeedSensor(IdracSensor):
+    """Processor current speed sensor."""
+
+    def __init__(
+        self,
+        coordinator: IdracDataUpdateCoordinator,
+        config_entry: ConfigEntry,
+    ) -> None:
+        """Initialize the processor current speed sensor."""
+        super().__init__(coordinator, config_entry, "processor_current_speed", "Processor Current Speed")
+        self._attr_native_unit_of_measurement = "MHz"
+        self._attr_device_class = SensorDeviceClass.FREQUENCY
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        # No entity_category - appears in main sensors section
+
+    @property
+    def native_value(self) -> int | None:
+        """Return the state of the sensor."""
+        if not self.coordinator.data:
+            return None
+        system_info = self.coordinator.data.get("system_info", {})
+        return system_info.get("processor_current_speed_mhz")
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        if not self.coordinator.data:
+            return False
+        system_info = self.coordinator.data.get("system_info", {})
+        return system_info.get("processor_current_speed_mhz") is not None
 
 
