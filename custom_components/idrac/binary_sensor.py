@@ -138,7 +138,14 @@ async def async_setup_entry(
                 IdracSystemBoardIntrusionBinarySensor(board_intrusion_coordinator, config_entry, intrusion_index)
             )
     
-    # Note: Voltage status binary sensors removed - voltage status is covered by regular voltage sensors
+    # Add system voltage binary sensors (System Board voltage status indicators)
+    voltage_coordinator = get_coordinator_for_category("system_voltages", snmp_coordinator, redfish_coordinator, "snmp")
+    if voltage_coordinator and voltage_coordinator.data and "system_voltages" in voltage_coordinator.data:
+        system_voltages = voltage_coordinator.data["system_voltages"]
+        if system_voltages:
+            _LOGGER.info("Creating %d system voltage binary sensors", len(system_voltages))
+            for voltage_id, voltage_data in system_voltages.items():
+                entities.append(IdracSystemVoltageBinarySensor(voltage_coordinator, config_entry, voltage_id, voltage_data))
     
     if entities:
         _LOGGER.info("Successfully created %d binary sensor entities for iDRAC", len(entities))
@@ -1275,5 +1282,82 @@ class IdracSystemBoardIntrusionBinarySensor(IdracBinarySensor):
             and self.coordinator.data is not None
             and "intrusion_detection" in self.coordinator.data
             and self._entity_key in self.coordinator.data["intrusion_detection"]
+        )
+
+
+class IdracSystemVoltageBinarySensor(IdracBinarySensor):
+    """Dell iDRAC system board voltage status binary sensor."""
+
+    def __init__(
+        self,
+        coordinator: SNMPDataUpdateCoordinator | RedfishDataUpdateCoordinator,
+        config_entry: ConfigEntry,
+        voltage_id: str,
+        voltage_data: dict,
+    ) -> None:
+        """Initialize the system voltage binary sensor."""
+        voltage_name = voltage_data.get("name", f"System Voltage {voltage_id}")
+        
+        super().__init__(
+            coordinator,
+            config_entry,
+            voltage_id,
+            voltage_name,
+            BinarySensorDeviceClass.PROBLEM,  # "On" means voltage problem, "Off" means voltage OK
+        )
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_entity_enabled_default = False  # Disabled by default
+        self._attr_icon = "mdi:flash-triangle"
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return True if voltage is problematic (low/missing)."""
+        if self.coordinator.data is None or "system_voltages" not in self.coordinator.data:
+            return None
+        
+        voltage_data = self.coordinator.data["system_voltages"].get(self._entity_key)
+        if voltage_data is None:
+            return None
+        
+        # Get the binary reading (1 = OK, 0 = Problem)
+        reading = voltage_data.get("reading")
+        if reading is None:
+            return None
+        
+        # Return True if there's a problem (reading is 0), False if OK (reading is 1)
+        return reading == 0
+
+    @property
+    def extra_state_attributes(self) -> dict[str, str] | None:
+        """Return additional state attributes."""
+        if self.coordinator.data is None or "system_voltages" not in self.coordinator.data:
+            return None
+        
+        voltage_data = self.coordinator.data["system_voltages"].get(self._entity_key)
+        if voltage_data is None:
+            return None
+        
+        attributes = {}
+        
+        # Add voltage value for debugging
+        voltage_value = voltage_data.get("voltage_value")
+        if voltage_value is not None:
+            attributes["voltage_value"] = f"{voltage_value:.2f}V"
+        
+        # Add status
+        status = voltage_data.get("status")
+        if status:
+            attributes["status"] = status
+        
+        return attributes if attributes else None
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        return (
+            self.coordinator.last_update_success
+            and self.coordinator.data is not None
+            and "system_voltages" in self.coordinator.data
+            and self._entity_key in self.coordinator.data["system_voltages"]
         )
 

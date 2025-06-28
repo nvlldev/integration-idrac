@@ -385,6 +385,30 @@ class SNMPDataProcessor:
                     skipped_count += 1
                     continue
                 
+                # Handle System Board voltage sensors as binary sensors (they're status indicators, not real voltages)
+                if voltage_location and "system board" in voltage_location.lower():
+                    # Convert voltage reading (typically in millivolts)  
+                    voltage_volts = self._convert_voltage(voltage_reading)
+                    
+                    # System board voltages are binary status indicators (1V = OK, 0V = Not OK)
+                    is_ok = voltage_volts > 0.5  # Consider > 0.5V as "OK"
+                    
+                    sensor_data = {
+                        "name": voltage_location.replace(" Voltage", ""),  # Remove "Voltage" from name
+                        "reading": 1 if is_ok else 0,  # Binary reading for binary sensor
+                        "status": "ok" if is_ok else "critical",
+                        "voltage_value": voltage_volts,  # Keep original voltage for debugging
+                    }
+                    
+                    # Store in system_voltages for binary sensor processing
+                    if "system_voltages" not in data:
+                        data["system_voltages"] = {}
+                    data["system_voltages"][f"system_voltage_{voltage_id}"] = sensor_data
+                    _LOGGER.debug("Added system board voltage as binary sensor: %s", voltage_location)
+                    processed_count += 1
+                    continue
+                
+                # Regular voltage sensors (PSU input voltages, etc.)
                 # Convert voltage reading (typically in millivolts)
                 voltage_volts = self._convert_voltage(voltage_reading)
                 
