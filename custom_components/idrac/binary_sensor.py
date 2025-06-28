@@ -1173,8 +1173,10 @@ class IdracSystemBoardIntrusionBinarySensor(IdracBinarySensor):
             return None
         
         # Handle both SNMP nested format and direct status format
+        # For intrusion sensors, use "status" field instead of "reading" field
+        # because reading=1 means breach but status=3 means OK
         if isinstance(intrusion_data, dict):
-            reading_value = intrusion_data.get("reading")
+            reading_value = intrusion_data.get("status")  # Use status instead of reading
         else:
             reading_value = intrusion_data
             
@@ -1182,7 +1184,7 @@ class IdracSystemBoardIntrusionBinarySensor(IdracBinarySensor):
             return None
         
         # Debug logging to help diagnose status interpretation
-        _LOGGER.warning("DEBUG: System Board Intrusion %s: raw reading_value=%s (type=%s)", 
+        _LOGGER.warning("DEBUG: System Board Intrusion %s: using status_value=%s (type=%s)", 
                        self._entity_key, reading_value, type(reading_value))
         _LOGGER.warning("DEBUG: Full intrusion_data for %s: %s", self._entity_key, intrusion_data)
             

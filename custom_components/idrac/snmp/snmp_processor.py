@@ -419,7 +419,8 @@ class SNMPDataProcessor:
                 sensor_data = {
                     "name": intrusion_location,
                     "reading": intrusion_reading,
-                    "status": INTRUSION_STATUS.get(intrusion_status, "unknown"),
+                    "status": intrusion_status,  # Store raw numeric status for binary sensor
+                    "status_text": INTRUSION_STATUS.get(intrusion_status, "unknown"),  # Keep text version for reference
                 }
                 
                 data["intrusion_detection"][f"intrusion_{intrusion_id}"] = sensor_data
