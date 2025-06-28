@@ -134,6 +134,7 @@ class SNMPClient:
         self.entry = entry
         self.host = entry.data[CONF_HOST]
         self.port = entry.data.get(CONF_SNMP_PORT, DEFAULT_SNMP_PORT)
+        self.snmp_timeout = entry.options.get(CONF_SNMP_TIMEOUT, entry.data.get(CONF_SNMP_TIMEOUT, DEFAULT_SNMP_TIMEOUT))
         
         _LOGGER.debug("SNMP client host: %s, port: %d", self.host, self.port)
         
@@ -248,7 +249,7 @@ class SNMPClient:
                 _LOGGER.debug("Creating UdpTransportTarget with validated parameters: ('%s', %d)", self.host, self.port)
                 
                 try:
-                    self.transport_target = UdpTransportTarget((self.host, self.port), timeout=4.0, retries=1)
+                    self.transport_target = UdpTransportTarget((self.host, self.port), timeout=float(self.snmp_timeout), retries=1)
                     _LOGGER.debug("Transport target created successfully for %s:%d", self.host, self.port)
                 except Exception as transport_exc:
                     _LOGGER.error("Failed to create UdpTransportTarget: %s", transport_exc, exc_info=True)

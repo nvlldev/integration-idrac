@@ -75,6 +75,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _LOGGER.error("Failed to setup services: %s", exc, exc_info=True)
         # Don't fail setup for service registration issues
 
+    # Register update listener for options changes
+    entry.async_on_unload(entry.add_update_listener(async_reload_entry))
+
     _LOGGER.info("Dell iDRAC integration setup completed successfully for %s", entry.title)
     return True
 

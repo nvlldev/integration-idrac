@@ -358,7 +358,8 @@ async def validate_snmp_input(hass: HomeAssistant, data: dict[str, Any]) -> dict
         def _init_snmp():
             engine = SnmpEngine()
             auth_data = _create_auth_data(data)
-            transport_target = UdpTransportTarget((host, port), timeout=10, retries=2)
+            snmp_timeout = data.get(CONF_SNMP_TIMEOUT, DEFAULT_SNMP_TIMEOUT)
+            transport_target = UdpTransportTarget((host, port), timeout=float(snmp_timeout), retries=2)
             context_data = ContextData()
             return engine, auth_data, transport_target, context_data
         
@@ -478,6 +479,11 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     def __init__(self) -> None:
         """Initialize the config flow."""
         self.data: dict[str, Any] = {}
+
+    @staticmethod
+    def async_get_options_flow(config_entry: config_entries.ConfigEntry) -> config_entries.OptionsFlow:
+        """Create the options flow."""
+        return OptionsFlowHandler(config_entry)
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -730,6 +736,87 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data_schema=STEP_HYBRID_SNMP_V3_SCHEMA,
             errors=errors,
             description_placeholders={"host": self.data[CONF_HOST]},
+        )
+
+
+class OptionsFlowHandler(config_entries.OptionsFlow):
+    """Handle options flow for Dell iDRAC integration."""
+
+    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+        """Initialize options flow."""
+        self.config_entry = config_entry
+
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        """Manage the options."""
+        if user_input is not None:
+            return self.async_create_entry(title="", data=user_input)
+
+        # Get current values from options or fall back to config data
+        current_scan_interval = self.config_entry.options.get(
+            CONF_SCAN_INTERVAL, 
+            self.config_entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+        )
+        current_request_timeout = self.config_entry.options.get(
+            CONF_REQUEST_TIMEOUT,
+            self.config_entry.data.get(CONF_REQUEST_TIMEOUT, DEFAULT_REQUEST_TIMEOUT)
+        )
+        current_session_timeout = self.config_entry.options.get(
+            CONF_SESSION_TIMEOUT,
+            self.config_entry.data.get(CONF_SESSION_TIMEOUT, DEFAULT_SESSION_TIMEOUT)
+        )
+        current_snmp_timeout = self.config_entry.options.get(
+            CONF_SNMP_TIMEOUT,
+            self.config_entry.data.get(CONF_SNMP_TIMEOUT, DEFAULT_SNMP_TIMEOUT)
+        )
+
+        options_schema = vol.Schema({
+            vol.Optional(CONF_SCAN_INTERVAL, default=current_scan_interval): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=10,
+                    max=300,
+                    step=5,
+                    unit_of_measurement="seconds",
+                    mode=selector.NumberSelectorMode.BOX
+                )
+            ),
+            vol.Optional(CONF_REQUEST_TIMEOUT, default=current_request_timeout): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=5,
+                    max=120,
+                    step=5,
+                    unit_of_measurement="seconds",
+                    mode=selector.NumberSelectorMode.BOX
+                )
+            ),
+            vol.Optional(CONF_SESSION_TIMEOUT, default=current_session_timeout): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=30,
+                    max=600,
+                    step=15,
+                    unit_of_measurement="seconds",
+                    mode=selector.NumberSelectorMode.BOX
+                )
+            ),
+            vol.Optional(CONF_SNMP_TIMEOUT, default=current_snmp_timeout): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=1,
+                    max=30,
+                    step=1,
+                    unit_of_measurement="seconds",
+                    mode=selector.NumberSelectorMode.BOX
+                )
+            ),
+        })
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=options_schema,
+            description_placeholders={
+                "scan_interval_desc": "How often to poll the iDRAC for sensor updates",
+                "request_timeout_desc": "Timeout for individual Redfish HTTP requests",
+                "session_timeout_desc": "Timeout for Redfish session connections",
+                "snmp_timeout_desc": "Timeout for individual SNMP requests"
+            }
         )
 
 
