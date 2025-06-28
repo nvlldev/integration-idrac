@@ -427,7 +427,7 @@ class IdracMemorySensor(IdracSensor):
         self._attr_native_unit_of_measurement = "GB"
         self._attr_device_class = SensorDeviceClass.DATA_SIZE
         self._attr_state_class = SensorStateClass.MEASUREMENT
-        self._attr_entity_category = EntityCategory.CONFIG
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
     @property
     def native_value(self) -> float | None:
@@ -449,7 +449,7 @@ class IdracProcessorCountSensor(IdracSensor):
         """Initialize the processor count sensor."""
         super().__init__(coordinator, config_entry, "processor_count", "Processor Count")
         self._attr_state_class = SensorStateClass.MEASUREMENT
-        self._attr_entity_category = EntityCategory.CONFIG
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
     @property
     def native_value(self) -> int | None:
