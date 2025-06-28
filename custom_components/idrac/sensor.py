@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 from homeassistant.components.sensor import (
@@ -15,6 +16,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     REVOLUTIONS_PER_MINUTE,
     UnitOfElectricPotential,
+    UnitOfEnergy,
     UnitOfPower,
     UnitOfTemperature,
     PERCENTAGE,
@@ -86,6 +88,12 @@ async def async_setup_entry(
         if coordinator and coordinator.data and category in coordinator.data and coordinator.data[category]:
             entities.append(sensor_class(coordinator, config_entry))
             _LOGGER.debug("Created %s using %s coordinator", sensor_class.__name__, type(coordinator).__name__)
+    
+    # Energy consumption sensor (integral of power consumption)
+    power_coordinator = get_coordinator_for_category("power_consumption", snmp_coordinator, redfish_coordinator, "snmp")
+    if power_coordinator and power_coordinator.data and "power_consumption" in power_coordinator.data and power_coordinator.data["power_consumption"]:
+        entities.append(IdracEnergyConsumptionSensor(power_coordinator, config_entry))
+        _LOGGER.debug("Created energy consumption sensor using %s coordinator", type(power_coordinator).__name__)
     
     # System information sensors (typically Redfish)
     system_coordinator = get_coordinator_for_category("system_info", snmp_coordinator, redfish_coordinator, "redfish")
@@ -1095,5 +1103,93 @@ class IdracProcessorCurrentSpeedSensor(IdracSensor):
                          list(system_info.keys()) if system_info else "No system_info")
         
         return current_speed is not None
+
+
+class IdracEnergyConsumptionSensor(IdracSensor):
+    """Energy consumption sensor that integrates power consumption over time."""
+
+    def __init__(
+        self,
+        coordinator: SNMPDataUpdateCoordinator | RedfishDataUpdateCoordinator,
+        config_entry: ConfigEntry,
+    ) -> None:
+        """Initialize the energy consumption sensor."""
+        super().__init__(coordinator, config_entry, "energy_consumption", "System Energy Consumption")
+        self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+        self._attr_device_class = SensorDeviceClass.ENERGY
+        self._attr_state_class = SensorStateClass.TOTAL_INCREASING
+        self._attr_entity_category = None  # Primary energy measurement - not diagnostic
+        self._attr_icon = "mdi:lightning-bolt-circle"
+        
+        # Track energy accumulation
+        self._last_power_reading = None
+        self._last_update_time = None
+        self._total_energy_kwh = 0.0
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the total energy consumption in kWh."""
+        if not self.coordinator.data:
+            return None
+        
+        current_time = time.time()
+        power_data = self.coordinator.data.get("power_consumption", {})
+        current_power = power_data.get("consumed_watts")
+        
+        if current_power is None:
+            return self._total_energy_kwh if self._total_energy_kwh > 0 else None
+        
+        # Calculate energy since last reading (trapezoidal integration)
+        if self._last_power_reading is not None and self._last_update_time is not None:
+            time_delta_hours = (current_time - self._last_update_time) / 3600  # Convert seconds to hours
+            
+            # Use trapezoidal rule for integration: (P1 + P2) / 2 * dt
+            average_power = (self._last_power_reading + current_power) / 2
+            energy_increment_kwh = (average_power * time_delta_hours) / 1000  # Convert Wh to kWh
+            
+            self._total_energy_kwh += energy_increment_kwh
+            
+            _LOGGER.debug("Energy calculation: %.1fW for %.3fh = %.6f kWh (total: %.3f kWh)", 
+                         average_power, time_delta_hours, energy_increment_kwh, self._total_energy_kwh)
+        
+        # Update tracking variables
+        self._last_power_reading = current_power
+        self._last_update_time = current_time
+        
+        return round(self._total_energy_kwh, 3) if self._total_energy_kwh > 0 else 0.0
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return additional state attributes."""
+        if not self.coordinator.data:
+            return None
+        
+        power_data = self.coordinator.data.get("power_consumption", {})
+        current_power = power_data.get("consumed_watts")
+        
+        attributes = {
+            "current_power_watts": current_power,
+            "integration_method": "trapezoidal",
+            "last_reset": None,  # This is a total_increasing sensor, no resets
+        }
+        
+        # Add power metrics if available
+        if power_data.get("average_consumed_watts"):
+            attributes["average_power_watts"] = power_data.get("average_consumed_watts")
+        if power_data.get("max_consumed_watts"):
+            attributes["max_power_watts"] = power_data.get("max_consumed_watts")
+        if power_data.get("min_consumed_watts"):
+            attributes["min_power_watts"] = power_data.get("min_consumed_watts")
+        
+        return attributes
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        return (
+            self.coordinator.last_update_success 
+            and self.coordinator.data is not None
+            and "power_consumption" in self.coordinator.data
+        )
 
 
