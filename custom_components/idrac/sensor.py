@@ -47,18 +47,31 @@ async def async_setup_entry(
     snmp_categories = []
     redfish_categories = []
     
-    if snmp_coordinator.data:
+    _LOGGER.debug("SNMP coordinator: %s, last_update_success: %s, data keys: %s", 
+                  snmp_coordinator, snmp_coordinator.last_update_success if snmp_coordinator else None,
+                  list(snmp_coordinator.data.keys()) if snmp_coordinator and snmp_coordinator.data else "None")
+    _LOGGER.debug("Redfish coordinator: %s, last_update_success: %s, data keys: %s", 
+                  redfish_coordinator, redfish_coordinator.last_update_success if redfish_coordinator else None,
+                  list(redfish_coordinator.data.keys()) if redfish_coordinator and redfish_coordinator.data else "None")
+    
+    if snmp_coordinator and snmp_coordinator.data:
         snmp_categories = [k for k, v in snmp_coordinator.data.items() if v]
         _LOGGER.info("SNMP coordinator has %d data categories: %s", 
                      len(snmp_categories), ", ".join(snmp_categories))
+    else:
+        _LOGGER.warning("SNMP coordinator has no data available")
     
-    if redfish_coordinator.data:
+    if redfish_coordinator and redfish_coordinator.data:
         redfish_categories = [k for k, v in redfish_coordinator.data.items() if v]
         _LOGGER.info("Redfish coordinator has %d data categories: %s", 
                      len(redfish_categories), ", ".join(redfish_categories))
+    else:
+        _LOGGER.warning("Redfish coordinator has no data available")
     
     def get_coordinator_for_category(category: str):
         """Determine which coordinator to use for a given data category."""
+        _LOGGER.debug("Looking for coordinator for category: %s", category)
+        
         # SNMP categories (typically faster, more frequent updates)
         snmp_categories_list = [
             "temperatures", "fans", "power_supplies", "voltages", "memory",
@@ -75,19 +88,24 @@ async def async_setup_entry(
         
         # Check which coordinator actually has data for this category
         if category in snmp_categories_list:
-            if snmp_coordinator.data and category in snmp_coordinator.data and snmp_coordinator.data[category]:
+            if snmp_coordinator and snmp_coordinator.data and category in snmp_coordinator.data and snmp_coordinator.data[category]:
+                _LOGGER.debug("Using SNMP coordinator for %s", category)
                 return snmp_coordinator
         
         if category in redfish_categories_list:
-            if redfish_coordinator.data and category in redfish_coordinator.data and redfish_coordinator.data[category]:
+            if redfish_coordinator and redfish_coordinator.data and category in redfish_coordinator.data and redfish_coordinator.data[category]:
+                _LOGGER.debug("Using Redfish coordinator for %s", category)
                 return redfish_coordinator
                 
         # Fallback: use whichever coordinator has the data
-        if snmp_coordinator.data and category in snmp_coordinator.data and snmp_coordinator.data[category]:
+        if snmp_coordinator and snmp_coordinator.data and category in snmp_coordinator.data and snmp_coordinator.data[category]:
+            _LOGGER.debug("Using SNMP coordinator for %s (fallback)", category)
             return snmp_coordinator
-        elif redfish_coordinator.data and category in redfish_coordinator.data and redfish_coordinator.data[category]:
+        elif redfish_coordinator and redfish_coordinator.data and category in redfish_coordinator.data and redfish_coordinator.data[category]:
+            _LOGGER.debug("Using Redfish coordinator for %s (fallback)", category)
             return redfish_coordinator
-            
+        
+        _LOGGER.debug("No coordinator found for category: %s", category)
         return None
 
     # Add power consumption sensor
