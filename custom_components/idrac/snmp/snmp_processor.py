@@ -7,6 +7,7 @@ checking status codes, and organizing data into sensor categories.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any, Dict
 
 from ..const import (
@@ -405,6 +406,12 @@ class SNMPDataProcessor:
                     
                     # Clean up the sensor name
                     clean_name = voltage_location.replace(" Voltage", "").replace(" PG", " Power Good")
+                    
+                    # Format CPU PG sensors properly: "CPU1 PG" -> "CPU 1 Power Good"
+                    cpu_match = re.match(r'^CPU(\d+)', clean_name)
+                    if cpu_match:
+                        cpu_num = cpu_match.group(1)
+                        clean_name = re.sub(r'^CPU\d+', f'CPU {cpu_num}', clean_name)
                     
                     sensor_data = {
                         "name": clean_name,

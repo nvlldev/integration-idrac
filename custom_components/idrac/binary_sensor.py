@@ -1298,10 +1298,11 @@ class IdracSystemVoltageBinarySensor(IdracBinarySensor):
         """Initialize the system voltage binary sensor."""
         voltage_name = voltage_data.get("name", f"System Voltage {voltage_id}")
         
+        # All Power Good sensors should be marked as PROBLEM type
         # Determine device class and icon based on sensor type
         sensor_type = voltage_data.get("sensor_type", "system_voltage")
         if sensor_type == "power_good":
-            device_class = BinarySensorDeviceClass.POWER
+            device_class = BinarySensorDeviceClass.PROBLEM
             icon = "mdi:cpu-64-bit"
         else:
             device_class = BinarySensorDeviceClass.PROBLEM

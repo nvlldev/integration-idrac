@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
 from typing import Any
 
@@ -403,6 +404,12 @@ class RedfishCoordinator:
                         
                         # Clean up the sensor name for binary sensor
                         clean_name = voltage_name.replace(" Voltage", "").replace(" PG", " Power Good")
+                        
+                        # Format CPU PG sensors properly: "CPU1 Power Good" -> "CPU 1 Power Good"
+                        cpu_match = re.match(r'^CPU(\d+)', clean_name)
+                        if cpu_match:
+                            cpu_num = cpu_match.group(1)
+                            clean_name = re.sub(r'^CPU\d+', f'CPU {cpu_num}', clean_name)
                         
                         data["system_voltages"][f"system_voltage_{i+1}"] = {
                             "name": clean_name,
