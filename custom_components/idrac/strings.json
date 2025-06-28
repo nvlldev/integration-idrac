@@ -6,11 +6,13 @@
         "description": "Connect to your Dell iDRAC for comprehensive server monitoring and control using hybrid Redfish + SNMP approach.",
         "data": {
           "host": "Hostname or IP Address",
-          "scan_interval": "Update Interval (seconds)"
+          "snmp_scan_interval": "SNMP Scan Interval",
+          "redfish_scan_interval": "Redfish Scan Interval"
         },
         "data_description": {
           "host": "Enter the IP address or hostname of your Dell iDRAC",
-          "scan_interval": "How often to update sensor readings (hybrid mode provides optimal performance and sensor coverage)"
+          "snmp_scan_interval": "How often to update SNMP sensors like temperatures, fans, power (5-300 seconds)",
+          "redfish_scan_interval": "How often to update Redfish sensors like system info, controls (15-600 seconds)"
         }
       },
       "redfish": {
@@ -123,11 +125,13 @@
         "description": "Step 2 of 2: Choose SNMP version for supplemental data collection from {host}.",
         "data": {
           "snmp_port": "SNMP Port", 
-          "snmp_version": "SNMP Version"
+          "snmp_version": "SNMP Version",
+          "snmp_timeout": "SNMP Timeout"
         },
         "data_description": {
           "snmp_port": "SNMP port for data collection (usually 161)",
-          "snmp_version": "Choose SNMP protocol version:\n• **v2c**: Simple setup with community string\n• **v3**: Secure setup with username and authentication"
+          "snmp_version": "Choose SNMP protocol version:\n• **v2c**: Simple setup with community string\n• **v3**: Secure setup with username and authentication",
+          "snmp_timeout": "Timeout for individual SNMP requests (1-30 seconds)"
         },
         "options": {
           "snmp_version": {
@@ -200,15 +204,13 @@
         "title": "Dell iDRAC Options",
         "description": "Configure advanced options for your Dell iDRAC integration.",
         "data": {
-          "scan_interval": "Scan Interval (seconds) - Legacy",
-          "request_timeout": "Request Timeout (seconds)",
-          "session_timeout": "Session Timeout (seconds)",
-          "snmp_timeout": "SNMP Timeout (seconds)",
-          "snmp_scan_interval": "SNMP Scan Interval (seconds)",
-          "redfish_scan_interval": "Redfish Scan Interval (seconds)"
+          "request_timeout": "Request Timeout",
+          "session_timeout": "Session Timeout", 
+          "snmp_timeout": "SNMP Timeout",
+          "snmp_scan_interval": "SNMP Scan Interval",
+          "redfish_scan_interval": "Redfish Scan Interval"
         },
         "data_description": {
-          "scan_interval": "Legacy scan interval setting (deprecated)",
           "request_timeout": "Timeout for individual Redfish HTTP requests (5-120 seconds)",
           "session_timeout": "Timeout for Redfish session connections (30-600 seconds)",
           "snmp_timeout": "Timeout for individual SNMP requests (1-30 seconds)",

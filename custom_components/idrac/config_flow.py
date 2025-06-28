@@ -85,10 +85,19 @@ STEP_HOST_SCHEMA = vol.Schema({
     vol.Required(CONF_HOST): selector.TextSelector(
         selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
     ),
-    vol.Optional(CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL): selector.NumberSelector(
+    vol.Optional(CONF_SNMP_SCAN_INTERVAL, default=DEFAULT_SNMP_SCAN_INTERVAL): selector.NumberSelector(
         selector.NumberSelectorConfig(
-            min=10,
+            min=5,
             max=300,
+            step=5,
+            unit_of_measurement="seconds",
+            mode=selector.NumberSelectorMode.BOX
+        )
+    ),
+    vol.Optional(CONF_REDFISH_SCAN_INTERVAL, default=DEFAULT_REDFISH_SCAN_INTERVAL): selector.NumberSelector(
+        selector.NumberSelectorConfig(
+            min=15,
+            max=600,
             step=5,
             unit_of_measurement="seconds",
             mode=selector.NumberSelectorMode.BOX
@@ -230,6 +239,15 @@ STEP_HYBRID_SNMP_VERSION_SCHEMA = vol.Schema({
         selector.SelectSelectorConfig(
             options=SNMP_VERSIONS,
             mode=selector.SelectSelectorMode.DROPDOWN
+        )
+    ),
+    vol.Optional(CONF_SNMP_TIMEOUT, default=DEFAULT_SNMP_TIMEOUT): selector.NumberSelector(
+        selector.NumberSelectorConfig(
+            min=1,
+            max=30,
+            step=1,
+            unit_of_measurement="seconds",
+            mode=selector.NumberSelectorMode.BOX
         )
     ),
 })
@@ -762,10 +780,6 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             return self.async_create_entry(title="", data=user_input)
 
         # Get current values from options or fall back to config data
-        current_scan_interval = self.config_entry.options.get(
-            CONF_SCAN_INTERVAL, 
-            self.config_entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
-        )
         current_request_timeout = self.config_entry.options.get(
             CONF_REQUEST_TIMEOUT,
             self.config_entry.data.get(CONF_REQUEST_TIMEOUT, DEFAULT_REQUEST_TIMEOUT)
@@ -788,15 +802,6 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         )
 
         options_schema = vol.Schema({
-            vol.Optional(CONF_SCAN_INTERVAL, default=current_scan_interval): selector.NumberSelector(
-                selector.NumberSelectorConfig(
-                    min=10,
-                    max=300,
-                    step=5,
-                    unit_of_measurement="seconds",
-                    mode=selector.NumberSelectorMode.BOX
-                )
-            ),
             vol.Optional(CONF_REQUEST_TIMEOUT, default=current_request_timeout): selector.NumberSelector(
                 selector.NumberSelectorConfig(
                     min=5,
