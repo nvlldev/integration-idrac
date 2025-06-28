@@ -53,196 +53,105 @@ async def async_setup_entry(
     # Log coordinator status
     log_coordinator_status(snmp_coordinator, redfish_coordinator)
     
-    # Helper function that uses the imported utilities
-
-    # Add power consumption sensor
-    power_coordinator = get_coordinator_for_category("power_consumption", snmp_coordinator, redfish_coordinator)
-    if power_coordinator and power_coordinator.data and "power_consumption" in power_coordinator.data:
-        entities.append(IdracPowerConsumptionSensor(power_coordinator, config_entry))
-        _LOGGER.debug("Power consumption sensor using %s coordinator", "SNMP" if power_coordinator == snmp_coordinator else "Redfish")
-
-    # Add temperature sensors
-    temp_coordinator = get_coordinator_for_category("temperatures")
-    if temp_coordinator and temp_coordinator.data and "temperatures" in temp_coordinator.data:
-        temp_count = len(temp_coordinator.data["temperatures"])
-        if temp_count > 0:
-            _LOGGER.info("Creating %d temperature sensors using %s coordinator", temp_count, "SNMP" if temp_coordinator == snmp_coordinator else "Redfish")
-            for temp_id, temp_data in temp_coordinator.data["temperatures"].items():
-                entities.append(IdracTemperatureSensor(temp_coordinator, config_entry, temp_id, temp_data))
-        else:
-            _LOGGER.warning("Temperature data category exists but contains no sensors")
-
-    # Add fan sensors  
-    fan_coordinator = get_coordinator_for_category("fans")
-    if fan_coordinator and fan_coordinator.data and "fans" in fan_coordinator.data:
-        fan_count = len(fan_coordinator.data["fans"])
-        if fan_count > 0:
-            _LOGGER.info("Creating %d fan sensors using %s coordinator", fan_count, "SNMP" if fan_coordinator == snmp_coordinator else "Redfish") 
-            for fan_id, fan_data in fan_coordinator.data["fans"].items():
-                entities.append(IdracFanSpeedSensor(fan_coordinator, config_entry, fan_id, fan_data))
-        else:
-            _LOGGER.warning("Fan data category exists but contains no sensors")
-
-    # Define sensor mappings for automated creation
-    # Format: (category, sensor_type, sensor_class, takes_item_params)
-    sensor_mappings = [
-        ("voltages", "voltage", IdracVoltageSensor, True),
-        ("intrusion_detection", "intrusion", IdracIntrusionSensor, True),
-        ("battery", "battery", IdracBatterySensor, True),
-        ("processors", "processor", IdracProcessorSensor, True),
+    # Category-based sensors with item data
+    category_sensors = [
+        ("temperatures", IdracTemperatureSensor),
+        ("fans", IdracFanSpeedSensor),
+        ("voltages", IdracVoltageSensor),
+        ("intrusion_detection", IdracIntrusionSensor),
+        ("battery", IdracBatterySensor),
+        ("processors", IdracProcessorSensor),
     ]
     
-    # Create sensors for each category
-    for category, sensor_type, sensor_class, takes_item_params in sensor_mappings:
-        coordinator = get_coordinator_for_category(category)
+    for category, sensor_class in category_sensors:
+        coordinator = get_coordinator_for_category(category, snmp_coordinator, redfish_coordinator, "snmp")
         if coordinator and coordinator.data and category in coordinator.data:
             items = coordinator.data[category]
             if items:
                 _LOGGER.info("Creating %d %s sensors using %s coordinator", 
-                            len(items), sensor_type, "SNMP" if coordinator == snmp_coordinator else "Redfish")
+                           len(items), category, type(coordinator).__name__)
                 for item_id, item_data in items.items():
-                    if takes_item_params:
-                        entities.append(sensor_class(coordinator, config_entry, item_id, item_data))
-                    else:
-                        entities.append(sensor_class(coordinator, config_entry))
+                    entities.append(sensor_class(coordinator, config_entry, item_id, item_data))
     
-    # Add special memory sensor (doesn't take item parameters)
-    memory_coordinator = get_coordinator_for_category("memory")
-    if memory_coordinator and memory_coordinator.data and "memory" in memory_coordinator.data and memory_coordinator.data["memory"]:
-        entities.append(IdracMemorySensor(memory_coordinator, config_entry))
-        _LOGGER.info("Creating memory total sensor using %s coordinator", "SNMP" if memory_coordinator == snmp_coordinator else "Redfish")
-
-    # Add memory health sensors (additional sensors using the same memory data)
-    memory_coordinator = get_coordinator_for_category("memory")
+    # Memory health sensors (uses memory data)
+    memory_coordinator = get_coordinator_for_category("memory", snmp_coordinator, redfish_coordinator, "snmp")
     if memory_coordinator and memory_coordinator.data and "memory" in memory_coordinator.data:
         for memory_id, memory_data in memory_coordinator.data["memory"].items():
             entities.append(IdracMemoryHealthSensor(memory_coordinator, config_entry, memory_id, memory_data))
-
-    # Add system info sensors (typically from Redfish)
-    system_coordinator = get_coordinator_for_category("system_info")
-    if system_coordinator and system_coordinator.data and "system_info" in system_coordinator.data:
-        system_info = system_coordinator.data["system_info"]
-        _LOGGER.info("System info available for sensor creation using %s coordinator: %s", 
-                    "SNMP" if system_coordinator == snmp_coordinator else "Redfish", system_info)
-        
-        # Debug each field individually
-        memory_gb = system_info.get("memory_gb")
-        processor_count = system_info.get("processor_count") 
-        processor_model = system_info.get("processor_model")
-        
-        _LOGGER.info("System info fields - memory_gb: %s, processor_count: %s, processor_model: %s", 
-                    memory_gb, processor_count, processor_model)
-        
-        if memory_gb:
-            _LOGGER.info("Creating IdracMemorySensor")
-            entities.append(IdracMemorySensor(system_coordinator, config_entry))
-        else:
-            _LOGGER.warning("Memory GB not available: %s", memory_gb)
-            
-        if processor_count:
-            _LOGGER.info("Creating IdracProcessorCountSensor") 
-            entities.append(IdracProcessorCountSensor(system_coordinator, config_entry))
-        else:
-            _LOGGER.warning("Processor count not available: %s", processor_count)
-            
-        if processor_model:
-            _LOGGER.info("Creating IdracProcessorModelSensor")
-            entities.append(IdracProcessorModelSensor(system_coordinator, config_entry))
-        else:
-            _LOGGER.warning("Processor model not available: %s", processor_model)
-        # Debug the new sensors we added
-        memory_mirroring = system_info.get("memory_mirroring")
-        memory_type = system_info.get("memory_type")
-        processor_status = system_info.get("processor_status")
-        memory_status = system_info.get("memory_status")
-        processor_max_speed = system_info.get("processor_max_speed_mhz")
-        processor_current_speed = system_info.get("processor_current_speed_mhz")
-        
-        _LOGGER.info("New sensor fields - memory_mirroring: %s, memory_type: %s, processor_status: %s, memory_status: %s, processor_max_speed: %s, processor_current_speed: %s",
-                    memory_mirroring, memory_type, processor_status, memory_status, processor_max_speed, processor_current_speed)
-        
-        if memory_mirroring:
-            _LOGGER.info("Creating IdracMemoryMirroringSensor")
-            entities.append(IdracMemoryMirroringSensor(system_coordinator, config_entry))
-        if memory_type:
-            _LOGGER.info("Creating IdracMemoryTypeSensor")
-            entities.append(IdracMemoryTypeSensor(system_coordinator, config_entry))
-        if processor_status:
-            _LOGGER.info("Creating IdracProcessorStatusSensor")
-            entities.append(IdracProcessorStatusSensor(system_coordinator, config_entry))
-        if memory_status:
-            _LOGGER.info("Creating IdracMemoryStatusSensor")
-            entities.append(IdracMemoryStatusSensor(system_coordinator, config_entry))
-        if processor_max_speed:
-            _LOGGER.info("Creating IdracProcessorMaxSpeedSensor")
-            entities.append(IdracProcessorMaxSpeedSensor(system_coordinator, config_entry))
-        if processor_current_speed:
-            _LOGGER.info("Creating IdracProcessorCurrentSpeedSensor")
-            entities.append(IdracProcessorCurrentSpeedSensor(system_coordinator, config_entry))
-        # Note: Power state, chassis intrusion, power redundancy, and system health 
-        # are handled by binary sensors - no duplicate regular sensors needed
-
-    # Add manager info sensors (Redfish only)
-    manager_coordinator = get_coordinator_for_category("manager_info")
-    if manager_coordinator and manager_coordinator.data and "manager_info" in manager_coordinator.data:
-        manager_info = manager_coordinator.data["manager_info"]
-        if manager_info.get("firmware_version"):
-            entities.append(IdracFirmwareVersionSensor(manager_coordinator, config_entry))
-        if manager_info.get("datetime"):
-            entities.append(IdracDateTimeSensor(manager_coordinator, config_entry))
-
-    # Add additional PSU power sensors for Redfish
-    psu_coordinator = get_coordinator_for_category("power_supplies")
+    
+    # PSU specific sensors
+    psu_coordinator = get_coordinator_for_category("power_supplies", snmp_coordinator, redfish_coordinator, "snmp")
     if psu_coordinator and psu_coordinator.data and "power_supplies" in psu_coordinator.data:
         for psu_id, psu_data in psu_coordinator.data["power_supplies"].items():
-            # PSU input power sensor removed as requested
-            # Output power sensor
             if psu_data.get("power_output_watts") is not None:
                 entities.append(IdracPSUOutputPowerSensor(psu_coordinator, config_entry, psu_id, psu_data))
-            # Input voltage sensor
             if psu_data.get("line_input_voltage") is not None:
                 entities.append(IdracPSUInputVoltageSensor(psu_coordinator, config_entry, psu_id, psu_data))
-
-    # Add advanced power metrics (Redfish only)
-    power_consumption_coordinator = get_coordinator_for_category("power_consumption")
-    if power_consumption_coordinator and power_consumption_coordinator.data and "power_consumption" in power_consumption_coordinator.data:
-        power_data = power_consumption_coordinator.data["power_consumption"]
-        if power_data.get("average_consumed_watts") is not None:
-            entities.append(IdracAveragePowerSensor(power_consumption_coordinator, config_entry))
-        if power_data.get("max_consumed_watts") is not None:
-            entities.append(IdracMaxPowerSensor(power_consumption_coordinator, config_entry))
-        if power_data.get("min_consumed_watts") is not None:
-            entities.append(IdracMinPowerSensor(power_consumption_coordinator, config_entry))
-
-    # Add performance and analytical sensors 
-    # Note: These sensors will use whichever coordinator has the relevant data
     
-    # Average CPU temperature sensor - available when CPU temperature sensors exist
-    temp_coordinator = get_coordinator_for_category("temperatures")
+    # Single instance sensors
+    single_sensors = [
+        ("power_consumption", IdracPowerConsumptionSensor, "snmp"),
+        ("memory", IdracMemorySensor, "snmp"),
+    ]
+    
+    for category, sensor_class, preferred in single_sensors:
+        coordinator = get_coordinator_for_category(category, snmp_coordinator, redfish_coordinator, preferred)
+        if coordinator and coordinator.data and category in coordinator.data and coordinator.data[category]:
+            entities.append(sensor_class(coordinator, config_entry))
+            _LOGGER.debug("Created %s using %s coordinator", sensor_class.__name__, type(coordinator).__name__)
+    
+    # System information sensors (typically Redfish)
+    system_coordinator = get_coordinator_for_category("system_info", snmp_coordinator, redfish_coordinator, "redfish")
+    if system_coordinator and system_coordinator.data and "system_info" in system_coordinator.data:
+        system_sensors = [
+            IdracProcessorCountSensor,
+            IdracProcessorModelSensor, 
+            IdracMemoryMirroringSensor,
+            IdracProcessorStatusSensor,
+            IdracMemoryStatusSensor,
+            IdracMemoryTypeSensor,
+            IdracProcessorMaxSpeedSensor,
+            IdracProcessorCurrentSpeedSensor,
+        ]
+        for sensor_class in system_sensors:
+            entities.append(sensor_class(system_coordinator, config_entry))
+    
+    # Manager information sensors (Redfish only)
+    manager_coordinator = get_coordinator_for_category("manager_info", snmp_coordinator, redfish_coordinator, "redfish")
+    if manager_coordinator and manager_coordinator.data and "manager_info" in manager_coordinator.data:
+        manager_sensors = [IdracFirmwareVersionSensor, IdracDateTimeSensor]
+        for sensor_class in manager_sensors:
+            entities.append(sensor_class(manager_coordinator, config_entry))
+    
+    # Power consumption aggregate sensors
+    power_coordinator = get_coordinator_for_category("power_consumption", snmp_coordinator, redfish_coordinator, "snmp")
+    if power_coordinator and power_coordinator.data and "power_consumption" in power_coordinator.data:
+        power_sensors = [
+            IdracAveragePowerSensor,
+            IdracMaxPowerSensor, 
+            IdracMinPowerSensor,
+            IdracUpdateLatencySensor,
+        ]
+        for sensor_class in power_sensors:
+            entities.append(sensor_class(power_coordinator, config_entry))
+    
+    # Aggregate sensors with pattern requirements
+    temp_coordinator = get_coordinator_for_category("temperatures", snmp_coordinator, redfish_coordinator, "snmp")
     if temp_coordinator and temp_coordinator.data and "temperatures" in temp_coordinator.data:
         temp_data = temp_coordinator.data["temperatures"]
-        cpu_temp_count = sum(1 for temp_item in temp_data.values() 
-                           if any(keyword in temp_item.get("name", "").lower() 
-                                for keyword in ["cpu", "processor", "proc"]))
-        if cpu_temp_count > 0:
+        
+        # CPU temperature average
+        if count_pattern_matches(temp_data, "cpu") > 0:
             entities.append(IdracAverageCpuTemperatureSensor(temp_coordinator, config_entry))
+        
+        # Temperature delta (inlet/outlet)
+        if has_temperature_patterns(temp_data, ["inlet", "outlet"]):
+            entities.append(IdracTemperatureDeltaSensor(temp_coordinator, config_entry))
     
-    # Average fan speed sensor - available when fan sensors exist  
-    fan_coordinator = get_coordinator_for_category("fans")
+    # Average fan speed
+    fan_coordinator = get_coordinator_for_category("fans", snmp_coordinator, redfish_coordinator, "snmp")
     if fan_coordinator and fan_coordinator.data and "fans" in fan_coordinator.data and fan_coordinator.data["fans"]:
         entities.append(IdracAverageFanSpeedSensor(fan_coordinator, config_entry))
-            
-    # Temperature delta sensor - available when inlet/outlet sensors exist
-    if temp_coordinator and temp_coordinator.data and "temperatures" in temp_coordinator.data:
-        temp_data = temp_coordinator.data["temperatures"]
-        has_inlet = any(any(keyword in temp_item.get("name", "").lower() 
-                          for keyword in ["inlet", "intake", "ambient"])
-                      for temp_item in temp_data.values())
-        has_outlet = any(any(keyword in temp_item.get("name", "").lower() 
-                           for keyword in ["outlet", "exhaust", "exit"])
-                       for temp_item in temp_data.values())
-        if has_inlet or has_outlet:  # Show sensor even if only one is available
-            entities.append(IdracTemperatureDeltaSensor(temp_coordinator, config_entry))
 
     if entities:
         _LOGGER.info("Successfully created %d sensor entities for iDRAC", len(entities))
