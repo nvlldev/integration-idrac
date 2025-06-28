@@ -65,8 +65,10 @@ class IdracButton(CoordinatorEntity, ButtonEntity):
         port = config_entry.data[CONF_PORT]
         device_id = f"{host}:{port}"
         
-        # Set the entity name directly - Home Assistant will handle device prefixing
-        self._attr_name = button_name
+        # Set entity name with device prefix for proper entity ID generation
+        # Home Assistant will still display clean names in device context
+        host = coordinator.host.replace(".", "_").replace(":", "_")
+        self._attr_name = f"Dell iDRAC {host} {button_name}"
         # Use stable unique_id based on device_id and button key
         self._attr_unique_id = f"{device_id}_{button_key}"
         self._attr_device_class = device_class
