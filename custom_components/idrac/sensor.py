@@ -119,16 +119,16 @@ async def async_setup_entry(
             _LOGGER.warning("Fan data category exists but contains no sensors")
 
     # Define sensor mappings for automated creation
+    # Format: (category, sensor_type, sensor_class, takes_item_params)
     sensor_mappings = [
-        ("voltages", "voltage", IdracVoltageSensor),
-        ("memory", "memory", IdracMemorySensor),
-        ("intrusion_detection", "intrusion", IdracIntrusionSensor),
-        ("battery", "battery", IdracBatterySensor),
-        ("processors", "processor", IdracProcessorSensor),
+        ("voltages", "voltage", IdracVoltageSensor, True),
+        ("intrusion_detection", "intrusion", IdracIntrusionSensor, True),
+        ("battery", "battery", IdracBatterySensor, True),
+        ("processors", "processor", IdracProcessorSensor, True),
     ]
     
     # Create sensors for each category
-    for category, sensor_type, sensor_class in sensor_mappings:
+    for category, sensor_type, sensor_class, takes_item_params in sensor_mappings:
         coordinator = get_coordinator_for_category(category)
         if coordinator and coordinator.data and category in coordinator.data:
             items = coordinator.data[category]
@@ -136,7 +136,16 @@ async def async_setup_entry(
                 _LOGGER.info("Creating %d %s sensors using %s coordinator", 
                             len(items), sensor_type, "SNMP" if coordinator == snmp_coordinator else "Redfish")
                 for item_id, item_data in items.items():
-                    entities.append(sensor_class(coordinator, config_entry, item_id, item_data))
+                    if takes_item_params:
+                        entities.append(sensor_class(coordinator, config_entry, item_id, item_data))
+                    else:
+                        entities.append(sensor_class(coordinator, config_entry))
+    
+    # Add special memory sensor (doesn't take item parameters)
+    memory_coordinator = get_coordinator_for_category("memory")
+    if memory_coordinator and memory_coordinator.data and "memory" in memory_coordinator.data and memory_coordinator.data["memory"]:
+        entities.append(IdracMemorySensor(memory_coordinator, config_entry))
+        _LOGGER.info("Creating memory total sensor using %s coordinator", "SNMP" if memory_coordinator == snmp_coordinator else "Redfish")
 
     # Add memory health sensors (additional sensors using the same memory data)
     memory_coordinator = get_coordinator_for_category("memory")
