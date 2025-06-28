@@ -1282,7 +1282,7 @@ class IdracProcessorStatusSensor(IdracSensor):
         """Initialize the processor status sensor."""
         super().__init__(coordinator, config_entry, "processor_status", "Processor Status")
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
-        self._attr_icon = "mdi:chip-check"
+        self._attr_icon = "mdi:chip"
 
     @property
     def native_value(self) -> str | None:
@@ -1312,7 +1312,7 @@ class IdracMemoryStatusSensor(IdracSensor):
         """Initialize the memory status sensor."""
         super().__init__(coordinator, config_entry, "memory_status", "Memory Status")
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
-        self._attr_icon = "mdi:memory-check"
+        self._attr_icon = "mdi:memory"
 
     @property
     def native_value(self) -> str | None:
