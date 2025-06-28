@@ -187,6 +187,7 @@
     "error": {
       "cannot_connect": "Cannot connect to iDRAC. Check hostname/IP, port number, and network connectivity. For HTTPS connections, try disabling SSL verification.",
       "invalid_auth": "Authentication failed. Verify your username and password are correct.", 
+      "default_password_failed": "Authentication failed with default password 'calvin'. Please enter your actual iDRAC password.",
       "unknown": "Setup failed due to an unexpected error. Check the logs for more details."
     },
     "abort": {

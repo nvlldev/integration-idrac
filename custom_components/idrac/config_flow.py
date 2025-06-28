@@ -523,6 +523,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors["base"] = "cannot_connect"
             except InvalidAuth:
                 errors["base"] = "invalid_auth"
+                # Add specific guidance for password issues
+                if user_input.get(CONF_PASSWORD) == DEFAULT_PASSWORD:
+                    errors[CONF_PASSWORD] = "default_password_failed"
             except Exception:  # pylint: disable=broad-except
                 _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
@@ -533,7 +536,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors=errors,
             description_placeholders={
                 "host": self.data[CONF_HOST],
-                "default_password": "Default Dell iDRAC password is 'calvin'"
+                "password_help": "Enter your iDRAC password. If unchanged from factory defaults, use 'calvin'."
             },
         )
 
@@ -634,6 +637,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors["base"] = "cannot_connect"
             except InvalidAuth:
                 errors["base"] = "invalid_auth"
+                # Add specific guidance for password issues
+                if user_input.get(CONF_PASSWORD) == DEFAULT_PASSWORD:
+                    errors[CONF_PASSWORD] = "default_password_failed"
             except Exception:  # pylint: disable=broad-except
                 _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
@@ -644,7 +650,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors=errors,
             description_placeholders={
                 "host": self.data[CONF_HOST],
-                "default_password": "Default Dell iDRAC password is 'calvin'"
+                "password_help": "Enter your iDRAC password. If unchanged from factory defaults, use 'calvin'."
             },
         )
 

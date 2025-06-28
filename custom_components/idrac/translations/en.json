@@ -139,6 +139,7 @@
     "error": {
       "cannot_connect": "Failed to connect to iDRAC. Please check the hostname/IP address and network connectivity.",
       "invalid_auth": "Invalid authentication credentials. Please check your username and password.",
+      "default_password_failed": "Authentication failed with default password 'calvin'. Please enter your actual iDRAC password.",
       "unknown": "Unexpected error occurred during setup."
     },
     "abort": {
