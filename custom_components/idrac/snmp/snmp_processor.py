@@ -45,6 +45,7 @@ class SNMPDataProcessor:
                                indices for each sensor type (cpus, fans, psus, etc.)
         """
         self.discovered_cpus = discovered_sensors.get('cpus', [])
+        self.discovered_temperatures = discovered_sensors.get('temperatures', [])
         self.discovered_fans = discovered_sensors.get('fans', [])
         self.discovered_psus = discovered_sensors.get('psus', [])
         self.discovered_voltage_probes = discovered_sensors.get('voltage_probes', [])
@@ -173,6 +174,7 @@ class SNMPDataProcessor:
         """Process temperature sensor data from SNMP values."""
         processed_count = 0
         
+        # Process CPU temperature sensors (legacy)
         for cpu_id in self.discovered_cpus:
             temp_oid = format_oid_with_index(IDRAC_OIDS["temp_probe_reading"], cpu_id)
             temp_reading = values.get(temp_oid)
@@ -202,6 +204,46 @@ class SNMPDataProcessor:
                 self._check_temperature_anomalies(sensor_data, cpu_id)
             else:
                 _LOGGER.debug("No temperature reading for discovered CPU sensor %d", cpu_id)
+        
+        # Process ALL temperature sensors (including inlet, outlet, system, etc.)
+        for temp_id in self.discovered_temperatures:
+            # Skip if already processed as CPU sensor
+            if temp_id in self.discovered_cpus:
+                continue
+                
+            temp_oid = format_oid_with_index(IDRAC_OIDS["temp_probe_reading"], temp_id)
+            temp_reading = values.get(temp_oid)
+            
+            if temp_reading is not None:
+                # Convert temperature value (Dell reports in tenths of degrees Celsius)
+                temperature_celsius = self._convert_temperature(temp_reading)
+                
+                # Get additional temperature data
+                temp_status = values.get(format_oid_with_index(IDRAC_OIDS["temp_probe_status"], temp_id))
+                temp_location = strings.get(format_oid_with_index(IDRAC_OIDS["temp_probe_location"], temp_id))
+                temp_upper_critical = values.get(format_oid_with_index(IDRAC_OIDS["temp_probe_upper_critical"], temp_id))
+                temp_upper_warning = values.get(format_oid_with_index(IDRAC_OIDS["temp_probe_upper_warning"], temp_id))
+                
+                sensor_data = {
+                    "name": temp_location or f"Temperature {temp_id}",
+                    "temperature": temperature_celsius,
+                    "status": TEMP_STATUS.get(temp_status, "unknown"),
+                    "upper_threshold_critical": self._convert_temperature(temp_upper_critical) if temp_upper_critical else None,
+                    "upper_threshold_non_critical": self._convert_temperature(temp_upper_warning) if temp_upper_warning else None,
+                }
+                
+                data["temperatures"][f"temp_{temp_id}"] = sensor_data
+                processed_count += 1
+                
+                # Log temperature anomalies for non-CPU sensors too
+                self._check_temperature_anomalies(sensor_data, temp_id)
+                
+                # Debug log for inlet/outlet detection
+                location_lower = temp_location.lower() if temp_location else ""
+                if any(pattern in location_lower for pattern in ["inlet", "intake", "ambient", "outlet", "exhaust", "exit"]):
+                    _LOGGER.info("Found airflow temperature sensor: %s (ID: %d)", temp_location, temp_id)
+            else:
+                _LOGGER.debug("No temperature reading for discovered temperature sensor %d", temp_id)
         
         if processed_count > 0:
             _LOGGER.debug("Processed %d temperature sensors", processed_count)

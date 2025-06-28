@@ -32,6 +32,7 @@ from ..const import (
     CONF_PORT,
     CONF_SNMP_PORT,
     CONF_DISCOVERED_CPUS,
+    CONF_DISCOVERED_TEMPERATURES,
     CONF_DISCOVERED_FANS,
     CONF_DISCOVERED_MEMORY,
     CONF_DISCOVERED_PSUS,
@@ -149,6 +150,7 @@ class SNMPClient:
         
         # Load discovered sensor indices from config
         self.discovered_cpus = entry.data.get(CONF_DISCOVERED_CPUS, [])
+        self.discovered_temperatures = entry.data.get(CONF_DISCOVERED_TEMPERATURES, [])
         self.discovered_fans = entry.data.get(CONF_DISCOVERED_FANS, [])
         self.discovered_psus = entry.data.get(CONF_DISCOVERED_PSUS, [])
         self.discovered_voltage_probes = entry.data.get(CONF_DISCOVERED_VOLTAGE_PROBES, [])
@@ -440,7 +442,7 @@ class SNMPClient:
             all_value_oids = []
             all_string_oids = []
             
-            # Temperature probe OIDs
+            # Temperature probe OIDs (CPU sensors)
             for cpu_id in self.discovered_cpus:
                 all_value_oids.extend([
                     format_oid_with_index(IDRAC_OIDS["temp_probe_reading"], cpu_id),
@@ -449,6 +451,16 @@ class SNMPClient:
                     format_oid_with_index(IDRAC_OIDS["temp_probe_upper_warning"], cpu_id),
                 ])
                 all_string_oids.append(format_oid_with_index(IDRAC_OIDS["temp_probe_location"], cpu_id))
+            
+            # Temperature probe OIDs (all sensors including inlet/outlet)
+            for temp_id in self.discovered_temperatures:
+                all_value_oids.extend([
+                    format_oid_with_index(IDRAC_OIDS["temp_probe_reading"], temp_id),
+                    format_oid_with_index(IDRAC_OIDS["temp_probe_status"], temp_id),
+                    format_oid_with_index(IDRAC_OIDS["temp_probe_upper_critical"], temp_id),
+                    format_oid_with_index(IDRAC_OIDS["temp_probe_upper_warning"], temp_id),
+                ])
+                all_string_oids.append(format_oid_with_index(IDRAC_OIDS["temp_probe_location"], temp_id))
                 
             # Cooling device (fan) OIDs
             for fan_id in self.discovered_fans:
@@ -552,6 +564,7 @@ class SNMPClient:
             # Create data processor with discovered sensor indices
             discovered_sensors = {
                 'cpus': self.discovered_cpus,
+                'temperatures': self.discovered_temperatures,
                 'fans': self.discovered_fans,
                 'psus': self.discovered_psus,
                 'voltage_probes': self.discovered_voltage_probes,

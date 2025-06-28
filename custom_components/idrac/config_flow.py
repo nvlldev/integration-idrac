@@ -45,6 +45,7 @@ from .const import (
     DEFAULT_SNMP_SCAN_INTERVAL,
     DEFAULT_REDFISH_SCAN_INTERVAL,
     CONF_DISCOVERED_CPUS,
+    CONF_DISCOVERED_TEMPERATURES,
     CONF_DISCOVERED_FANS,
     CONF_DISCOVERED_MEMORY,
     CONF_DISCOVERED_PSUS,
@@ -395,6 +396,7 @@ async def validate_snmp_input(hass: HomeAssistant, data: dict[str, Any]) -> dict
         from .snmp.snmp_discovery import (
             discover_sensors,
             discover_cpu_sensors,
+            discover_temperature_sensors,
             discover_fan_sensors,
             discover_psu_sensors,
             discover_voltage_probes,
@@ -408,6 +410,7 @@ async def validate_snmp_input(hass: HomeAssistant, data: dict[str, Any]) -> dict
         
         discovered_fans = await discover_fan_sensors(engine, auth_data, transport_target, context_data, SNMP_WALK_OIDS["fans"])
         discovered_cpus = await discover_cpu_sensors(engine, auth_data, transport_target, context_data, SNMP_WALK_OIDS["cpu_temps"])
+        discovered_temperatures = await discover_temperature_sensors(engine, auth_data, transport_target, context_data, SNMP_WALK_OIDS["cpu_temps"])
         discovered_psus = await discover_psu_sensors(engine, auth_data, transport_target, context_data, SNMP_WALK_OIDS["psu_status"])
         discovered_voltage_probes = await discover_voltage_probes(engine, auth_data, transport_target, context_data, SNMP_WALK_OIDS["psu_voltage"])
         
@@ -453,6 +456,7 @@ async def validate_snmp_input(hass: HomeAssistant, data: dict[str, Any]) -> dict
         # Store discovered sensors in data for later use
         data[CONF_DISCOVERED_FANS] = discovered_fans
         data[CONF_DISCOVERED_CPUS] = discovered_cpus
+        data[CONF_DISCOVERED_TEMPERATURES] = discovered_temperatures
         data[CONF_DISCOVERED_PSUS] = discovered_psus
         data[CONF_DISCOVERED_VOLTAGE_PROBES] = discovered_voltage_probes
         data[CONF_DISCOVERED_MEMORY] = discovered_memory

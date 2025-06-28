@@ -113,6 +113,48 @@ async def discover_cpu_sensors(
     return discovered_sensors
 
 
+async def discover_temperature_sensors(
+    engine: SnmpEngine,
+    auth_data: CommunityData,
+    transport_target: UdpTransportTarget,
+    context_data: ContextData,
+    base_oid: str,
+) -> list[int]:
+    """Discover ALL temperature sensors including CPU, inlet, outlet, and system sensors."""
+    _LOGGER.debug("Starting temperature sensor discovery for base OID: %s", base_oid)
+    discovered_sensors = []
+    
+    # Test indices from 1 to 20 
+    for index in range(1, 21):
+        test_oid = f"{base_oid}.{index}"
+        
+        try:
+            error_indication, error_status, error_index, var_binds = await getCmd(
+                engine,
+                auth_data,
+                transport_target,
+                context_data,
+                ObjectType(ObjectIdentity(test_oid)),
+            )
+            
+            if not error_indication and not error_status and var_binds:
+                for name, val in var_binds:
+                    if val is not None and str(val) != "No Such Object currently exists at this OID":
+                        val_str = str(val).strip()
+                        # Include any sensor with a valid name (CPU, inlet, outlet, system, etc.)
+                        if val_str:
+                            discovered_sensors.append(index)
+                            _LOGGER.debug("Found temperature sensor at index %d: %s = %s", index, name, val)
+                        break
+                        
+        except Exception as exc:
+            _LOGGER.debug("Exception during temperature sensor discovery at index %d: %s", index, exc)
+            continue
+    
+    _LOGGER.debug("Discovered temperature sensors for base OID %s: %s", base_oid, discovered_sensors)
+    return discovered_sensors
+
+
 async def discover_fan_sensors(
     engine: SnmpEngine,
     auth_data: CommunityData | UsmUserData,
