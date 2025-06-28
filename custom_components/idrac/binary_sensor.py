@@ -209,14 +209,22 @@ class IdracSystemHealthBinarySensor(IdracBinarySensor):
         if self.coordinator.data is None:
             return None
         
-        health_value = self.coordinator.data.get("system_health")
-        if health_value is not None:
-            try:
-                health_int = int(health_value)
-                # Dell iDRAC health values: 3=ok, others indicate problems
-                return health_int != 3
-            except (ValueError, TypeError):
-                return None
+        health_data = self.coordinator.data.get("system_health")
+        if health_data is not None:
+            # Handle Redfish data format (dictionary with overall_status)
+            if isinstance(health_data, dict):
+                overall_status = health_data.get("overall_status")
+                if overall_status:
+                    # "Critical" or "Warning" means problem, "OK" means no problem
+                    return overall_status in ["Critical", "Warning"]
+            # Handle SNMP data format (integer)
+            else:
+                try:
+                    health_int = int(health_data)
+                    # Dell iDRAC health values: 3=ok, others indicate problems
+                    return health_int != 3
+                except (ValueError, TypeError):
+                    return None
         return None
 
     @property
@@ -519,6 +527,16 @@ class IdracSystemIntrusionBinarySensor(IdracBinarySensor):
         if self.coordinator.data is None:
             return None
         
+        # Try Redfish data format first
+        intrusion_data = self.coordinator.data.get("chassis_intrusion")
+        if intrusion_data is not None:
+            if isinstance(intrusion_data, dict):
+                status = intrusion_data.get("status")
+                if status:
+                    # "HardwareIntrusion" or "TamperingDetected" means intrusion
+                    return status in ["HardwareIntrusion", "TamperingDetected"]
+        
+        # Fallback to SNMP data format
         intrusion_value = self.coordinator.data.get("system_intrusion")
         if intrusion_value is not None:
             try:
@@ -553,6 +571,16 @@ class IdracPsuRedundancyBinarySensor(IdracBinarySensor):
         if self.coordinator.data is None:
             return None
         
+        # Try Redfish data format first
+        redundancy_data = self.coordinator.data.get("power_redundancy")
+        if redundancy_data is not None:
+            if isinstance(redundancy_data, dict):
+                status = redundancy_data.get("status")
+                if status:
+                    # "Critical" or "Warning" means problem, "OK" means no problem
+                    return status in ["Critical", "Warning"]
+        
+        # Fallback to SNMP data format
         redundancy_value = self.coordinator.data.get("psu_redundancy")
         if redundancy_value is not None:
             try:
