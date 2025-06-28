@@ -12,8 +12,7 @@ from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
-
+from .entity_base import IdracEntityBase
 from .const import (
     CONF_DISCOVERED_MEMORY,
     CONF_DISCOVERED_PHYSICAL_DISKS,
@@ -117,7 +116,7 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
-class IdracBinarySensor(CoordinatorEntity, BinarySensorEntity):
+class IdracBinarySensor(IdracEntityBase, BinarySensorEntity):
     """Base class for Dell iDRAC binary sensors."""
 
     def __init__(
@@ -129,54 +128,8 @@ class IdracBinarySensor(CoordinatorEntity, BinarySensorEntity):
         device_class: BinarySensorDeviceClass | None = None,
     ) -> None:
         """Initialize the binary sensor."""
-        super().__init__(coordinator)
-        self._sensor_key = sensor_key
-        host = config_entry.data[CONF_HOST]
-        port = config_entry.data[CONF_PORT]
-        device_id = f"{host}:{port}"
-        
-        # Set entity name with device prefix for proper entity ID generation
-        # Home Assistant will automatically sanitize for entity IDs
-        self._attr_name = f"Dell iDRAC {coordinator.host} {sensor_name}"
-        # Use stable unique_id based on device_id and sensor key
-        self._attr_unique_id = f"{device_id}_{sensor_key}"
+        super().__init__(coordinator, config_entry, sensor_key, sensor_name)
         self._attr_device_class = device_class
-
-        # Device info will be set in async_added_to_hass
-
-    async def async_added_to_hass(self) -> None:
-        """Run when entity is added to hass."""
-        await super().async_added_to_hass()
-        
-        # Set device info now that we can make async calls
-        try:
-            self._attr_device_info = await self.coordinator.get_device_info()
-        except Exception as exc:
-            _LOGGER.warning("Failed to get device info for binary sensor: %s", exc)
-            # Provide fallback device info to ensure device is created
-            self._attr_device_info = {
-                "identifiers": {("idrac", self.coordinator.host)},
-                "name": f"Dell iDRAC ({self.coordinator.host})",
-                "manufacturer": "Dell",
-                "model": "iDRAC",
-                "configuration_url": f"https://{self.coordinator.host}",
-            }
-
-    @property
-    def device_info(self):
-        """Return device information."""
-        # Always return device info - use fallback if not set
-        if hasattr(self, '_attr_device_info') and self._attr_device_info:
-            return self._attr_device_info
-        
-        # Fallback device info
-        return {
-            "identifiers": {("idrac", self.coordinator.host)},
-            "name": f"Dell iDRAC ({self.coordinator.host})",
-            "manufacturer": "Dell", 
-            "model": "iDRAC",
-            "configuration_url": f"https://{self.coordinator.host}",
-        }
 
     @property
     def available(self) -> bool:
@@ -214,7 +167,7 @@ class IdracPsuStatusBinarySensor(IdracBinarySensor):
         if self.coordinator.data is None or "power_supplies" not in self.coordinator.data:
             return None
         
-        psu_data = self.coordinator.data["power_supplies"].get(self._sensor_key)
+        psu_data = self.coordinator.data["power_supplies"].get(self._entity_key)
         if psu_data is None:
             return None
         
@@ -246,7 +199,7 @@ class IdracPsuStatusBinarySensor(IdracBinarySensor):
         if self.coordinator.data is None or "power_supplies" not in self.coordinator.data:
             return None
         
-        psu_data = self.coordinator.data["power_supplies"].get(self._sensor_key)
+        psu_data = self.coordinator.data["power_supplies"].get(self._entity_key)
         if psu_data is None:
             return None
         

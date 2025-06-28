@@ -21,12 +21,10 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
-
 from .const import DOMAIN, REDFISH_HEALTH_STATUS
 from .coordinator_snmp import SNMPDataUpdateCoordinator
 from .coordinator_redfish import RedfishDataUpdateCoordinator
-from .utils import get_device_name_prefix
+from .entity_base import IdracEntityBase
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -163,7 +161,7 @@ async def async_setup_entry(
 
 
 
-class IdracSensor(CoordinatorEntity[SNMPDataUpdateCoordinator | RedfishDataUpdateCoordinator], SensorEntity):
+class IdracSensor(IdracEntityBase, SensorEntity):
     """Common base class for Dell iDRAC sensors."""
 
     def __init__(
@@ -176,61 +174,18 @@ class IdracSensor(CoordinatorEntity[SNMPDataUpdateCoordinator | RedfishDataUpdat
         device_class: SensorDeviceClass | None = None,
     ) -> None:
         """Initialize the sensor."""
-        super().__init__(coordinator)
-        self._sensor_key = sensor_key
-        self.config_entry = config_entry
-        host = coordinator.host
-        
-        # Include device prefix in name for proper entity_id generation
-        device_prefix = get_device_name_prefix(coordinator)
-        self._attr_name = f"{device_prefix} {sensor_name}"
-        # Use stable unique_id based on host and sensor key (like original)
-        self._attr_unique_id = f"{host}_{sensor_key}"
+        super().__init__(coordinator, config_entry, sensor_key, sensor_name)
         self._attr_native_unit_of_measurement = unit
         self._attr_device_class = device_class
         if unit:  # Only set state class if we have a unit
             self._attr_state_class = SensorStateClass.MEASUREMENT
-
-    async def async_added_to_hass(self) -> None:
-        """Run when entity is added to hass."""
-        await super().async_added_to_hass()
-        
-        # Set device info now that we can make async calls
-        try:
-            self._attr_device_info = await self.coordinator.get_device_info()
-        except Exception as exc:
-            _LOGGER.warning("Failed to get device info for sensor: %s", exc)
-            # Provide fallback device info to ensure device is created
-            self._attr_device_info = {
-                "identifiers": {("idrac", self.coordinator.host)},
-                "name": f"Dell iDRAC ({self.coordinator.host})",
-                "manufacturer": "Dell",
-                "model": "iDRAC",
-                "configuration_url": f"https://{self.coordinator.host}",
-            }
 
     @property
     def native_value(self) -> float | None:
         """Return the state of the sensor."""
         if self.coordinator.data is None:
             return None
-        return self.coordinator.data.get(self._sensor_key)
-
-    @property
-    def device_info(self):
-        """Return device information."""
-        # Always return device info - use fallback if not set
-        if hasattr(self, '_attr_device_info') and self._attr_device_info:
-            return self._attr_device_info
-        
-        # Fallback device info
-        return {
-            "identifiers": {("idrac", self.coordinator.host)},
-            "name": f"Dell iDRAC ({self.coordinator.host})",
-            "manufacturer": "Dell", 
-            "model": "iDRAC",
-            "configuration_url": f"https://{self.coordinator.host}",
-        }
+        return self.coordinator.data.get(self._entity_key)
 
     @property
     def available(self) -> bool:

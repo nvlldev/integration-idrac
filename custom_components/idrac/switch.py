@@ -9,10 +9,9 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
-
 from .const import CONF_COMMUNITY, CONF_CONNECTION_TYPE, DOMAIN, IDRAC_OIDS
 from .coordinator_redfish import RedfishDataUpdateCoordinator
+from .entity_base import IdracEntityBase
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -42,7 +41,7 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
-class IdracSwitch(CoordinatorEntity, SwitchEntity):
+class IdracSwitch(IdracEntityBase, SwitchEntity):
     """Base class for Dell iDRAC switches."""
 
     def __init__(
@@ -54,58 +53,8 @@ class IdracSwitch(CoordinatorEntity, SwitchEntity):
         device_class: SwitchDeviceClass | None = None,
     ) -> None:
         """Initialize the switch."""
-        super().__init__(coordinator)
-        self._switch_key = switch_key
-        host = config_entry.data[CONF_HOST]
-        port = config_entry.data[CONF_PORT]
-        device_id = f"{host}:{port}"
-        
-        # Set entity name with device prefix for proper entity ID generation
-        # Home Assistant will automatically sanitize for entity IDs
-        self._attr_name = f"Dell iDRAC {coordinator.host} {switch_name}"
-        # Use stable unique_id based on device_id and switch key
-        self._attr_unique_id = f"{device_id}_{switch_key}"
+        super().__init__(coordinator, config_entry, switch_key, switch_name)
         self._attr_device_class = device_class
-
-        # Store reference details for logging
-        self._host = host
-        self._port = port
-
-        # Device info will be set in async_added_to_hass
-
-    async def async_added_to_hass(self) -> None:
-        """Run when entity is added to hass."""
-        await super().async_added_to_hass()
-        
-        # Set device info now that we can make async calls
-        try:
-            self._attr_device_info = await self.coordinator.get_device_info()
-        except Exception as exc:
-            _LOGGER.warning("Failed to get device info for switch: %s", exc)
-            # Provide fallback device info to ensure device is created
-            self._attr_device_info = {
-                "identifiers": {("idrac", self.coordinator.host)},
-                "name": f"Dell iDRAC ({self.coordinator.host})",
-                "manufacturer": "Dell",
-                "model": "iDRAC",
-                "configuration_url": f"https://{self.coordinator.host}",
-            }
-
-    @property
-    def device_info(self):
-        """Return device information."""
-        # Always return device info - use fallback if not set
-        if hasattr(self, '_attr_device_info') and self._attr_device_info:
-            return self._attr_device_info
-        
-        # Fallback device info
-        return {
-            "identifiers": {("idrac", self.coordinator.host)},
-            "name": f"Dell iDRAC ({self.coordinator.host})",
-            "manufacturer": "Dell", 
-            "model": "iDRAC",
-            "configuration_url": f"https://{self.coordinator.host}",
-        }
 
     async def _async_snmp_set(self, oid: str, value: int) -> bool:
         """Send SNMP SET command using coordinator's SNMP connection."""
@@ -117,7 +66,7 @@ class IdracSwitch(CoordinatorEntity, SwitchEntity):
         result = await self.coordinator.async_set_snmp_value(oid, value)
         
         if result:
-            _LOGGER.info("Successfully executed %s command on %s", self._switch_key, self._host)
+            _LOGGER.info("Successfully executed %s command on %s", self._entity_key, self._host)
         
         return result
 

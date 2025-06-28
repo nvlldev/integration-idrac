@@ -9,10 +9,9 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
-
 from .const import CONF_COMMUNITY, CONF_CONNECTION_TYPE, DOMAIN, IDRAC_OIDS
 from .coordinator_redfish import RedfishDataUpdateCoordinator
+from .entity_base import IdracEntityBase
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -51,7 +50,7 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
-class IdracButton(CoordinatorEntity, ButtonEntity):
+class IdracButton(IdracEntityBase, ButtonEntity):
     """Base class for Dell iDRAC buttons."""
 
     def __init__(
@@ -63,76 +62,21 @@ class IdracButton(CoordinatorEntity, ButtonEntity):
         device_class: ButtonDeviceClass | None = None,
     ) -> None:
         """Initialize the button."""
-        super().__init__(coordinator)
-        self._button_key = button_key
-        host = config_entry.data[CONF_HOST]
-        port = config_entry.data[CONF_PORT]
-        device_id = f"{host}:{port}"
-        
-        # Set entity name with device prefix for proper entity ID generation
-        # Home Assistant will automatically sanitize for entity IDs
-        self._attr_name = f"Dell iDRAC {coordinator.host} {button_name}"
-        # Use stable unique_id based on device_id and button key
-        self._attr_unique_id = f"{device_id}_{button_key}"
+        super().__init__(coordinator, config_entry, button_key, button_name)
         self._attr_device_class = device_class
-
-        # Store reference details for logging
-        self._host = host
-        self._port = port
-
-        # Device info will be set in async_added_to_hass
 
     async def _async_redfish_action(self, action: str) -> bool:
         """Execute Redfish power action using coordinator."""
         try:
             success = await self.coordinator.async_reset_system(action)
             if success:
-                _LOGGER.info("Successfully executed %s command (%s) on %s", self._button_key, action, self._host)
+                _LOGGER.info("Successfully executed %s command (%s) on %s", self._entity_key, action, self._host)
             else:
-                _LOGGER.error("Failed to execute %s command (%s) on %s", self._button_key, action, self._host)
+                _LOGGER.error("Failed to execute %s command (%s) on %s", self._entity_key, action, self._host)
             return success
         except Exception as exc:
             _LOGGER.error("Exception during Redfish %s action: %s", action, exc)
             return False
-
-    @property
-    def available(self) -> bool:
-        """Return if entity is available."""
-        return self.coordinator.last_update_success
-
-    async def async_added_to_hass(self) -> None:
-        """Run when entity is added to hass."""
-        await super().async_added_to_hass()
-        
-        # Set device info now that we can make async calls
-        try:
-            self._attr_device_info = await self.coordinator.get_device_info()
-        except Exception as exc:
-            _LOGGER.warning("Failed to get device info for button: %s", exc)
-            # Provide fallback device info to ensure device is created
-            self._attr_device_info = {
-                "identifiers": {("idrac", self.coordinator.host)},
-                "name": f"Dell iDRAC ({self.coordinator.host})",
-                "manufacturer": "Dell",
-                "model": "iDRAC",
-                "configuration_url": f"https://{self.coordinator.host}",
-            }
-
-    @property
-    def device_info(self):
-        """Return device information."""
-        # Always return device info - use fallback if not set
-        if hasattr(self, '_attr_device_info') and self._attr_device_info:
-            return self._attr_device_info
-        
-        # Fallback device info
-        return {
-            "identifiers": {("idrac", self.coordinator.host)},
-            "name": f"Dell iDRAC ({self.coordinator.host})",
-            "manufacturer": "Dell", 
-            "model": "iDRAC",
-            "configuration_url": f"https://{self.coordinator.host}",
-        }
 
     def _get_current_power_state(self) -> int | None:
         """Get current power state from coordinator data."""
