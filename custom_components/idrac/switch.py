@@ -13,7 +13,6 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import CONF_COMMUNITY, CONF_CONNECTION_TYPE, DOMAIN, IDRAC_OIDS
 from .coordinator_redfish import RedfishDataUpdateCoordinator
-from .utils import get_device_name_prefix
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -78,12 +77,11 @@ class IdracSwitch(CoordinatorEntity, SwitchEntity):
         
         # Set device info and name now that we can make async calls
         try:
-            device_prefix = await get_device_name_prefix(self.coordinator)
-            self._attr_name = f"{device_prefix} {self._switch_name}"
+            self._attr_name = self._switch_name
             self._attr_device_info = await self.coordinator.get_device_info()
         except Exception as exc:
             _LOGGER.warning("Failed to get device info for switch: %s", exc)
-            self._attr_name = f"Dell iDRAC ({self._host}) {self._switch_name}"
+            self._attr_name = self._switch_name
             # Provide fallback device info to ensure device is created
             self._attr_device_info = {
                 "identifiers": {("idrac", self.coordinator.host)},

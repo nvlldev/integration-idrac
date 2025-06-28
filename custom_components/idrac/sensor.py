@@ -26,7 +26,6 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import DOMAIN, REDFISH_HEALTH_STATUS
 from .coordinator_snmp import SNMPDataUpdateCoordinator
 from .coordinator_redfish import RedfishDataUpdateCoordinator
-from .utils import get_device_name_prefix
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -333,12 +332,11 @@ class IdracSensor(CoordinatorEntity[SNMPDataUpdateCoordinator | RedfishDataUpdat
         
         # Set device info and name now that we can make async calls
         try:
-            device_prefix = await get_device_name_prefix(self.coordinator)
-            self._attr_name = f"{device_prefix} {self._sensor_name}"
+            self._attr_name = self._sensor_name
             self._attr_device_info = await self.coordinator.get_device_info()
         except Exception as exc:
             _LOGGER.warning("Failed to get device info for sensor: %s", exc)
-            self._attr_name = f"Dell iDRAC ({self.coordinator.host}) {self._sensor_name}"
+            self._attr_name = self._sensor_name
             # Provide fallback device info to ensure device is created
             self._attr_device_info = {
                 "identifiers": {("idrac", self.coordinator.host)},
