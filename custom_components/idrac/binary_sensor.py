@@ -1144,7 +1144,7 @@ class IdracSystemBoardIntrusionBinarySensor(IdracBinarySensor):
             sensor_name,
             BinarySensorDeviceClass.SAFETY,  # "On" means intrusion detected, "Off" means secure
         )
-        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        # No entity_category - appears in main Sensors section
         self._attr_icon = "mdi:shield-alert"
 
     def _get_intrusion_sensor_name(self, coordinator, intrusion_index: int) -> str:
@@ -1180,22 +1180,35 @@ class IdracSystemBoardIntrusionBinarySensor(IdracBinarySensor):
             
         if reading_value is None:
             return None
+        
+        # Debug logging to help diagnose status interpretation
+        _LOGGER.debug("System Board Intrusion %s: raw reading_value=%s (type=%s)", 
+                     self._entity_key, reading_value, type(reading_value))
             
         # Handle both string and numeric reading values
         if isinstance(reading_value, str):
             # String reading: "breach", "ok", "secure", etc.
-            return reading_value.lower() in ["breach", "detected", "tampered"]
+            is_breached = reading_value.lower() in ["breach", "detected", "tampered"]
+            _LOGGER.debug("System Board Intrusion %s: string interpretation '%s' -> %s", 
+                         self._entity_key, reading_value, is_breached)
+            return is_breached
         else:
             try:
                 reading_int = int(reading_value)
                 # Dell iDRAC intrusion values from INTRUSION_STATUS mapping:
                 # 1=breach, 2=no_breach, 3=ok, 4=unknown
                 if reading_int == 1:  # breach
+                    _LOGGER.debug("System Board Intrusion %s: value %d -> BREACH (True)", 
+                                 self._entity_key, reading_int)
                     return True   # Intrusion detected
                 elif reading_int in [2, 3]:  # no_breach, ok
+                    _LOGGER.debug("System Board Intrusion %s: value %d -> OK (False)", 
+                                 self._entity_key, reading_int)
                     return False  # Secure/OK
                 # 4=unknown, return None to indicate unavailable
                 else:
+                    _LOGGER.debug("System Board Intrusion %s: value %d -> UNKNOWN (None)", 
+                                 self._entity_key, reading_int)
                     return None
             except (ValueError, TypeError):
                 return None
