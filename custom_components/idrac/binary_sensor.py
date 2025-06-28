@@ -532,9 +532,13 @@ class IdracSystemIntrusionBinarySensor(IdracBinarySensor):
         if intrusion_data is not None:
             if isinstance(intrusion_data, dict):
                 status = intrusion_data.get("status")
-                if status:
+                if status and status != "Unknown":
                     # "HardwareIntrusion" or "TamperingDetected" means intrusion
+                    # "Normal" means no intrusion
                     return status in ["HardwareIntrusion", "TamperingDetected"]
+                elif status == "Unknown":
+                    # If intrusion sensor status is unknown, consider it as no intrusion (false)
+                    return False
         
         # Fallback to SNMP data format
         intrusion_value = self.coordinator.data.get("system_intrusion")
@@ -646,12 +650,17 @@ class IdracPowerStateBinarySensor(IdracBinarySensor):
         
         power_state = self.coordinator.data.get("system_info", {}).get("power_state")
         if power_state is not None:
-            try:
-                power_int = int(power_state)
-                # Dell iDRAC power states: 1=on, 2=off
-                return power_int == 1
-            except (ValueError, TypeError):
-                return None
+            # Handle Redfish string format
+            if isinstance(power_state, str):
+                return power_state.lower() == "on"
+            # Handle SNMP integer format
+            else:
+                try:
+                    power_int = int(power_state)
+                    # Dell iDRAC power states: 1=on, 2=off
+                    return power_int == 1
+                except (ValueError, TypeError):
+                    return None
         return None
 
     @property
@@ -662,23 +671,32 @@ class IdracPowerStateBinarySensor(IdracBinarySensor):
         
         power_state = self.coordinator.data.get("system_info", {}).get("power_state")
         if power_state is not None:
-            try:
-                power_int = int(power_state)
-                # Map Dell iDRAC power states to readable strings
-                power_map = {
-                    1: "on",
-                    2: "off",
-                    3: "powering_on",
-                    4: "powering_off",
-                }
-                power_text = power_map.get(power_int, "unknown")
-                
+            # Handle Redfish string format
+            if isinstance(power_state, str):
                 return {
-                    "power_code": power_int,
-                    "power_text": power_text,
+                    "power_state": power_state,
+                    "format": "redfish"
                 }
-            except (ValueError, TypeError):
-                return {"raw_value": str(power_state)}
+            # Handle SNMP integer format
+            else:
+                try:
+                    power_int = int(power_state)
+                    # Map Dell iDRAC power states to readable strings
+                    power_map = {
+                        1: "on",
+                        2: "off",
+                        3: "powering_on",
+                        4: "powering_off",
+                    }
+                    power_text = power_map.get(power_int, "unknown")
+                    
+                    return {
+                        "power_code": power_int,
+                        "power_text": power_text,
+                        "format": "snmp"
+                    }
+                except (ValueError, TypeError):
+                    return {"raw_value": str(power_state)}
         return None
 
 
