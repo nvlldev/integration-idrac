@@ -41,9 +41,10 @@ class IdracEntityBase(CoordinatorEntity):
         # Use stable unique_id based on device_id and entity key
         self._attr_unique_id = f"{device_id}_{entity_key}"
 
-        # Store reference details for logging
+        # Store reference details for logging and device info
         self._host = host
         self._port = port
+        self._config_entry = config_entry
 
         # Device info will be set in async_added_to_hass
 
@@ -57,7 +58,7 @@ class IdracEntityBase(CoordinatorEntity):
         except Exception as exc:
             _LOGGER.warning("Failed to get device info for %s: %s", self._entity_key, exc)
             # Provide fallback device info to ensure device is created
-            self._attr_device_info = get_fallback_device_info(self.coordinator.host)
+            self._attr_device_info = get_fallback_device_info(self.coordinator.host, self._port)
 
     @property
     def device_info(self):
@@ -67,7 +68,7 @@ class IdracEntityBase(CoordinatorEntity):
             return self._attr_device_info
         
         # Fallback device info
-        return get_fallback_device_info(self.coordinator.host)
+        return get_fallback_device_info(self.coordinator.host, self._port)
 
     @property
     def available(self) -> bool:
