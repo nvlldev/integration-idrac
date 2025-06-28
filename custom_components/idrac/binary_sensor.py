@@ -127,7 +127,7 @@ class IdracPsuStatusBinarySensor(IdracBinarySensor):
         psu_index: int,
     ) -> None:
         """Initialize the PSU status binary sensor."""
-        sensor_key = f"psu_status_{psu_index}"
+        sensor_key = f"psu_{psu_index}"
         sensor_name = f"PSU {psu_index} Status"
         super().__init__(
             coordinator,
@@ -143,17 +143,31 @@ class IdracPsuStatusBinarySensor(IdracBinarySensor):
         if self.coordinator.data is None or "power_supplies" not in self.coordinator.data:
             return None
         
-        status_value = self.coordinator.data["power_supplies"].get(self._sensor_key)
+        psu_data = self.coordinator.data["power_supplies"].get(self._sensor_key)
+        if psu_data is None:
+            return None
+        
+        # Handle both SNMP nested format and direct status format
+        if isinstance(psu_data, dict):
+            status_value = psu_data.get("status")
+        else:
+            status_value = psu_data
+            
         if status_value is None:
             return None
             
-        try:
-            status_int = int(status_value)
-            # Dell iDRAC status values: 1=other, 2=unknown, 3=ok, 4=non_critical, 5=critical, 6=non_recoverable
-            # Return True (problem) for anything other than "ok" (3)
-            return status_int != 3
-        except (ValueError, TypeError):
-            return None
+        # Handle both string and numeric status values
+        if isinstance(status_value, str):
+            # String status: "ok", "critical", "warning", etc.
+            return status_value.lower() not in ["ok", "normal", "good"]
+        else:
+            try:
+                status_int = int(status_value)
+                # Dell iDRAC status values: 1=other, 2=unknown, 3=ok, 4=non_critical, 5=critical, 6=non_recoverable
+                # Return True (problem) for anything other than "ok" (3)
+                return status_int != 3
+            except (ValueError, TypeError):
+                return None
 
     @property
     def extra_state_attributes(self) -> dict[str, str] | None:
@@ -161,29 +175,50 @@ class IdracPsuStatusBinarySensor(IdracBinarySensor):
         if self.coordinator.data is None or "power_supplies" not in self.coordinator.data:
             return None
         
-        status_value = self.coordinator.data["power_supplies"].get(self._sensor_key)
-        if status_value is None:
+        psu_data = self.coordinator.data["power_supplies"].get(self._sensor_key)
+        if psu_data is None:
             return None
+        
+        attributes = {}
+        
+        # Handle nested PSU data structure
+        if isinstance(psu_data, dict):
+            status_value = psu_data.get("status")
+            # Add additional PSU information if available
+            if "name" in psu_data:
+                attributes["psu_name"] = psu_data["name"]
+            if "power_capacity_watts" in psu_data:
+                attributes["power_capacity_watts"] = psu_data["power_capacity_watts"]
+            if "power_output_watts" in psu_data:
+                attributes["power_output_watts"] = psu_data["power_output_watts"]
+        else:
+            status_value = psu_data
             
-        try:
-            status_int = int(status_value)
-            # Map Dell iDRAC status values to readable strings
-            status_map = {
-                1: "other",
-                2: "unknown", 
-                3: "ok",
-                4: "non_critical",
-                5: "critical",
-                6: "non_recoverable"
-            }
-            status_text = status_map.get(status_int, "unknown")
-            
-            return {
-                "status_code": status_int,
-                "status_text": status_text,
-            }
-        except (ValueError, TypeError):
-            return {"raw_value": str(status_value)}
+        if status_value is not None:
+            if isinstance(status_value, str):
+                attributes["status_text"] = status_value
+            else:
+                try:
+                    status_int = int(status_value)
+                    # Map Dell iDRAC status values to readable strings
+                    status_map = {
+                        1: "other",
+                        2: "unknown", 
+                        3: "ok",
+                        4: "non_critical",
+                        5: "critical",
+                        6: "non_recoverable"
+                    }
+                    status_text = status_map.get(status_int, "unknown")
+                    
+                    attributes.update({
+                        "status_code": status_int,
+                        "status_text": status_text,
+                    })
+                except (ValueError, TypeError):
+                    attributes["raw_value"] = str(status_value)
+        
+        return attributes if attributes else None
 
 
 class IdracSystemHealthBinarySensor(IdracBinarySensor):
@@ -753,8 +788,24 @@ class IdracMemoryHealthBinarySensor(IdracBinarySensor):
         if self.coordinator.data is None or "memory_health" not in self.coordinator.data:
             return None
         
-        health_value = self.coordinator.data["memory_health"].get(self._sensor_key)
-        if health_value is not None:
+        memory_data = self.coordinator.data["memory_health"].get(self._sensor_key)
+        if memory_data is None:
+            return None
+        
+        # Handle both SNMP nested format and direct status format
+        if isinstance(memory_data, dict):
+            health_value = memory_data.get("status")
+        else:
+            health_value = memory_data
+            
+        if health_value is None:
+            return None
+            
+        # Handle both string and numeric health values
+        if isinstance(health_value, str):
+            # String health: "ok", "critical", "warning", etc.
+            return health_value.lower() not in ["ok", "normal", "good", "ready"]
+        else:
             try:
                 health_int = int(health_value)
                 # Dell iDRAC memory health values: 2=ready/normal, 3=ok are both healthy
@@ -762,7 +813,6 @@ class IdracMemoryHealthBinarySensor(IdracBinarySensor):
                 return health_int not in [2, 3]
             except (ValueError, TypeError):
                 return None
-        return None
 
     @property
     def extra_state_attributes(self) -> dict[str, str] | None:
@@ -770,26 +820,46 @@ class IdracMemoryHealthBinarySensor(IdracBinarySensor):
         if self.coordinator.data is None or "memory_health" not in self.coordinator.data:
             return None
         
-        health_value = self.coordinator.data["memory_health"].get(self._sensor_key)
+        memory_data = self.coordinator.data["memory_health"].get(self._sensor_key)
+        if memory_data is None:
+            return None
+        
+        attributes = {}
+        
+        # Handle nested memory data structure
+        if isinstance(memory_data, dict):
+            health_value = memory_data.get("status")
+            # Add additional memory information if available
+            if "name" in memory_data:
+                attributes["memory_name"] = memory_data["name"]
+            if "size_kb" in memory_data:
+                attributes["size_kb"] = memory_data["size_kb"]
+        else:
+            health_value = memory_data
+            
         if health_value is not None:
-            try:
-                health_int = int(health_value)
-                # Map Dell iDRAC memory health values to readable strings
-                health_map = {
-                    1: "other",
-                    2: "ready", 
-                    3: "ok",
-                    4: "non_critical",
-                    5: "critical",
-                    6: "non_recoverable"
-                }
-                health_text = health_map.get(health_int, "unknown")
-                
-                return {
-                    "health_code": health_int,
-                    "health_text": health_text,
-                }
-            except (ValueError, TypeError):
-                return {"raw_value": str(health_value)}
-        return None
+            if isinstance(health_value, str):
+                attributes["health_text"] = health_value
+            else:
+                try:
+                    health_int = int(health_value)
+                    # Map Dell iDRAC memory health values to readable strings
+                    health_map = {
+                        1: "other",
+                        2: "ready", 
+                        3: "ok",
+                        4: "non_critical",
+                        5: "critical",
+                        6: "non_recoverable"
+                    }
+                    health_text = health_map.get(health_int, "unknown")
+                    
+                    attributes.update({
+                        "health_code": health_int,
+                        "health_text": health_text,
+                    })
+                except (ValueError, TypeError):
+                    attributes["raw_value"] = str(health_value)
+        
+        return attributes if attributes else None
 

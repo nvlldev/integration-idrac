@@ -244,7 +244,7 @@ class IdracDataUpdateCoordinator(DataUpdateCoordinator):
             # Chassis intrusion - often missing in Redfish
             ("chassis_intrusion", "system_intrusion"),
             # Memory health - may have more detail in SNMP
-            ("memory_health", "memory_health"),
+            ("memory_health", "memory"),
             # Storage components - often SNMP-only
             ("virtual_disks", "virtual_disks"),
             ("physical_disks", "physical_disks"),
