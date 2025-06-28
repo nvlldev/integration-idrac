@@ -878,7 +878,8 @@ class IdracMemoryHealthBinarySensor(IdracBinarySensor):
         
         # Handle both SNMP nested format and direct status format
         if isinstance(memory_data, dict):
-            health_value = memory_data.get("health_status")
+            # SNMP processor stores it as "status", not "health_status"
+            health_value = memory_data.get("status")
         else:
             health_value = memory_data
             
@@ -912,7 +913,8 @@ class IdracMemoryHealthBinarySensor(IdracBinarySensor):
         
         # Handle nested memory data structure
         if isinstance(memory_data, dict):
-            health_value = memory_data.get("health_status")
+            # SNMP processor stores it as "status", not "health_status"
+            health_value = memory_data.get("status")
             # Add additional memory information if available
             if "name" in memory_data:
                 attributes["memory_name"] = memory_data["name"]
