@@ -314,28 +314,38 @@ class SNMPDataProcessor:
     def _process_voltage_sensors(self, data: Dict[str, Any], values: Dict[str, int], strings: Dict[str, str]) -> None:
         """Process voltage sensor data from SNMP values."""
         processed_count = 0
+        skipped_count = 0
         
         for voltage_id in self.discovered_voltage_probes:
             voltage_reading = values.get(format_oid_with_index(IDRAC_OIDS["psu_input_voltage"], voltage_id))
             
             if voltage_reading is not None:
-                # Convert voltage reading (typically in millivolts)
-                voltage_volts = self._convert_voltage(voltage_reading)
                 voltage_location = strings.get(format_oid_with_index(IDRAC_OIDS["psu_location"], voltage_id))
                 
+                # Skip PSU voltage sensors per user request
+                if voltage_location and any(psu_term in voltage_location.lower() for psu_term in ["ps1", "ps2", "ps3", "psu"]):
+                    _LOGGER.debug("Skipping PSU voltage sensor: %s", voltage_location)
+                    skipped_count += 1
+                    continue
+                
+                # Convert voltage reading (typically in millivolts)
+                voltage_volts = self._convert_voltage(voltage_reading)
+                
                 sensor_data = {
-                    "name": f"{voltage_location} Voltage" if voltage_location else f"PSU {voltage_id} Voltage",
+                    "name": f"{voltage_location} Voltage" if voltage_location else f"Voltage {voltage_id}",
                     "reading_volts": voltage_volts,
                     "status": "ok",  # Voltage probes typically don't have explicit status
                 }
                 
-                data["voltages"][f"psu_voltage_{voltage_id}"] = sensor_data
+                data["voltages"][f"voltage_{voltage_id}"] = sensor_data
                 processed_count += 1
             else:
                 _LOGGER.debug("No voltage reading for sensor %d", voltage_id)
         
         if processed_count > 0:
             _LOGGER.debug("Processed %d voltage sensors", processed_count)
+        if skipped_count > 0:
+            _LOGGER.debug("Skipped %d PSU voltage sensors per user request", skipped_count)
     
     def _process_power_consumption(self, data: Dict[str, Any], values: Dict[str, int], strings: Dict[str, str]) -> None:
         """Process system power consumption data."""

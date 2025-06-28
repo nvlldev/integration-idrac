@@ -73,13 +73,7 @@ async def async_setup_entry(
     
     # Memory health sensors removed - now handled by binary_sensor.py as DIMM Socket Health binary sensors
     
-    # PSU specific sensors
-    psu_coordinator = get_coordinator_for_category("power_supplies", snmp_coordinator, redfish_coordinator, "snmp")
-    if psu_coordinator and psu_coordinator.data and "power_supplies" in psu_coordinator.data:
-        for psu_id, psu_data in psu_coordinator.data["power_supplies"].items():
-            if psu_data.get("power_output_watts") is not None:
-                entities.append(IdracPSUOutputPowerSensor(psu_coordinator, config_entry, psu_id, psu_data))
-            # PSU voltage sensors removed per user request
+    # PSU specific sensors removed per user request - no PSU voltage or output power sensors
     
     # Single instance sensors
     single_sensors = [
@@ -572,32 +566,7 @@ class IdracDateTimeSensor(IdracSensor):
 # PSU input power sensor removed as requested
 
 
-class IdracPSUOutputPowerSensor(IdracSensor):
-    """PSU output power sensor."""
-    
-    def __init__(self, coordinator: SNMPDataUpdateCoordinator | RedfishDataUpdateCoordinator, config_entry: ConfigEntry, 
-                 psu_id: str, psu_data: dict[str, Any]) -> None:
-        """Initialize the sensor."""
-        psu_index = psu_id.replace('psu_', '') if psu_id.startswith('psu_') else psu_id
-        super().__init__(coordinator, config_entry, f"{psu_id}_output_power", f"Power Supply {psu_index} Output Power")
-        self._attr_device_class = SensorDeviceClass.POWER
-        self._attr_state_class = SensorStateClass.MEASUREMENT
-        self._attr_native_unit_of_measurement = UnitOfPower.WATT
-        self._attr_icon = "mdi:flash-outline"
-        self.psu_id = psu_id
-
-    @property
-    def native_value(self) -> float | None:
-        """Return the PSU output power."""
-        if not self.coordinator.data or "power_supplies" not in self.coordinator.data:
-            return None
-        psu_data = self.coordinator.data["power_supplies"].get(self.psu_id)
-        if not psu_data:
-            return None
-        return psu_data.get("power_output_watts")
-
-
-# PSU input voltage sensors removed per user request
+# PSU output power and input voltage sensors removed per user request
 
 
 # Power aggregate sensors (Average, Min, Max) removed per user request
