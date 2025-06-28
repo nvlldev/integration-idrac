@@ -294,8 +294,12 @@ class RedfishCoordinator:
                 "serial_number": system_data.get("SerialNumber"),
                 "bios_version": system_data.get("BiosVersion"),
                 "memory_gb": system_data.get("MemorySummary", {}).get("TotalSystemMemoryGiB"),
+                "memory_status": system_data.get("MemorySummary", {}).get("Status", {}).get("Health"),
+                "memory_mirroring": system_data.get("MemorySummary", {}).get("MemoryMirroring"),
+                "memory_modules_populated": system_data.get("MemorySummary", {}).get("TotalSystemPersistentMemoryGiB"),
                 "processor_count": system_data.get("ProcessorSummary", {}).get("Count"),
                 "processor_model": system_data.get("ProcessorSummary", {}).get("Model"),
+                "processor_status": system_data.get("ProcessorSummary", {}).get("Status", {}).get("Health"),
             }
             
             # Store LED state separately for easy access
@@ -517,10 +521,12 @@ class RedfishCoordinator:
             # Check for any critical issues
             if any(health in ["Critical", "critical"] for health in health_components):
                 overall_health = "Critical"
-            elif any(health in ["Warning", "warning", "OK"] for health in health_components):
+            elif any(health in ["Warning", "warning"] for health in health_components):
                 overall_health = "Warning"
-            else:
+            elif all(health in ["OK", "ok"] for health in health_components):
                 overall_health = "OK"
+            else:
+                overall_health = "Unknown"
         else:
             overall_health = "Unknown"
         

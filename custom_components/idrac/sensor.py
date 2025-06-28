@@ -114,6 +114,14 @@ async def async_setup_entry(
             entities.append(IdracMemorySensor(coordinator, config_entry))
         if system_info.get("processor_count"):
             entities.append(IdracProcessorCountSensor(coordinator, config_entry))
+        if system_info.get("processor_model"):
+            entities.append(IdracProcessorModelSensor(coordinator, config_entry))
+        if system_info.get("memory_mirroring"):
+            entities.append(IdracMemoryMirroringSensor(coordinator, config_entry))
+        if system_info.get("processor_status"):
+            entities.append(IdracProcessorStatusSensor(coordinator, config_entry))
+        if system_info.get("memory_status"):
+            entities.append(IdracMemoryStatusSensor(coordinator, config_entry))
         # Note: Power state, chassis intrusion, power redundancy, and system health 
         # are handled by binary sensors - no duplicate regular sensors needed
 
@@ -486,6 +494,14 @@ class IdracMemorySensor(IdracSensor):
         system_info = self.coordinator.data.get("system_info", {})
         return system_info.get("memory_gb")
 
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        if not self.coordinator.data:
+            return False
+        system_info = self.coordinator.data.get("system_info", {})
+        return system_info.get("memory_gb") is not None
+
 
 class IdracProcessorCountSensor(IdracSensor):
     """Processor count sensor."""
@@ -507,6 +523,14 @@ class IdracProcessorCountSensor(IdracSensor):
             return None
         system_info = self.coordinator.data.get("system_info", {})
         return system_info.get("processor_count")
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        if not self.coordinator.data:
+            return False
+        system_info = self.coordinator.data.get("system_info", {})
+        return system_info.get("processor_count") is not None
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
@@ -1129,3 +1153,121 @@ class IdracTemperatureDeltaSensor(IdracSensor):
             }
         
         return None
+
+
+class IdracProcessorModelSensor(IdracSensor):
+    """Processor model sensor."""
+
+    def __init__(
+        self,
+        coordinator: IdracDataUpdateCoordinator,
+        config_entry: ConfigEntry,
+    ) -> None:
+        """Initialize the processor model sensor."""
+        super().__init__(coordinator, config_entry, "processor_model", "CPU Model")
+        self._attr_entity_category = EntityCategory.CONFIG
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the state of the sensor."""
+        if not self.coordinator.data:
+            return None
+        system_info = self.coordinator.data.get("system_info", {})
+        return system_info.get("processor_model")
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        if not self.coordinator.data:
+            return False
+        system_info = self.coordinator.data.get("system_info", {})
+        return system_info.get("processor_model") is not None
+
+
+class IdracMemoryMirroringSensor(IdracSensor):
+    """Memory mirroring configuration sensor."""
+
+    def __init__(
+        self,
+        coordinator: IdracDataUpdateCoordinator,
+        config_entry: ConfigEntry,
+    ) -> None:
+        """Initialize the memory mirroring sensor."""
+        super().__init__(coordinator, config_entry, "memory_mirroring", "Memory Mirroring")
+        self._attr_entity_category = EntityCategory.CONFIG
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the state of the sensor."""
+        if not self.coordinator.data:
+            return None
+        system_info = self.coordinator.data.get("system_info", {})
+        return system_info.get("memory_mirroring")
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        if not self.coordinator.data:
+            return False
+        system_info = self.coordinator.data.get("system_info", {})
+        return system_info.get("memory_mirroring") is not None
+
+
+class IdracProcessorStatusSensor(IdracSensor):
+    """Processor status configuration sensor."""
+
+    def __init__(
+        self,
+        coordinator: IdracDataUpdateCoordinator,
+        config_entry: ConfigEntry,
+    ) -> None:
+        """Initialize the processor status sensor."""
+        super().__init__(coordinator, config_entry, "processor_status", "Processor Status")
+        self._attr_entity_category = EntityCategory.CONFIG
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the state of the sensor."""
+        if not self.coordinator.data:
+            return None
+        system_info = self.coordinator.data.get("system_info", {})
+        return system_info.get("processor_status")
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        if not self.coordinator.data:
+            return False
+        system_info = self.coordinator.data.get("system_info", {})
+        return system_info.get("processor_status") is not None
+
+
+class IdracMemoryStatusSensor(IdracSensor):
+    """Memory status configuration sensor."""
+
+    def __init__(
+        self,
+        coordinator: IdracDataUpdateCoordinator,
+        config_entry: ConfigEntry,
+    ) -> None:
+        """Initialize the memory status sensor."""
+        super().__init__(coordinator, config_entry, "memory_status", "Memory Status")
+        self._attr_entity_category = EntityCategory.CONFIG
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the state of the sensor."""
+        if not self.coordinator.data:
+            return None
+        system_info = self.coordinator.data.get("system_info", {})
+        return system_info.get("memory_status")
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        if not self.coordinator.data:
+            return False
+        system_info = self.coordinator.data.get("system_info", {})
+        return system_info.get("memory_status") is not None
+
+
