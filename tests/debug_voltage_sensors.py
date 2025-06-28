@@ -98,6 +98,11 @@ async def debug_voltage_sensors(host: str, community: str = "public", port: int 
                 would_be_filtered = True
                 filter_reason = "PSU voltage sensor"
             
+            # Power consumption filter check
+            elif location and any(power_term in location.lower() for power_term in ["pwr consumption", "power consumption", "consumption", "board pwr consumption"]):
+                would_be_filtered = True
+                filter_reason = "Power consumption sensor"
+            
             # Empty location filter check
             elif not location or location.strip() == "" or location.strip() == "No location":
                 would_be_filtered = True
@@ -124,6 +129,8 @@ async def debug_voltage_sensors(host: str, community: str = "public", port: int 
         # Apply same filtering logic
         if location and any(psu_term in location.lower() for psu_term in ["ps1", "ps2", "ps3", "psu"]):
             filtered_sensors.append(f"Index {index}: {location} (PSU filter)")
+        elif location and any(power_term in location.lower() for power_term in ["pwr consumption", "power consumption", "consumption", "board pwr consumption"]):
+            filtered_sensors.append(f"Index {index}: {location} (Power consumption filter)")
         elif not location or location.strip() == "":
             filtered_sensors.append(f"Index {index}: No location (empty filter)")
         else:

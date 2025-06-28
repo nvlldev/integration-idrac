@@ -374,7 +374,8 @@ class SNMPDataProcessor:
                     continue
                 
                 # Skip power consumption sensors that show up as voltage sensors
-                if voltage_location and any(power_term in voltage_location.lower() for power_term in ["pwr consumption", "power consumption", "consumption"]):
+                # This must be checked BEFORE system board binary sensor logic
+                if voltage_location and any(power_term in voltage_location.lower() for power_term in ["pwr consumption", "power consumption", "consumption", "board pwr consumption"]):
                     _LOGGER.debug("Skipping power consumption voltage sensor: %s", voltage_location)
                     skipped_count += 1
                     continue
