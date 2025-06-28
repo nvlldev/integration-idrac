@@ -199,7 +199,8 @@ class RedfishCoordinator:
             power_task = self.client.get_power_info()
             
             # Wait for primary data to complete concurrently with timeout
-            primary_timeout = 6.0  # Stricter timeout for primary data
+            # Based on real iDRAC testing: endpoints take 4-8 seconds each
+            primary_timeout = 12.0  # Allow time for concurrent 5-8s responses
             system_data, thermal_data, power_data = await asyncio.wait_for(
                 asyncio.gather(system_task, thermal_task, power_task, return_exceptions=True),
                 timeout=primary_timeout
@@ -224,14 +225,14 @@ class RedfishCoordinator:
             secondary_start = time.time()
             primary_time = secondary_start - start_time
             
-            if primary_failures <= 1 and primary_time < 5.0:
+            if primary_failures <= 1 and primary_time < 10.0:
                 # Secondary batch - nice-to-have data
                 _LOGGER.debug("Fetching secondary data from %s (primary took %.2fs)", self._server_id, primary_time)
                 manager_task = self.client.get_manager_info()
                 chassis_task = self.client.get_chassis_info()
                 
-                # Use shorter timeout for secondary data
-                secondary_timeout = 4.0
+                # Use appropriate timeout for secondary data (2 concurrent 5-8s calls)
+                secondary_timeout = 10.0
                 try:
                     manager_data, chassis_data = await asyncio.wait_for(
                         asyncio.gather(manager_task, chassis_task, return_exceptions=True),
@@ -258,19 +259,22 @@ class RedfishCoordinator:
                 manager_data = chassis_data = power_subsystem_data = None
                 
         except asyncio.TimeoutError:
-            _LOGGER.error("Primary data timeout on %s after %.2fs", self._server_id, primary_timeout)
-            # Try emergency fallback with individual requests
+            _LOGGER.warning("Primary data timeout on %s after %.2fs, falling back to individual requests", self._server_id, primary_timeout)
+            # Try emergency fallback with individual requests using longer timeout for slow iDRACs
             try:
-                system_data = await asyncio.wait_for(self.client.get_system_info(), timeout=3.0)
-            except:
+                system_data = await asyncio.wait_for(self.client.get_system_info(), timeout=8.0)
+            except Exception as exc:
+                _LOGGER.debug("Individual system request failed: %s", exc)
                 system_data = None
             try:
-                thermal_data = await asyncio.wait_for(self.client.get_thermal_info(), timeout=3.0)
-            except:
+                thermal_data = await asyncio.wait_for(self.client.get_thermal_info(), timeout=8.0)
+            except Exception as exc:
+                _LOGGER.debug("Individual thermal request failed: %s", exc)
                 thermal_data = None
             try:
-                power_data = await asyncio.wait_for(self.client.get_power_info(), timeout=3.0)
-            except:
+                power_data = await asyncio.wait_for(self.client.get_power_info(), timeout=8.0)
+            except Exception as exc:
+                _LOGGER.debug("Individual power request failed: %s", exc)
                 power_data = None
             manager_data = chassis_data = power_subsystem_data = None
                 
@@ -521,8 +525,10 @@ class RedfishCoordinator:
 
         # Log timing for performance monitoring
         total_time = time.time() - start_time
-        if total_time > 8:
+        if total_time > 15:
             _LOGGER.warning("Redfish update took %.2f seconds - consider optimizing", total_time)
+        elif total_time > 10:
+            _LOGGER.info("Redfish update completed in %.2f seconds (acceptable for this iDRAC)", total_time)
         else:
             _LOGGER.debug("Redfish update completed in %.2f seconds", total_time)
         
