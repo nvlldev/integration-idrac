@@ -87,6 +87,7 @@ class SNMPCoordinator:
         device_info = {
             "identifiers": {(DOMAIN, self._server_id)},
             "manufacturer": "Dell",
+            "name": f"Dell iDRAC ({self.host})",  # Consistent name regardless of SNMP data
         }
         
         # Get device info via SNMP client with explicit error handling
@@ -94,7 +95,10 @@ class SNMPCoordinator:
             _LOGGER.debug("Calling SNMP client get_device_info()")
             snmp_device_info = await self.client.get_device_info()
             _LOGGER.debug("SNMP client returned device info: %s", snmp_device_info)
+            # Update device info but preserve our consistent name
+            name = device_info["name"]  # Save our consistent name
             device_info.update(snmp_device_info)
+            device_info["name"] = name  # Restore consistent name
         except Exception as exc:
             _LOGGER.error("Error getting device info from SNMP client: %s", exc, exc_info=True)
             # Continue with basic device info

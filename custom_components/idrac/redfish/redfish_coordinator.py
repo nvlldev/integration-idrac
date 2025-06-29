@@ -95,6 +95,7 @@ class RedfishCoordinator:
             "identifiers": {(DOMAIN, self._server_id)},
             "manufacturer": "Dell",
             "configuration_url": f"https://{self.host}",
+            "name": f"Dell iDRAC ({self.host})",  # Consistent name regardless of model
         }
         
         # Get system information via Redfish
@@ -106,10 +107,9 @@ class RedfishCoordinator:
             
             if model:
                 device_info["model"] = model
-                device_info["name"] = f"Dell {model} ({self.host})"
+                # Keep consistent name format, don't change based on model
             else:
                 device_info["model"] = "iDRAC"
-                device_info["name"] = f"Dell iDRAC ({self.host})"
             
             if serial:
                 device_info["serial_number"] = serial
