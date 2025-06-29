@@ -548,7 +548,7 @@ class IdracFirmwareVersionSensor(IdracSensor):
         """Initialize the sensor."""
         super().__init__(coordinator, config_entry, "idrac_firmware_version", "iDRAC Firmware Version")
         # Don't override unique_id - let base class handle it consistently
-        self._attr_entity_category = None
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self._attr_icon = "mdi:chip"
 
     @property
@@ -566,8 +566,8 @@ class IdracDateTimeSensor(IdracSensor):
         """Initialize the sensor."""
         super().__init__(coordinator, config_entry, "system_datetime", "System Date Time")
         # Don't override unique_id - let base class handle it consistently
-        self._attr_entity_category = None
-        self._attr_device_class = SensorDeviceClass.TIMESTAMP
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        # Don't use TIMESTAMP device class since we return a string, not datetime object
         self._attr_icon = "mdi:clock-outline"
 
     @property
