@@ -91,7 +91,7 @@ async def async_setup_entry(
     
     # Energy consumption sensor (integral of power consumption)
     power_coordinator = get_coordinator_for_category("power_consumption", snmp_coordinator, redfish_coordinator, "snmp")
-    if power_coordinator and power_coordinator.data and "power_consumption" in power_coordinator.data and power_coordinator.data["power_consumption"]:
+    if power_coordinator:
         entities.append(IdracEnergyConsumptionSensor(power_coordinator, config_entry))
         _LOGGER.debug("Created energy consumption sensor using %s coordinator", type(power_coordinator).__name__)
     
