@@ -405,58 +405,42 @@ class RedfishCoordinator:
                     voltage_volts = voltage.get("ReadingVolts")
                     
                     # Skip PSU input voltage sensors from Voltages array since we create them from PowerSupplies data
+                    # Also skip Power Good (PG) sensors which are 1V status indicators, not actual voltage readings
                     name_lower = voltage_name.lower() if voltage_name else ""
                     is_psu_input_voltage = (
                         ("ps1" in name_lower and "voltage" in name_lower and "pg" not in name_lower) or
                         ("ps2" in name_lower and "voltage" in name_lower and "pg" not in name_lower) or
                         ("ps3" in name_lower and "voltage" in name_lower and "pg" not in name_lower) or
-                        ("psu" in name_lower and "voltage" in name_lower and "pg" not in name_lower)
+                        ("psu" in name_lower and "voltage" in name_lower and "pg" not in name_lower) or
+                        ("power supply" in name_lower and "voltage" in name_lower and "pg" not in name_lower)
+                    )
+                    
+                    # Skip all Power Good (PG) sensors - these are 1V status indicators, not voltage measurements
+                    is_power_good_sensor = (
+                        " pg" in name_lower or 
+                        name_lower.endswith(" pg") or
+                        "pg fail" in name_lower or
+                        "power good" in name_lower
                     )
                     
                     if is_psu_input_voltage:
                         _LOGGER.debug("Skipping PSU input voltage from Voltages array (using PowerSupplies.LineInputVoltage): %s", voltage_name)
                         continue
                     
-                    # Handle PG (Power Good) sensors as binary sensors
-                    is_pg_sensor = (
-                        " pg" in name_lower or
-                        name_lower.endswith(" pg") or
-                        "power good" in name_lower or
-                        ("system board" in name_lower and "voltage" in name_lower)
-                    )
+                    if is_power_good_sensor:
+                        _LOGGER.debug("Skipping Power Good sensor (1V status indicator): %s", voltage_name)
+                        continue
                     
-                    if is_pg_sensor:
-                        # PG sensors are binary status indicators (1V = OK, 0V = Not OK)
-                        is_ok = voltage_volts > 0.5  # Consider > 0.5V as "OK"
-                        
-                        # Clean up the sensor name for binary sensor
-                        clean_name = voltage_name.replace(" Voltage", "").replace(" PG", " Power Good")
-                        
-                        # Format CPU PG sensors properly: "CPU1 Power Good" -> "CPU 1 Power Good"
-                        cpu_match = re.match(r'^CPU(\d+)', clean_name)
-                        if cpu_match:
-                            cpu_num = cpu_match.group(1)
-                            clean_name = re.sub(r'^CPU\d+', f'CPU {cpu_num}', clean_name)
-                        
-                        data["system_voltages"][f"system_voltage_{i+1}"] = {
-                            "name": clean_name,
-                            "reading": 1 if is_ok else 0,  # Binary reading for binary sensor
-                            "status": "ok" if is_ok else "critical",
-                            "voltage_value": voltage_volts,  # Keep original voltage for debugging
-                            "sensor_type": "power_good" if " pg" in name_lower else "system_voltage",
-                        }
-                        _LOGGER.debug("Redfish: Converted PG sensor to binary: %s -> %s", voltage_name, clean_name)
-                    else:
-                        # Regular voltage sensors (non-PSU, non-PG sensors)
-                        data["voltages"][f"voltage_{i+1}"] = {
-                            "name": voltage_name,
-                            "reading_volts": voltage_volts,
-                            "status": voltage.get("Status", {}).get("Health"),
-                            "upper_threshold_critical": voltage.get("UpperThresholdCritical"),
-                            "upper_threshold_non_critical": voltage.get("UpperThresholdNonCritical"),
-                            "lower_threshold_critical": voltage.get("LowerThresholdCritical"),
-                            "lower_threshold_non_critical": voltage.get("LowerThresholdNonCritical"),
-                        }
+                    # Regular voltage sensors (non-PSU, non-PG sensors)
+                    data["voltages"][f"voltage_{i+1}"] = {
+                        "name": voltage_name,
+                        "reading_volts": voltage_volts,
+                        "status": voltage.get("Status", {}).get("Health"),
+                        "upper_threshold_critical": voltage.get("UpperThresholdCritical"),
+                        "upper_threshold_non_critical": voltage.get("UpperThresholdNonCritical"),
+                        "lower_threshold_critical": voltage.get("LowerThresholdCritical"),
+                        "lower_threshold_non_critical": voltage.get("LowerThresholdNonCritical"),
+                    }
 
         # Process manager information
         if manager_data:
