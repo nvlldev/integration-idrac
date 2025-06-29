@@ -377,6 +377,20 @@ class RedfishCoordinator:
                     "serial_number": psu.get("SerialNumber"),
                 }
                 
+                # Create PSU input voltage sensor from PowerSupplies.LineInputVoltage (most reliable source)
+                if line_input_voltage is not None:
+                    psu_number = i + 1
+                    voltage_sensor_name = f"Power Supply {psu_number} Input Voltage"
+                    
+                    data["voltages"][f"psu_input_voltage_{i+1}"] = {
+                        "name": voltage_sensor_name,
+                        "reading_volts": line_input_voltage,
+                        "status": psu.get("Status", {}).get("Health"),
+                        "source": "power_supply_line_input",  # Mark as authoritative source
+                    }
+                    _LOGGER.debug("Created PSU input voltage sensor from PowerSupplies: %s = %s V", 
+                                voltage_sensor_name, line_input_voltage)
+                
 
             # Process voltages - filter out PG (Power Good) sensors
             voltages = power_data.get("Voltages", [])
@@ -390,38 +404,25 @@ class RedfishCoordinator:
                     voltage_name = voltage.get("Name", f"Voltage {i+1}")
                     voltage_volts = voltage.get("ReadingVolts")
                     
-                    # Improve PSU voltage sensor names for clarity
-                    improved_name = voltage_name
-                    if voltage_name:
-                        name_lower = voltage_name.lower()
-                        # Handle specific patterns to get clean names
-                        if "ps1 voltage" in name_lower:
-                            improved_name = "Power Supply 1"
-                        elif "ps2 voltage" in name_lower:
-                            improved_name = "Power Supply 2"
-                        elif "ps3 voltage" in name_lower:
-                            improved_name = "Power Supply 3"
-                        elif "ps1" in name_lower:
-                            improved_name = voltage_name.replace("PS1", "Power Supply 1").replace("ps1", "Power Supply 1")
-                        elif "ps2" in name_lower:
-                            improved_name = voltage_name.replace("PS2", "Power Supply 2").replace("ps2", "Power Supply 2")
-                        elif "ps3" in name_lower:
-                            improved_name = voltage_name.replace("PS3", "Power Supply 3").replace("ps3", "Power Supply 3")
-                        elif "psu" in name_lower and "voltage" in name_lower:
-                            # Extract PSU number and create clean name
-                            psu_match = re.search(r'psu\s*(\d+)', name_lower)
-                            if psu_match:
-                                psu_num = psu_match.group(1)
-                                improved_name = f"Power Supply {psu_num}"
+                    # Skip PSU input voltage sensors from Voltages array since we create them from PowerSupplies data
+                    name_lower = voltage_name.lower() if voltage_name else ""
+                    is_psu_input_voltage = (
+                        ("ps1" in name_lower and "voltage" in name_lower and "pg" not in name_lower) or
+                        ("ps2" in name_lower and "voltage" in name_lower and "pg" not in name_lower) or
+                        ("ps3" in name_lower and "voltage" in name_lower and "pg" not in name_lower) or
+                        ("psu" in name_lower and "voltage" in name_lower and "pg" not in name_lower)
+                    )
+                    
+                    if is_psu_input_voltage:
+                        _LOGGER.debug("Skipping PSU input voltage from Voltages array (using PowerSupplies.LineInputVoltage): %s", voltage_name)
+                        continue
                     
                     # Handle PG (Power Good) sensors as binary sensors
-                    # Use improved name for PG detection
-                    improved_name_lower = improved_name.lower() if improved_name else ""
                     is_pg_sensor = (
-                        " pg" in improved_name_lower or
-                        improved_name_lower.endswith(" pg") or
-                        "power good" in improved_name_lower or
-                        ("system board" in improved_name_lower and "voltage" in improved_name_lower)
+                        " pg" in name_lower or
+                        name_lower.endswith(" pg") or
+                        "power good" in name_lower or
+                        ("system board" in name_lower and "voltage" in name_lower)
                     )
                     
                     if is_pg_sensor:
@@ -429,7 +430,7 @@ class RedfishCoordinator:
                         is_ok = voltage_volts > 0.5  # Consider > 0.5V as "OK"
                         
                         # Clean up the sensor name for binary sensor
-                        clean_name = improved_name.replace(" Voltage", "").replace(" PG", " Power Good")
+                        clean_name = voltage_name.replace(" Voltage", "").replace(" PG", " Power Good")
                         
                         # Format CPU PG sensors properly: "CPU1 Power Good" -> "CPU 1 Power Good"
                         cpu_match = re.match(r'^CPU(\d+)', clean_name)
@@ -446,9 +447,9 @@ class RedfishCoordinator:
                         }
                         _LOGGER.debug("Redfish: Converted PG sensor to binary: %s -> %s", voltage_name, clean_name)
                     else:
-                        # Regular voltage sensors
+                        # Regular voltage sensors (non-PSU, non-PG sensors)
                         data["voltages"][f"voltage_{i+1}"] = {
-                            "name": f"{improved_name} Input Voltage",
+                            "name": voltage_name,
                             "reading_volts": voltage_volts,
                             "status": voltage.get("Status", {}).get("Health"),
                             "upper_threshold_critical": voltage.get("UpperThresholdCritical"),
