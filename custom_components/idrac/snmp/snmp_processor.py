@@ -368,11 +368,20 @@ class SNMPDataProcessor:
                 # Debug log all voltage sensors for troubleshooting
                 _LOGGER.debug("Found voltage sensor ID %d: location='%s'", voltage_id, voltage_location or "No location")
                 
-                # Skip PSU voltage sensors per user request
-                if voltage_location and any(psu_term in voltage_location.lower() for psu_term in ["ps1", "ps2", "ps3", "psu"]):
-                    _LOGGER.debug("Skipping PSU voltage sensor: %s", voltage_location)
-                    skipped_count += 1
-                    continue
+                # Improve PSU voltage sensor names for clarity
+                improved_name = voltage_location
+                if voltage_location:
+                    location_lower = voltage_location.lower()
+                    if "ps1" in location_lower:
+                        improved_name = voltage_location.replace("PS1", "Power Supply 1").replace("ps1", "Power Supply 1")
+                    elif "ps2" in location_lower:
+                        improved_name = voltage_location.replace("PS2", "Power Supply 2").replace("ps2", "Power Supply 2")
+                    elif "ps3" in location_lower:
+                        improved_name = voltage_location.replace("PS3", "Power Supply 3").replace("ps3", "Power Supply 3")
+                    elif "psu" in location_lower and "1" in location_lower:
+                        improved_name = voltage_location.replace("PSU", "Power Supply").replace("psu", "Power Supply")
+                    elif "psu" in location_lower and "2" in location_lower:
+                        improved_name = voltage_location.replace("PSU", "Power Supply").replace("psu", "Power Supply")
                 
                 # Skip power consumption sensors that show up as voltage sensors
                 # This must be checked BEFORE system board binary sensor logic
@@ -434,7 +443,7 @@ class SNMPDataProcessor:
                 voltage_volts = self._convert_voltage(voltage_reading)
                 
                 sensor_data = {
-                    "name": f"{voltage_location} Voltage" if voltage_location else f"Voltage {voltage_id}",
+                    "name": f"{improved_name} Voltage" if improved_name else f"Voltage {voltage_id}",
                     "reading_volts": voltage_volts,
                     "status": "ok",  # Voltage probes typically don't have explicit status
                 }

@@ -387,13 +387,29 @@ class RedfishCoordinator:
                     voltage_name = voltage.get("Name", f"Voltage {i+1}")
                     voltage_volts = voltage.get("ReadingVolts")
                     
+                    # Improve PSU voltage sensor names for clarity
+                    improved_name = voltage_name
+                    if voltage_name:
+                        name_lower = voltage_name.lower()
+                        if "ps1" in name_lower:
+                            improved_name = voltage_name.replace("PS1", "Power Supply 1").replace("ps1", "Power Supply 1")
+                        elif "ps2" in name_lower:
+                            improved_name = voltage_name.replace("PS2", "Power Supply 2").replace("ps2", "Power Supply 2")
+                        elif "ps3" in name_lower:
+                            improved_name = voltage_name.replace("PS3", "Power Supply 3").replace("ps3", "Power Supply 3")
+                        elif "psu" in name_lower and "1" in name_lower:
+                            improved_name = voltage_name.replace("PSU", "Power Supply").replace("psu", "Power Supply")
+                        elif "psu" in name_lower and "2" in name_lower:
+                            improved_name = voltage_name.replace("PSU", "Power Supply").replace("psu", "Power Supply")
+                    
                     # Handle PG (Power Good) sensors as binary sensors
-                    name_lower = voltage_name.lower() if voltage_name else ""
+                    # Use improved name for PG detection
+                    improved_name_lower = improved_name.lower() if improved_name else ""
                     is_pg_sensor = (
-                        " pg" in name_lower or
-                        name_lower.endswith(" pg") or
-                        "power good" in name_lower or
-                        ("system board" in name_lower and "voltage" in name_lower)
+                        " pg" in improved_name_lower or
+                        improved_name_lower.endswith(" pg") or
+                        "power good" in improved_name_lower or
+                        ("system board" in improved_name_lower and "voltage" in improved_name_lower)
                     )
                     
                     if is_pg_sensor:
@@ -401,7 +417,7 @@ class RedfishCoordinator:
                         is_ok = voltage_volts > 0.5  # Consider > 0.5V as "OK"
                         
                         # Clean up the sensor name for binary sensor
-                        clean_name = voltage_name.replace(" Voltage", "").replace(" PG", " Power Good")
+                        clean_name = improved_name.replace(" Voltage", "").replace(" PG", " Power Good")
                         
                         # Format CPU PG sensors properly: "CPU1 Power Good" -> "CPU 1 Power Good"
                         cpu_match = re.match(r'^CPU(\d+)', clean_name)
@@ -420,7 +436,7 @@ class RedfishCoordinator:
                     else:
                         # Regular voltage sensors
                         data["voltages"][f"voltage_{i+1}"] = {
-                            "name": voltage_name,
+                            "name": improved_name,
                             "reading_volts": voltage_volts,
                             "status": voltage.get("Status", {}).get("Health"),
                             "upper_threshold_critical": voltage.get("UpperThresholdCritical"),
