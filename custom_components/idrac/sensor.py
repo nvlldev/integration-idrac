@@ -12,6 +12,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.helpers.entity import EntityCategory
+from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     REVOLUTIONS_PER_MINUTE,
@@ -1105,7 +1106,7 @@ class IdracProcessorCurrentSpeedSensor(IdracSensor):
         return current_speed is not None
 
 
-class IdracEnergyConsumptionSensor(IdracSensor):
+class IdracEnergyConsumptionSensor(IdracSensor, RestoreEntity):
     """Energy consumption sensor that integrates power consumption over time."""
 
     def __init__(
