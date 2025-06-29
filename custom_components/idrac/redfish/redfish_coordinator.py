@@ -391,16 +391,25 @@ class RedfishCoordinator:
                     improved_name = voltage_name
                     if voltage_name:
                         name_lower = voltage_name.lower()
-                        if "ps1" in name_lower:
+                        # Handle specific patterns to get clean names
+                        if "ps1 voltage" in name_lower:
+                            improved_name = "Power Supply 1"
+                        elif "ps2 voltage" in name_lower:
+                            improved_name = "Power Supply 2"
+                        elif "ps3 voltage" in name_lower:
+                            improved_name = "Power Supply 3"
+                        elif "ps1" in name_lower:
                             improved_name = voltage_name.replace("PS1", "Power Supply 1").replace("ps1", "Power Supply 1")
                         elif "ps2" in name_lower:
                             improved_name = voltage_name.replace("PS2", "Power Supply 2").replace("ps2", "Power Supply 2")
                         elif "ps3" in name_lower:
                             improved_name = voltage_name.replace("PS3", "Power Supply 3").replace("ps3", "Power Supply 3")
-                        elif "psu" in name_lower and "1" in name_lower:
-                            improved_name = voltage_name.replace("PSU", "Power Supply").replace("psu", "Power Supply")
-                        elif "psu" in name_lower and "2" in name_lower:
-                            improved_name = voltage_name.replace("PSU", "Power Supply").replace("psu", "Power Supply")
+                        elif "psu" in name_lower and "voltage" in name_lower:
+                            # Extract PSU number and create clean name
+                            psu_match = re.search(r'psu\s*(\d+)', name_lower)
+                            if psu_match:
+                                psu_num = psu_match.group(1)
+                                improved_name = f"Power Supply {psu_num}"
                     
                     # Handle PG (Power Good) sensors as binary sensors
                     # Use improved name for PG detection

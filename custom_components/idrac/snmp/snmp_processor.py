@@ -372,16 +372,25 @@ class SNMPDataProcessor:
                 improved_name = voltage_location
                 if voltage_location:
                     location_lower = voltage_location.lower()
-                    if "ps1" in location_lower:
+                    # Handle specific patterns to get clean names
+                    if "ps1 voltage" in location_lower:
+                        improved_name = "Power Supply 1"
+                    elif "ps2 voltage" in location_lower:
+                        improved_name = "Power Supply 2"
+                    elif "ps3 voltage" in location_lower:
+                        improved_name = "Power Supply 3"
+                    elif "ps1" in location_lower:
                         improved_name = voltage_location.replace("PS1", "Power Supply 1").replace("ps1", "Power Supply 1")
                     elif "ps2" in location_lower:
                         improved_name = voltage_location.replace("PS2", "Power Supply 2").replace("ps2", "Power Supply 2")
                     elif "ps3" in location_lower:
                         improved_name = voltage_location.replace("PS3", "Power Supply 3").replace("ps3", "Power Supply 3")
-                    elif "psu" in location_lower and "1" in location_lower:
-                        improved_name = voltage_location.replace("PSU", "Power Supply").replace("psu", "Power Supply")
-                    elif "psu" in location_lower and "2" in location_lower:
-                        improved_name = voltage_location.replace("PSU", "Power Supply").replace("psu", "Power Supply")
+                    elif "psu" in location_lower and "voltage" in location_lower:
+                        # Extract PSU number and create clean name
+                        psu_match = re.search(r'psu\s*(\d+)', location_lower)
+                        if psu_match:
+                            psu_num = psu_match.group(1)
+                            improved_name = f"Power Supply {psu_num}"
                 
                 # Skip power consumption sensors that show up as voltage sensors
                 # This must be checked BEFORE system board binary sensor logic
