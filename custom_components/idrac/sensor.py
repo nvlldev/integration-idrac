@@ -1121,10 +1121,39 @@ class IdracEnergyConsumptionSensor(IdracSensor):
         self._attr_entity_category = None  # Primary energy measurement - not diagnostic
         self._attr_icon = "mdi:lightning-bolt-circle"
         
-        # Track energy accumulation
+        # Track energy accumulation - will be restored from state
         self._last_power_reading = None
         self._last_update_time = None
         self._total_energy_kwh = 0.0
+        self._restored_from_state = False
+
+    async def async_added_to_hass(self) -> None:
+        """Run when entity is added to hass - restore previous energy total."""
+        await super().async_added_to_hass()
+        
+        # Try to restore the last known energy total from state
+        if self.hass is not None:
+            last_state = await self.async_get_last_state()
+            if last_state is not None and last_state.state not in (None, "unknown", "unavailable"):
+                try:
+                    # Restore the accumulated energy total
+                    self._total_energy_kwh = float(last_state.state)
+                    self._restored_from_state = True
+                    _LOGGER.info("Restored energy consumption: %.3f kWh for %s", 
+                               self._total_energy_kwh, self.entity_id)
+                    
+                    # Try to restore timing info from attributes if available
+                    if last_state.attributes:
+                        last_update_time = last_state.attributes.get("last_update_time")
+                        last_power = last_state.attributes.get("last_power_reading")
+                        if last_update_time:
+                            self._last_update_time = float(last_update_time)
+                        if last_power:
+                            self._last_power_reading = float(last_power)
+                            
+                except (ValueError, TypeError) as exc:
+                    _LOGGER.warning("Could not restore energy consumption state: %s", exc)
+                    self._total_energy_kwh = 0.0
 
     @property
     def native_value(self) -> float | None:
@@ -1171,6 +1200,8 @@ class IdracEnergyConsumptionSensor(IdracSensor):
             "current_power_watts": current_power,
             "integration_method": "trapezoidal",
             "last_reset": None,  # This is a total_increasing sensor, no resets
+            "last_update_time": self._last_update_time,
+            "last_power_reading": self._last_power_reading,
         }
         
         # Add power metrics if available
