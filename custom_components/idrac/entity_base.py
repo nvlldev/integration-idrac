@@ -38,15 +38,18 @@ class IdracEntityBase(CoordinatorEntity):
         # Home Assistant will automatically combine device + entity names
         self._attr_name = entity_name
         self._attr_has_entity_name = True
-        # Use stable unique_id based on device_id and entity key
-        self._attr_unique_id = f"{device_id}_{entity_key}"
+        # Use stable unique_id based on integration domain, device_id and entity key
+        # This ensures uniqueness across all integrations
+        from .const import DOMAIN
+        self._attr_unique_id = f"{DOMAIN}_{device_id}_{entity_key}"
 
         # Store reference details for logging and device info
         self._host = host
         self._port = port
         self._config_entry = config_entry
 
-        # Device info will be set in async_added_to_hass
+        # Set device info immediately to ensure consistent entity ID generation
+        self._attr_device_info = get_fallback_device_info(self.coordinator.host, port)
 
     async def async_added_to_hass(self) -> None:
         """Run when entity is added to hass."""

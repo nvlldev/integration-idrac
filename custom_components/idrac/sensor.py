@@ -547,7 +547,7 @@ class IdracFirmwareVersionSensor(IdracSensor):
     def __init__(self, coordinator: SNMPDataUpdateCoordinator | RedfishDataUpdateCoordinator, config_entry: ConfigEntry) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, config_entry, "idrac_firmware_version", "iDRAC Firmware Version")
-        self._attr_unique_id = f"{coordinator.host}_idrac_firmware_version"
+        # Don't override unique_id - let base class handle it consistently
         self._attr_entity_category = None
         self._attr_icon = "mdi:chip"
 
@@ -565,7 +565,7 @@ class IdracDateTimeSensor(IdracSensor):
     def __init__(self, coordinator: SNMPDataUpdateCoordinator | RedfishDataUpdateCoordinator, config_entry: ConfigEntry) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, config_entry, "system_datetime", "System Date Time")
-        self._attr_unique_id = f"{coordinator.host}_system_datetime"
+        # Don't override unique_id - let base class handle it consistently
         self._attr_entity_category = None
         self._attr_device_class = SensorDeviceClass.TIMESTAMP
         self._attr_icon = "mdi:clock-outline"
