@@ -1127,19 +1127,27 @@ class IdracEnergyConsumptionSensor(IdracSensor):
         self._total_energy_kwh = 0.0
         self._restored_from_state = False
         self._debug_logged = False
+        
+        _LOGGER.info("Energy sensor __init__ called - unique_id: %s, entity_id will be: %s", 
+                    self.unique_id, getattr(self, 'entity_id', 'not_set_yet'))
 
     async def async_added_to_hass(self) -> None:
         """Run when entity is added to hass - restore previous energy total."""
+        _LOGGER.info("Energy sensor async_added_to_hass called - entity_id: %s, unique_id: %s", 
+                    self.entity_id, self.unique_id)
+        
         # First, try to restore state before calling parent
         # This ensures we restore data before any potential errors in device info setup
         if self.hass is not None:
             try:
                 last_state = await self.async_get_last_state()
+                _LOGGER.info("Energy sensor state restoration - last_state: %s", 
+                            last_state.state if last_state else "None")
                 if last_state is not None and last_state.state not in (None, "unknown", "unavailable"):
                     # Restore the accumulated energy total
                     self._total_energy_kwh = float(last_state.state)
                     self._restored_from_state = True
-                    _LOGGER.info("Restored energy consumption: %.3f kWh for %s", 
+                    _LOGGER.info("Successfully restored energy consumption: %.3f kWh for %s", 
                                self._total_energy_kwh, self.entity_id)
                     
                     # Try to restore timing info from attributes if available
@@ -1153,7 +1161,7 @@ class IdracEnergyConsumptionSensor(IdracSensor):
                             self._last_power_reading = float(last_power)
                             _LOGGER.debug("Restored last power reading: %s W", last_power)
                 else:
-                    _LOGGER.debug("No previous state found for energy sensor %s", self.entity_id)
+                    _LOGGER.warning("No valid previous state found for energy sensor %s - starting fresh", self.entity_id)
                             
             except (ValueError, TypeError) as exc:
                 _LOGGER.warning("Could not restore energy consumption state: %s", exc)
