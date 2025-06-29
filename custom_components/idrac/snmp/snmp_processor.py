@@ -391,6 +391,10 @@ class SNMPDataProcessor:
                         if psu_match:
                             psu_num = psu_match.group(1)
                             improved_name = f"Power Supply {psu_num}"
+                    
+                    # Clean up "Status" from PSU names to avoid "Power Supply X Status Input Voltage"
+                    if improved_name and "status" in improved_name.lower():
+                        improved_name = improved_name.replace(" Status", "").replace(" status", "")
                 
                 # Skip power consumption sensors that show up as voltage sensors
                 # This must be checked BEFORE system board binary sensor logic

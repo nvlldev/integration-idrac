@@ -76,14 +76,12 @@ async def async_setup_entry(
     
     # Memory health sensors removed - now handled by binary_sensor.py as DIMM Socket Health binary sensors
     
-    # PSU Input Voltage sensors
+    # PSU Input Voltage sensors  
     voltage_coordinator = get_coordinator_for_category("voltages", snmp_coordinator, redfish_coordinator, "redfish")
     if voltage_coordinator and voltage_coordinator.data and "voltages" in voltage_coordinator.data:
         for voltage_id, voltage_data in voltage_coordinator.data["voltages"].items():
-            # Only include PSU input voltage sensors (around 120V)
-            if (voltage_data.get("source") == "power_supply_line_input" or 
-                (voltage_data.get("name", "").lower().find("power supply") != -1 and 
-                 voltage_data.get("name", "").lower().find("input voltage") != -1)):
+            # Only include PSU input voltage sensors from PowerSupplies.LineInputVoltage (around 120V)
+            if voltage_data.get("source") == "power_supply_line_input":
                 entities.append(IdracVoltageSensor(voltage_coordinator, config_entry, voltage_id, voltage_data))
                 _LOGGER.debug("Created PSU voltage sensor: %s", voltage_data.get("name"))
     
