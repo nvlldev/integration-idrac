@@ -80,16 +80,28 @@ class IdracButton(IdracEntityBase, ButtonEntity):
             return False
 
     def _get_current_power_state(self) -> int | None:
-        """Get current power state from coordinator data."""
+        """Get current power state from coordinator data.
+        
+        Returns:
+            1 if server is on, 2 if server is off, None if unknown
+        """
         if self.coordinator.data is None:
             return None
         
         power_state = self.coordinator.data.get("system_info", {}).get("power_state")
         if power_state is not None:
-            try:
-                return int(power_state)
-            except (ValueError, TypeError):
-                return None
+            # Handle both string (Redfish) and integer (SNMP) power states
+            if isinstance(power_state, str):
+                if power_state.lower() == "on":
+                    return 1
+                elif power_state.lower() == "off":
+                    return 2
+            else:
+                # Try to convert integer values (SNMP format)
+                try:
+                    return int(power_state)
+                except (ValueError, TypeError):
+                    pass
         return None
 
 
@@ -118,10 +130,13 @@ class IdracPowerOnButton(IdracButton):
         
         power_state = self._get_current_power_state()
         if power_state is None:
+            _LOGGER.debug("Power On button: unknown power state, allowing button")
             return True  # Allow button if we can't determine state
         
         # Only available when server is off (state 2)
-        return power_state == 2
+        available = power_state == 2
+        _LOGGER.debug("Power On button: power_state=%s, available=%s", power_state, available)
+        return available
 
     async def async_press(self) -> None:
         """Power on the system."""
@@ -157,10 +172,13 @@ class IdracShutdownButton(IdracButton):
         
         power_state = self._get_current_power_state()
         if power_state is None:
+            _LOGGER.debug("Shutdown button: unknown power state, allowing button")
             return True  # Allow button if we can't determine state
         
         # Only available when server is on (state 1)
-        return power_state == 1
+        available = power_state == 1
+        _LOGGER.debug("Shutdown button: power_state=%s, available=%s", power_state, available)
+        return available
 
     async def async_press(self) -> None:
         """Gracefully shutdown the system."""
