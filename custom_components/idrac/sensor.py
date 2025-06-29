@@ -1126,16 +1126,16 @@ class IdracEnergyConsumptionSensor(IdracSensor):
         self._last_update_time = None
         self._total_energy_kwh = 0.0
         self._restored_from_state = False
+        self._debug_logged = False
 
     async def async_added_to_hass(self) -> None:
         """Run when entity is added to hass - restore previous energy total."""
-        await super().async_added_to_hass()
-        
-        # Try to restore the last known energy total from state
+        # First, try to restore state before calling parent
+        # This ensures we restore data before any potential errors in device info setup
         if self.hass is not None:
-            last_state = await self.async_get_last_state()
-            if last_state is not None and last_state.state not in (None, "unknown", "unavailable"):
-                try:
+            try:
+                last_state = await self.async_get_last_state()
+                if last_state is not None and last_state.state not in (None, "unknown", "unavailable"):
                     # Restore the accumulated energy total
                     self._total_energy_kwh = float(last_state.state)
                     self._restored_from_state = True
@@ -1148,18 +1148,38 @@ class IdracEnergyConsumptionSensor(IdracSensor):
                         last_power = last_state.attributes.get("last_power_reading")
                         if last_update_time:
                             self._last_update_time = float(last_update_time)
+                            _LOGGER.debug("Restored last update time: %s", last_update_time)
                         if last_power:
                             self._last_power_reading = float(last_power)
+                            _LOGGER.debug("Restored last power reading: %s W", last_power)
+                else:
+                    _LOGGER.debug("No previous state found for energy sensor %s", self.entity_id)
                             
-                except (ValueError, TypeError) as exc:
-                    _LOGGER.warning("Could not restore energy consumption state: %s", exc)
-                    self._total_energy_kwh = 0.0
+            except (ValueError, TypeError) as exc:
+                _LOGGER.warning("Could not restore energy consumption state: %s", exc)
+                self._total_energy_kwh = 0.0
+            except Exception as exc:
+                _LOGGER.error("Unexpected error during energy state restoration: %s", exc)
+                self._total_energy_kwh = 0.0
+        
+        # Now call parent class setup
+        try:
+            await super().async_added_to_hass()
+        except Exception as exc:
+            _LOGGER.warning("Error in parent async_added_to_hass for energy sensor: %s", exc)
+            # Continue anyway - the energy sensor can still function
 
     @property
     def native_value(self) -> float | None:
         """Return the total energy consumption in kWh."""
         if not self.coordinator.data:
             return None
+        
+        # Debug logging for state restoration tracking
+        if not self._debug_logged:
+            _LOGGER.info("Energy sensor first calculation - restored_from_state: %s, total_energy: %.3f kWh", 
+                        self._restored_from_state, self._total_energy_kwh)
+            self._debug_logged = True
         
         current_time = time.time()
         power_data = self.coordinator.data.get("power_consumption", {})

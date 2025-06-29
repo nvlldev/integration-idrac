@@ -452,7 +452,7 @@ class SNMPDataProcessor:
                 voltage_volts = self._convert_voltage(voltage_reading)
                 
                 sensor_data = {
-                    "name": f"{improved_name} Voltage" if improved_name else f"Voltage {voltage_id}",
+                    "name": f"{improved_name} Input Voltage" if improved_name else f"Voltage {voltage_id}",
                     "reading_volts": voltage_volts,
                     "status": "ok",  # Voltage probes typically don't have explicit status
                 }

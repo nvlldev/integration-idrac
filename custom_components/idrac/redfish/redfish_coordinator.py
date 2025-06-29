@@ -445,7 +445,7 @@ class RedfishCoordinator:
                     else:
                         # Regular voltage sensors
                         data["voltages"][f"voltage_{i+1}"] = {
-                            "name": improved_name,
+                            "name": f"{improved_name} Input Voltage",
                             "reading_volts": voltage_volts,
                             "status": voltage.get("Status", {}).get("Health"),
                             "upper_threshold_critical": voltage.get("UpperThresholdCritical"),
