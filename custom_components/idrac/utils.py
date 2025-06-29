@@ -43,7 +43,7 @@ def validate_coordinator_data(coordinator: SNMPDataUpdateCoordinator | RedfishDa
     return bool(coordinator.data[category])
 
 
-def get_fallback_device_info(host: str, port: int = 443) -> dict[str, Any]:
+def get_fallback_device_info(host: str, port: int = 443) -> dict[str, Any] | None:
     """Get fallback device info when coordinator device info is unavailable."""
     from .const import DOMAIN
     server_id = f"{host}:{port}"

@@ -49,7 +49,7 @@ class IdracEntityBase(CoordinatorEntity):
         self._config_entry = config_entry
 
         # Set device info immediately to ensure consistent entity ID generation
-        self._attr_device_info = get_fallback_device_info(self.coordinator.host, port)
+        self._attr_device_info = get_fallback_device_info(self.coordinator.host, port)  # type: ignore[assignment]
 
     async def async_added_to_hass(self) -> None:
         """Run when entity is added to hass."""
@@ -57,11 +57,11 @@ class IdracEntityBase(CoordinatorEntity):
         
         # Set device info now that we can make async calls
         try:
-            self._attr_device_info = await self.coordinator.get_device_info()
+            self._attr_device_info = await self.coordinator.get_device_info()  # type: ignore[assignment]
         except Exception as exc:
             _LOGGER.warning("Failed to get device info for %s: %s", self._entity_key, exc)
             # Provide fallback device info to ensure device is created
-            self._attr_device_info = get_fallback_device_info(self.coordinator.host, self._port)
+            self._attr_device_info = get_fallback_device_info(self.coordinator.host, self._port)  # type: ignore[assignment]
 
     @property
     def device_info(self):
