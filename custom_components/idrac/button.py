@@ -35,6 +35,7 @@ async def async_setup_entry(
         entities.extend([
             IdracPowerOnButton(redfish_coordinator, config_entry),
             IdracPowerOffButton(redfish_coordinator, config_entry),
+            IdracForcePowerOffButton(redfish_coordinator, config_entry),
             IdracRebootButton(redfish_coordinator, config_entry),
         ])
         
@@ -162,7 +163,47 @@ class IdracPowerOffButton(IdracButton):
         return power_state == 1
 
     async def async_press(self) -> None:
-        """Power off the system."""
+        """Gracefully power off the system."""
+        success = await self._async_redfish_action("GracefulShutdown")
+        
+        if success:
+            # Request coordinator update to reflect the change
+            await self.coordinator.async_request_refresh()
+
+
+class IdracForcePowerOffButton(IdracButton):
+    """Dell iDRAC force power off button (emergency use only)."""
+
+    def __init__(
+        self,
+        coordinator: RedfishDataUpdateCoordinator,
+        config_entry: ConfigEntry,
+    ) -> None:
+        """Initialize the force power off button."""
+        super().__init__(
+            coordinator,
+            config_entry,
+            "force_power_off",
+            "Force Power Off",
+            ButtonDeviceClass.RESTART,
+        )
+
+    @property
+    def available(self) -> bool:
+        """Return if button is available (only when server is on)."""
+        if not super().available:
+            return False
+        
+        power_state = self._get_current_power_state()
+        if power_state is None:
+            return True  # Allow button if we can't determine state
+        
+        # Only available when server is on (state 1)
+        return power_state == 1
+
+    async def async_press(self) -> None:
+        """Force power off the system (hard power cut)."""
+        _LOGGER.warning("Force power off requested - this will immediately cut power!")
         success = await self._async_redfish_action("ForceOff")
         
         if success:
@@ -202,11 +243,18 @@ class IdracRebootButton(IdracButton):
 
     async def async_press(self) -> None:
         """Reboot the system."""
+        # Try graceful restart first, fallback to force restart if needed
         success = await self._async_redfish_action("GracefulRestart")
+        
+        if not success:
+            _LOGGER.warning("GracefulRestart failed, trying ForceRestart for %s", self._host)
+            success = await self._async_redfish_action("ForceRestart")
         
         if success:
             # Request coordinator update to reflect the change
             await self.coordinator.async_request_refresh()
+        else:
+            _LOGGER.error("Both GracefulRestart and ForceRestart failed for %s", self._host)
 
 
 class IdracSafeModeButton(IdracButton):
