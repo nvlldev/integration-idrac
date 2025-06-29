@@ -403,6 +403,19 @@ class SNMPDataProcessor:
                     skipped_count += 1
                     continue
                 
+                # Skip PSU input voltage sensors from SNMP since we create better ones from Redfish PowerSupplies.LineInputVoltage
+                location_lower = voltage_location.lower() if voltage_location else ""
+                is_psu_voltage = (
+                    "ps1" in location_lower or 
+                    "ps2" in location_lower or 
+                    "ps3" in location_lower or 
+                    ("psu" in location_lower and "voltage" in location_lower)
+                )
+                if is_psu_voltage and " pg" not in location_lower and "power good" not in location_lower:
+                    _LOGGER.debug("Skipping PSU voltage sensor from SNMP (using Redfish PowerSupplies.LineInputVoltage instead): %s", voltage_location)
+                    skipped_count += 1
+                    continue
+                
                 # Skip voltage sensors without meaningful location names (likely unwanted system voltages)
                 if not voltage_location or voltage_location.strip() == "":
                     _LOGGER.debug("Skipping voltage sensor %d: no location name", voltage_id)
