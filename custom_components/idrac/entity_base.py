@@ -31,7 +31,7 @@ class IdracEntityBase(CoordinatorEntity):
         super().__init__(coordinator)
         self._entity_key = entity_key
         host = config_entry.data[CONF_HOST]
-        port = config_entry.data[CONF_PORT]
+        port = int(config_entry.data[CONF_PORT])
         device_id = f"{host}:{port}"
         
         # Set entity name without device prefix (new naming pattern)

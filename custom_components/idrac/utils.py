@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
@@ -43,7 +43,7 @@ def validate_coordinator_data(coordinator: SNMPDataUpdateCoordinator | RedfishDa
     return bool(coordinator.data[category])
 
 
-def get_fallback_device_info(host: str, port: int = 443) -> dict[str, any]:
+def get_fallback_device_info(host: str, port: int = 443) -> dict[str, Any]:
     """Get fallback device info when coordinator device info is unavailable."""
     from .const import DOMAIN
     server_id = f"{host}:{port}"
