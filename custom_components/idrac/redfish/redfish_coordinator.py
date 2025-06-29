@@ -105,11 +105,9 @@ class RedfishCoordinator:
             serial = system_data.get("SerialNumber")
             bios_version = system_data.get("BiosVersion")
             
-            if model:
-                device_info["model"] = model
-                # Keep consistent name format, don't change based on model
-            else:
-                device_info["model"] = "iDRAC"
+            # Always use "iDRAC" as model for consistency
+            # Don't use fetched model as it causes device registry mismatches
+            device_info["model"] = "iDRAC"
             
             if serial:
                 device_info["serial_number"] = serial

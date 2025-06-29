@@ -335,11 +335,9 @@ class SNMPClient:
             _LOGGER.warning("Failed to get BIOS version via SNMP: %s", exc)
         
         # Build device info from successfully retrieved values
-        if system_model:
-            device_info["model"] = system_model
-            device_info["name"] = f"Dell {system_model} ({self.host})"
-        else:
-            device_info["name"] = f"Dell iDRAC ({self.host})"
+        # Always use consistent model and name to prevent device registry issues
+        device_info["model"] = "iDRAC"
+        device_info["name"] = f"Dell iDRAC ({self.host})"
             
         if service_tag:
             device_info["serial_number"] = service_tag

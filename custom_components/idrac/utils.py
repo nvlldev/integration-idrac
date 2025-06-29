@@ -51,7 +51,7 @@ def get_fallback_device_info(host: str, port: int = 443) -> dict[str, Any] | Non
         "identifiers": {(DOMAIN, server_id)},
         "name": f"Dell iDRAC ({host})",
         "manufacturer": "Dell",
-        "model": "iDRAC",
+        "model": "iDRAC",  # Match what coordinators use as default
         "configuration_url": f"https://{host}",
     }
 
