@@ -1186,7 +1186,8 @@ class IdracEnergyConsumptionSensor(IdracSensor):
         current_power = power_data.get("consumed_watts")
         
         if current_power is None:
-            return self._total_energy_kwh if self._total_energy_kwh > 0 else None
+            # Return current total even if no power reading available
+            return round(self._total_energy_kwh, 3) if self._total_energy_kwh >= 0 else None
         
         # Calculate energy since last reading (trapezoidal integration)
         if self._last_power_reading is not None and self._last_update_time is not None:
@@ -1201,11 +1202,12 @@ class IdracEnergyConsumptionSensor(IdracSensor):
             _LOGGER.debug("Energy calculation: %.1fW for %.3fh = %.6f kWh (total: %.3f kWh)", 
                          average_power, time_delta_hours, energy_increment_kwh, self._total_energy_kwh)
         
-        # Update tracking variables
+        # Update tracking variables for next calculation
         self._last_power_reading = current_power
         self._last_update_time = current_time
         
-        return round(self._total_energy_kwh, 3) if self._total_energy_kwh > 0 else 0.0
+        # Always return the current total, rounded to 3 decimal places
+        return round(self._total_energy_kwh, 3)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
