@@ -80,10 +80,25 @@ from .redfish.redfish_client import RedfishClient, RedfishError
 _LOGGER = logging.getLogger(__name__)
 
 
-# Step 1: Host selection (hybrid mode by default)
+# Step 1: Host selection
 STEP_HOST_SCHEMA = vol.Schema({
     vol.Required(CONF_HOST): selector.TextSelector(
         selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
+    ),
+})
+
+# Step 2: Connection type selection
+STEP_CONNECTION_TYPE_SCHEMA = vol.Schema({
+    vol.Required(CONF_CONNECTION_TYPE, default="hybrid"): selector.SelectSelector(
+        selector.SelectSelectorConfig(
+            options=[
+                {"value": "hybrid", "label": "Hybrid (SNMP + Redfish) - Recommended"},
+                {"value": "snmp_only", "label": "SNMP Only - Legacy iDRACs (iDRAC6/7/8)"},
+                {"value": "redfish", "label": "Redfish Only - Modern iDRACs"},
+                {"value": "snmp", "label": "SNMP Only - Alternative configuration"},
+            ],
+            mode=selector.SelectSelectorMode.DROPDOWN
+        )
     ),
     vol.Optional(CONF_SNMP_SCAN_INTERVAL, default=DEFAULT_SNMP_SCAN_INTERVAL): selector.NumberSelector(
         selector.NumberSelectorConfig(
@@ -516,20 +531,19 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Handle the initial step - host selection (always uses hybrid mode)."""
+        """Handle the initial step - host selection."""
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            # Store the initial data and set hybrid mode by default
+            # Store the initial data
             self.data.update(user_input)
-            self.data[CONF_CONNECTION_TYPE] = "hybrid"
             
             # Check for existing entries with the same host
             await self.async_set_unique_id(user_input[CONF_HOST])
             self._abort_if_unique_id_configured()
 
-            # Always go to hybrid mode configuration
-            return await self.async_step_hybrid_redfish()
+            # Go to connection type selection
+            return await self.async_step_connection_type()
 
         return self.async_show_form(
             step_id="user",
@@ -537,6 +551,32 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors=errors,
             description_placeholders={
                 "host": "iDRAC IP address or hostname"
+            }
+        )
+
+    async def async_step_connection_type(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle connection type selection step."""
+        if user_input is not None:
+            # Store the connection type and scan intervals
+            self.data.update(user_input)
+            connection_type = user_input[CONF_CONNECTION_TYPE]
+            
+            # Route to appropriate configuration based on connection type
+            if connection_type == "hybrid":
+                return await self.async_step_hybrid_redfish()
+            elif connection_type == "redfish":
+                return await self.async_step_redfish()
+            elif connection_type in ["snmp", "snmp_only"]:
+                return await self.async_step_snmp_version()
+
+        return self.async_show_form(
+            step_id="connection_type",
+            data_schema=STEP_CONNECTION_TYPE_SCHEMA,
+            description_placeholders={
+                "host": self.data[CONF_HOST],
+                "snmp_only_help": "SNMP-Only mode provides comprehensive monitoring for older iDRACs without Redfish support (iDRAC6, iDRAC7, iDRAC8). It offers 40+ sensors with fast 15-second updates."
             }
         )
 
@@ -775,7 +815,14 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         self.config_entry = config_entry
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
-        """Manage the options."""
+        """Manage the options - show menu."""
+        return self.async_show_menu(
+            step_id="init",
+            menu_options=["settings", "refresh_sensors"]
+        )
+    
+    async def async_step_settings(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        """Handle settings options."""
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
 
@@ -800,8 +847,23 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             CONF_REDFISH_SCAN_INTERVAL,
             self.config_entry.data.get(CONF_REDFISH_SCAN_INTERVAL, DEFAULT_REDFISH_SCAN_INTERVAL)
         )
+        current_connection_type = self.config_entry.options.get(
+            CONF_CONNECTION_TYPE,
+            self.config_entry.data.get(CONF_CONNECTION_TYPE, "hybrid")
+        )
 
         options_schema = vol.Schema({
+            vol.Optional(CONF_CONNECTION_TYPE, default=current_connection_type): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        {"value": "hybrid", "label": "Hybrid (SNMP + Redfish) - Recommended"},
+                        {"value": "snmp_only", "label": "SNMP Only - Legacy iDRACs (iDRAC6/7/8)"},
+                        {"value": "redfish", "label": "Redfish Only - Modern iDRACs"},
+                        {"value": "snmp", "label": "SNMP Only - Alternative configuration"},
+                    ],
+                    mode=selector.SelectSelectorMode.DROPDOWN
+                )
+            ),
             vol.Optional(CONF_REQUEST_TIMEOUT, default=current_request_timeout): selector.NumberSelector(
                 selector.NumberSelectorConfig(
                     min=5,
@@ -850,15 +912,54 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         })
 
         return self.async_show_form(
-            step_id="init",
+            step_id="settings",
             data_schema=options_schema,
             description_placeholders={
+                "connection_type_desc": "Change connection type. SNMP-Only provides 40+ sensors for legacy iDRACs (iDRAC6/7/8)",
                 "scan_interval_desc": "Legacy scan interval (deprecated)",
                 "request_timeout_desc": "Timeout for individual Redfish HTTP requests",
                 "session_timeout_desc": "Timeout for Redfish session connections",
                 "snmp_timeout_desc": "Timeout for individual SNMP requests",
                 "snmp_scan_interval_desc": "How often to update SNMP sensors (temperatures, fans, power)",
                 "redfish_scan_interval_desc": "How often to update Redfish sensors (system info, controls)"
+            }
+        )
+    
+    async def async_step_refresh_sensors(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        """Handle sensor refresh request."""
+        if user_input is not None:
+            if user_input.get("confirm_refresh"):
+                # Trigger sensor rediscovery
+                _LOGGER.info("User requested sensor refresh for %s", self.config_entry.title)
+                
+                # Update the config entry to trigger rediscovery
+                # We'll add a flag that the integration can check
+                new_data = dict(self.config_entry.data)
+                new_data["refresh_sensors"] = True
+                
+                # Update config entry data
+                self.hass.config_entries.async_update_entry(
+                    self.config_entry,
+                    data=new_data
+                )
+                
+                # Reload the integration to apply changes
+                await self.hass.config_entries.async_reload(self.config_entry.entry_id)
+                
+                return self.async_create_entry(title="", data={})
+            else:
+                # User cancelled
+                return self.async_abort(reason="refresh_cancelled")
+        
+        # Show confirmation dialog
+        return self.async_show_form(
+            step_id="refresh_sensors",
+            data_schema=vol.Schema({
+                vol.Required("confirm_refresh", default=False): selector.BooleanSelector(),
+            }),
+            description_placeholders={
+                "warning": "This will reload the integration and rediscover all sensors. The integration will be unavailable for a few seconds during the refresh.",
+                "info": "Use this if sensors are missing after a firmware update or if power consumption sensor is not showing despite being available."
             }
         )
 

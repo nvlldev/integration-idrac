@@ -1,0 +1,59 @@
+{
+  "title": "SNMP-Only Mode Test Configuration",
+  "description": "Configuration for testing comprehensive SNMP-only mode",
+  "timestamp": "2025-06-29T23:13:41.970511",
+  "integration_config": {
+    "host": "192.168.50.131",
+    "connection_type": "snmp_only",
+    "snmp_community": "public",
+    "snmp_version": "v2c",
+    "snmp_port": 161,
+    "snmp_timeout": 5,
+    "snmp_scan_interval": 15,
+    "redfish_scan_interval": null,
+    "username": null,
+    "password": null,
+    "port": null,
+    "verify_ssl": null
+  },
+  "expected_sensors": {
+    "regular_sensors": {
+      "temperatures": 4,
+      "fans": 6,
+      "power_supplies": 2,
+      "memory": 8,
+      "battery": 2,
+      "power_consumption": 3,
+      "processors": 0,
+      "total_regular": 25
+    },
+    "binary_sensors": {
+      "system_voltages": 20,
+      "intrusion_detection": 1,
+      "psu_status": 2,
+      "memory_health": 8,
+      "battery_health": 2,
+      "total_binary": 33
+    },
+    "grand_total": 58
+  },
+  "benefits": [
+    "60% more sensors than hybrid mode (58 vs 36)",
+    "All sensors update every 15 seconds (fast)",
+    "Compatible with older iDRACs (iDRAC6, iDRAC7, iDRAC8)",
+    "Single protocol - simpler and more reliable",
+    "Lower network overhead than REST API"
+  ],
+  "setup_instructions": [
+    "1. In Home Assistant, go to Settings > Devices & Services",
+    "2. Click 'Add Integration' and search for 'Dell iDRAC'",
+    "3. Enter your iDRAC IP address: 192.168.50.131",
+    "4. Set Connection Type to 'snmp_only'",
+    "5. Configure SNMP settings:",
+    "   - Community: public",
+    "   - Version: v2c",
+    "   - Port: 161",
+    "   - Scan Interval: 15 seconds",
+    "6. Complete setup and enjoy comprehensive monitoring!"
+  ]
+}

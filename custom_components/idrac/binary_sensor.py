@@ -71,8 +71,17 @@ async def async_setup_entry(
     _LOGGER.debug("  Selected coordinator: %s", 
                   type(intrusion_coordinator).__name__ if intrusion_coordinator else "None")
     
+    # Only create the aggregated chassis intrusion sensor if:
+    # 1. We have Redfish data (chassis_intrusion) OR
+    # 2. We're NOT going to create individual SNMP intrusion sensors
+    discovered_intrusions = config_entry.data.get(CONF_DISCOVERED_INTRUSION, [])
+    
     if intrusion_coordinator:
-        entities.append(IdracSystemIntrusionBinarySensor(intrusion_coordinator, config_entry))
+        # Skip creating this sensor if we have individual SNMP intrusion sensors
+        if intrusion_coordinator.connection_type == "snmp" and discovered_intrusions:
+            _LOGGER.debug("Skipping aggregated chassis intrusion sensor - using individual SNMP sensors instead")
+        else:
+            entities.append(IdracSystemIntrusionBinarySensor(intrusion_coordinator, config_entry))
     else:
         _LOGGER.warning("No intrusion sensor data available from either coordinator")
     
@@ -675,15 +684,16 @@ class IdracSystemIntrusionBinarySensor(IdracBinarySensor):
             # SNMP stores multiple intrusion sensors, check if any detect intrusion
             for sensor_key, sensor_data in intrusion_detection.items():
                 if isinstance(sensor_data, dict):
-                    reading = sensor_data.get("reading")
-                    if reading is not None:
+                    # Use "status" field instead of "reading" - status has the correct mapping
+                    status = sensor_data.get("status")
+                    if status is not None:
                         try:
-                            reading_int = int(reading)
+                            status_int = int(status)
                             # Dell iDRAC intrusion values from INTRUSION_STATUS mapping:
                             # 1=breach, 2=no_breach, 3=ok, 4=unknown
-                            if reading_int == 1:  # breach
+                            if status_int == 1:  # breach
                                 return True   # Intrusion detected
-                            elif reading_int in [2, 3]:  # no_breach, ok
+                            elif status_int in [2, 3]:  # no_breach, ok
                                 return False  # Secure/OK
                             # 4=unknown, return None to indicate unavailable
                         except (ValueError, TypeError):

@@ -27,6 +27,32 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _LOGGER.info("Setting up Dell iDRAC integration for %s", entry.title)
     
     hass.data.setdefault(DOMAIN, {})
+    
+    # Check if sensor refresh was requested
+    if entry.data.get("refresh_sensors"):
+        _LOGGER.info("Sensor refresh requested - triggering rediscovery")
+        
+        # Remove the refresh flag and trigger rediscovery
+        new_data = dict(entry.data)
+        new_data.pop("refresh_sensors", None)
+        
+        # Rediscover sensors based on connection type
+        connection_type = new_data.get("connection_type", "hybrid")
+        
+        try:
+            # Only rediscover for SNMP-capable modes
+            if connection_type in ["snmp", "snmp_only", "hybrid"]:
+                _LOGGER.info("Rediscovering SNMP sensors...")
+                # Re-run SNMP validation which includes discovery
+                from .config_flow import validate_snmp_input
+                info = await validate_snmp_input(hass, new_data)
+                _LOGGER.info("SNMP rediscovery completed, updating config entry")
+        except Exception as exc:
+            _LOGGER.warning("Sensor rediscovery failed: %s - continuing with existing sensors", exc)
+            # Continue with existing discovered sensors
+        
+        # Update config entry with new discovered sensors but without refresh flag
+        hass.config_entries.async_update_entry(entry, data=new_data)
 
     # Create coordinators based on connection type
     connection_type = entry.data.get("connection_type", "hybrid")
@@ -134,8 +160,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Reload config entry."""
-    await async_unload_entry(hass, entry)
-    await async_setup_entry(hass, entry)
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_setup_services(hass: HomeAssistant) -> None:

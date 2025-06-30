@@ -57,6 +57,14 @@ async def async_setup_entry(
     # Log coordinator status
     log_coordinator_status(snmp_coordinator, redfish_coordinator)
     
+    # Debug logging for SNMP-only mode
+    if snmp_coordinator and not redfish_coordinator:
+        _LOGGER.info("SNMP-only mode detected in sensor setup")
+        if snmp_coordinator.data:
+            _LOGGER.info("SNMP coordinator data categories: %s", list(snmp_coordinator.data.keys()))
+        else:
+            _LOGGER.warning("SNMP coordinator has no data!")
+    
     # Category-based sensors with item data
     category_sensors = [
         ("temperatures", IdracTemperatureSensor),
@@ -89,7 +97,7 @@ async def async_setup_entry(
     # Memory health sensors removed - now handled by binary_sensor.py as DIMM Socket Health binary sensors
     
     # PSU Input Voltage sensors  
-    voltage_coordinator = get_coordinator_for_category("voltages", snmp_coordinator, redfish_coordinator, "redfish")
+    voltage_coordinator = get_coordinator_for_category("voltages", snmp_coordinator, redfish_coordinator, "snmp")
     if voltage_coordinator and voltage_coordinator.data and "voltages" in voltage_coordinator.data:
         for voltage_id, voltage_data in voltage_coordinator.data["voltages"].items():
             # Only include PSU input voltage sensors from PowerSupplies.LineInputVoltage (around 120V)
@@ -420,15 +428,23 @@ class IdracFanSpeedSensor(IdracSensor):
         # Improve fan naming to handle various patterns
         sensor_name = fan_data.get("name", "")
         if sensor_name:
-            # Handle "System Board Fan1" -> "System Fan 1 Speed"
             import re
+            
+            # Handle format with A/B suffix like "System Board Fan1A"
             if "system board fan" in sensor_name.lower():
-                fan_match = re.search(r'fan\s*(\d+)', sensor_name.lower())
+                # Look for pattern like "Fan1A" or "Fan 1 A"
+                fan_match = re.search(r'fan\s*(\d+)\s*([A-Z])?', sensor_name, re.IGNORECASE)
                 if fan_match:
                     fan_num = fan_match.group(1)
-                    name = f"System Fan {fan_num} Speed"
+                    fan_suffix = fan_match.group(2) if fan_match.group(2) else ""
+                    # Format as "System Fan 1A Speed" or "System Fan 1 Speed"
+                    if fan_suffix:
+                        name = f"System Fan {fan_num}{fan_suffix} Speed"
+                    else:
+                        name = f"System Fan {fan_num} Speed"
                 else:
                     name = f"{sensor_name} Speed"
+            
             elif not sensor_name.lower().endswith('speed'):
                 name = f"{sensor_name} Speed"
             else:
@@ -574,8 +590,28 @@ class IdracProcessorCountSensor(IdracSensor):
         """Return the state of the sensor."""
         if not self.coordinator.data:
             return None
+        
+        # Try to get processor count from system info first
         system_info = self.coordinator.data.get("system_info", {})
-        return system_info.get("processor_count")
+        processor_count = system_info.get("processor_count")
+        
+        if processor_count is not None:
+            return processor_count
+            
+        # Fallback: Count CPU temperature sensors (works for SNMP-only mode)
+        temperatures = self.coordinator.data.get("temperatures", {})
+        cpu_count = 0
+        for temp_id, temp_data in temperatures.items():
+            temp_name = temp_data.get("name", "").lower()
+            if "cpu" in temp_name and "temp" in temp_name:
+                # Extract CPU number from names like "CPU1 Temp", "CPU2 Temp"
+                import re
+                match = re.search(r'cpu(\d+)', temp_name, re.IGNORECASE)
+                if match:
+                    cpu_num = int(match.group(1))
+                    cpu_count = max(cpu_count, cpu_num)
+        
+        return cpu_count if cpu_count > 0 else None
 
     @property
     def available(self) -> bool:
@@ -1072,8 +1108,38 @@ class IdracProcessorStatusSensor(IdracSensor):
         """Return the state of the sensor."""
         if not self.coordinator.data:
             return None
+        
+        # Try system_info first (Redfish)
         system_info = self.coordinator.data.get("system_info", {})
-        return system_info.get("processor_status")
+        processor_status = system_info.get("processor_status")
+        if processor_status:
+            return processor_status
+        
+        # Fallback: Aggregate from individual processor sensors (SNMP)
+        processors = self.coordinator.data.get("processors", {})
+        if processors:
+            # Check all processor statuses
+            statuses = []
+            for proc_data in processors.values():
+                if isinstance(proc_data, dict):
+                    status = proc_data.get("status")
+                    if status is not None:
+                        statuses.append(status)
+            
+            if statuses:
+                # If any processor has critical status (1), return Critical
+                if 1 in statuses:
+                    return "Critical"
+                # If any has warning status (2), return Warning  
+                elif 2 in statuses:
+                    return "Warning"
+                # If all are OK (3), return OK
+                elif all(s == 3 for s in statuses):
+                    return "OK"
+                else:
+                    return "Unknown"
+        
+        return None
 
     @property
     def available(self) -> bool:
@@ -1102,8 +1168,38 @@ class IdracMemoryStatusSensor(IdracSensor):
         """Return the state of the sensor."""
         if not self.coordinator.data:
             return None
+        
+        # Try system_info first (Redfish)
         system_info = self.coordinator.data.get("system_info", {})
-        return system_info.get("memory_status")
+        memory_status = system_info.get("memory_status")
+        if memory_status:
+            return memory_status
+        
+        # Fallback: Aggregate from individual memory sensors (SNMP)
+        memory = self.coordinator.data.get("memory", {})
+        if memory:
+            # Check all memory module statuses
+            statuses = []
+            for mem_data in memory.values():
+                if isinstance(mem_data, dict):
+                    status = mem_data.get("status")
+                    if status is not None:
+                        statuses.append(status)
+            
+            if statuses:
+                # If any memory has critical status (1), return Critical
+                if 1 in statuses:
+                    return "Critical"
+                # If any has warning status (2), return Warning
+                elif 2 in statuses:
+                    return "Warning"
+                # If all are OK (3), return OK
+                elif all(s == 3 for s in statuses):
+                    return "OK"
+                else:
+                    return "Unknown"
+        
+        return None
 
     @property
     def available(self) -> bool:

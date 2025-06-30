@@ -31,7 +31,7 @@ class IdracEntityBase(CoordinatorEntity):
         super().__init__(coordinator)
         self._entity_key = entity_key
         host = config_entry.data[CONF_HOST]
-        port = int(config_entry.data[CONF_PORT])
+        port = config_entry.data.get(CONF_PORT, 443)  # Default to 443 if not present (SNMP-only mode)
         device_id = f"{host}:{port}"
         
         # Set entity name without device prefix (new naming pattern)

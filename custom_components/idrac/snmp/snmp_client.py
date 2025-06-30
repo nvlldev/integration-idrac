@@ -152,6 +152,12 @@ class SNMPClient:
         self.discovered_cpus = entry.data.get(CONF_DISCOVERED_CPUS, [])
         self.discovered_temperatures = entry.data.get(CONF_DISCOVERED_TEMPERATURES, [])
         self.discovered_fans = entry.data.get(CONF_DISCOVERED_FANS, [])
+        
+        # Debug logging for discovered sensors
+        _LOGGER.info("SNMPClient loading discovered sensors from config entry:")
+        _LOGGER.info("  - CPUs: %s", self.discovered_cpus)
+        _LOGGER.info("  - Temperatures: %s", self.discovered_temperatures)
+        _LOGGER.info("  - Fans: %s", self.discovered_fans)
         self.discovered_psus = entry.data.get(CONF_DISCOVERED_PSUS, [])
         self.discovered_voltage_probes = entry.data.get(CONF_DISCOVERED_VOLTAGE_PROBES, [])
         self.discovered_memory = entry.data.get(CONF_DISCOVERED_MEMORY, [])
@@ -164,6 +170,19 @@ class SNMPClient:
         self.discovered_intrusion = entry.data.get(CONF_DISCOVERED_INTRUSION, [])
         self.discovered_battery = entry.data.get(CONF_DISCOVERED_BATTERY, [])
         self.discovered_processors = entry.data.get(CONF_DISCOVERED_PROCESSORS, [])
+        
+        # Debug logging for all discovered sensors
+        total_discovered = (
+            len(self.discovered_cpus) + len(self.discovered_temperatures) + 
+            len(self.discovered_fans) + len(self.discovered_psus) + 
+            len(self.discovered_voltage_probes) + len(self.discovered_memory) +
+            len(self.discovered_virtual_disks) + len(self.discovered_physical_disks) +
+            len(self.discovered_storage_controllers) + len(self.discovered_detailed_memory) +
+            len(self.discovered_system_voltages) + len(self.discovered_power_consumption) +
+            len(self.discovered_intrusion) + len(self.discovered_battery) +
+            len(self.discovered_processors)
+        )
+        _LOGGER.info("Total discovered sensors loaded: %d", total_discovered)
         
         # Debug: Log what we loaded from config entry
         _LOGGER.debug("Loaded discovered sensors from config entry:")
@@ -617,6 +636,12 @@ class SNMPClient:
         else:
             _LOGGER.debug("Successfully collected data from %s", 
                          ", ".join(f"{count} {category.replace('_', ' ')}" for category, count in sensor_counts.items()))
+        
+        # Debug logging for SNMP-only mode
+        _LOGGER.info("SNMP get_sensor_data returning data with categories: %s", list(data.keys()))
+        for category, items in data.items():
+            if items:
+                _LOGGER.info("  - %s: %d items", category, len(items))
         
         return data
 

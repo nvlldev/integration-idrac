@@ -1,0 +1,366 @@
+{
+  "host": "192.168.50.131",
+  "timestamp": "2025-06-29T23:01:30.971072",
+  "categories": {
+    "system_info": {
+      "sensors": {
+        "manufacturer": "sentry",
+        "service_tag": "4JMTS52"
+      },
+      "count": 2
+    },
+    "temperatures": {
+      "sensors": {
+        "1": {
+          "name": "System Board Inlet Temp",
+          "reading": "210",
+          "status": "ok",
+          "upper_critical": "470",
+          "upper_warning": "420"
+        },
+        "2": {
+          "name": "System Board Exhaust Temp",
+          "reading": "390",
+          "status": "ok",
+          "upper_critical": "750",
+          "upper_warning": "700"
+        },
+        "3": {
+          "name": "CPU1 Temp",
+          "reading": "450",
+          "status": "ok",
+          "upper_critical": "850",
+          "upper_warning": "800"
+        },
+        "4": {
+          "name": "CPU2 Temp",
+          "reading": "510",
+          "status": "ok",
+          "upper_critical": "850",
+          "upper_warning": "800"
+        }
+      },
+      "count": 4
+    },
+    "fans": {
+      "sensors": {
+        "1": {
+          "name": "System Board Fan1",
+          "reading": "1920",
+          "status": "ok",
+          "warning_threshold": null
+        },
+        "2": {
+          "name": "System Board Fan2",
+          "reading": "1920",
+          "status": "ok",
+          "warning_threshold": null
+        },
+        "3": {
+          "name": "System Board Fan3",
+          "reading": "1920",
+          "status": "ok",
+          "warning_threshold": null
+        },
+        "4": {
+          "name": "System Board Fan4",
+          "reading": "1920",
+          "status": "ok",
+          "warning_threshold": null
+        },
+        "5": {
+          "name": "System Board Fan5",
+          "reading": "2040",
+          "status": "ok",
+          "warning_threshold": null
+        },
+        "6": {
+          "name": "System Board Fan6",
+          "reading": "1920",
+          "status": "ok",
+          "warning_threshold": null
+        }
+      },
+      "count": 6
+    },
+    "voltages": {
+      "sensors": {
+        "1": {
+          "name": "CPU1 VCORE PG",
+          "reading": null,
+          "status": "ok",
+          "upper_critical": null,
+          "lower_critical": null
+        },
+        "2": {
+          "name": "CPU2 VCORE PG",
+          "reading": null,
+          "status": "ok",
+          "upper_critical": null,
+          "lower_critical": null
+        },
+        "3": {
+          "name": "System Board 3.3V PG",
+          "reading": null,
+          "status": "ok",
+          "upper_critical": null,
+          "lower_critical": null
+        },
+        "4": {
+          "name": "System Board 5V AUX PG",
+          "reading": null,
+          "status": "ok",
+          "upper_critical": null,
+          "lower_critical": null
+        },
+        "5": {
+          "name": "CPU2 M23 VPP PG",
+          "reading": null,
+          "status": "ok",
+          "upper_critical": null,
+          "lower_critical": null
+        },
+        "6": {
+          "name": "CPU1 M23 VPP PG",
+          "reading": null,
+          "status": "ok",
+          "upper_critical": null,
+          "lower_critical": null
+        },
+        "7": {
+          "name": "System Board 1.05V PG",
+          "reading": null,
+          "status": "ok",
+          "upper_critical": null,
+          "lower_critical": null
+        },
+        "8": {
+          "name": "CPU1 M23 VDDQ PG",
+          "reading": null,
+          "status": "ok",
+          "upper_critical": null,
+          "lower_critical": null
+        },
+        "9": {
+          "name": "CPU1 M23 VTT PG",
+          "reading": null,
+          "status": "ok",
+          "upper_critical": null,
+          "lower_critical": null
+        },
+        "10": {
+          "name": "System Board 5V SWITCH PG",
+          "reading": null,
+          "status": "ok",
+          "upper_critical": null,
+          "lower_critical": null
+        },
+        "11": {
+          "name": "System Board VCCIO PG",
+          "reading": null,
+          "status": "ok",
+          "upper_critical": null,
+          "lower_critical": null
+        },
+        "12": {
+          "name": "System Board 2.5V AUX PG",
+          "reading": null,
+          "status": "ok",
+          "upper_critical": null,
+          "lower_critical": null
+        },
+        "13": {
+          "name": "CPU2 M01 VDDQ PG",
+          "reading": null,
+          "status": "ok",
+          "upper_critical": null,
+          "lower_critical": null
+        },
+        "14": {
+          "name": "CPU1 M01 VDDQ PG",
+          "reading": null,
+          "status": "ok",
+          "upper_critical": null,
+          "lower_critical": null
+        },
+        "15": {
+          "name": "CPU2 M23 VTT PG",
+          "reading": null,
+          "status": "ok",
+          "upper_critical": null,
+          "lower_critical": null
+        },
+        "16": {
+          "name": "CPU2 M01 VTT PG",
+          "reading": null,
+          "status": "ok",
+          "upper_critical": null,
+          "lower_critical": null
+        },
+        "17": {
+          "name": "System Board NDC PG",
+          "reading": null,
+          "status": "ok",
+          "upper_critical": null,
+          "lower_critical": null
+        },
+        "18": {
+          "name": "CPU2 M01 VPP PG",
+          "reading": null,
+          "status": "ok",
+          "upper_critical": null,
+          "lower_critical": null
+        },
+        "19": {
+          "name": "CPU1 M01 VPP PG",
+          "reading": null,
+          "status": "ok",
+          "upper_critical": null,
+          "lower_critical": null
+        },
+        "20": {
+          "name": "CPU2 M23 VDDQ PG",
+          "reading": null,
+          "status": "ok",
+          "upper_critical": null,
+          "lower_critical": null
+        }
+      },
+      "count": 20
+    },
+    "power_consumption": {
+      "sensors": {
+        "1": {
+          "name": "PS1 Current 1",
+          "reading": "8",
+          "status": "ok",
+          "warning_threshold": null
+        },
+        "2": {
+          "name": "PS2 Current 2",
+          "reading": "6",
+          "status": "ok",
+          "warning_threshold": null
+        },
+        "3": {
+          "name": "System Board Pwr Consumption",
+          "reading": "154",
+          "status": "ok",
+          "warning_threshold": "644"
+        }
+      },
+      "count": 3
+    },
+    "power_supplies": {
+      "sensors": {
+        "1": {
+          "name": "PS1 Status",
+          "status": "ok",
+          "max_output": "PSU.Slot.1",
+          "current_output": "118"
+        },
+        "2": {
+          "name": "PS2 Status",
+          "status": "ok",
+          "max_output": "PSU.Slot.2",
+          "current_output": "118"
+        }
+      },
+      "count": 2
+    },
+    "memory": {
+      "sensors": {
+        "1": {
+          "name": "DIMM.Socket.A1",
+          "status": "ok",
+          "size": "16777216",
+          "type": "26",
+          "speed": "0"
+        },
+        "2": {
+          "name": "DIMM.Socket.A2",
+          "status": "ok",
+          "size": "16777216",
+          "type": "26",
+          "speed": "0"
+        },
+        "3": {
+          "name": "DIMM.Socket.A3",
+          "status": "ok",
+          "size": "16777216",
+          "type": "26",
+          "speed": "0"
+        },
+        "4": {
+          "name": "DIMM.Socket.A4",
+          "status": "ok",
+          "size": "16777216",
+          "type": "26",
+          "speed": "0"
+        },
+        "5": {
+          "name": "DIMM.Socket.B1",
+          "status": "ok",
+          "size": "16777216",
+          "type": "26",
+          "speed": "0"
+        },
+        "6": {
+          "name": "DIMM.Socket.B2",
+          "status": "ok",
+          "size": "16777216",
+          "type": "26",
+          "speed": "0"
+        },
+        "7": {
+          "name": "DIMM.Socket.B3",
+          "status": "ok",
+          "size": "16777216",
+          "type": "26",
+          "speed": "0"
+        },
+        "8": {
+          "name": "DIMM.Socket.B4",
+          "status": "ok",
+          "size": "16777216",
+          "type": "26",
+          "speed": "0"
+        }
+      },
+      "count": 8
+    },
+    "processors": {
+      "sensors": {},
+      "count": 0
+    },
+    "intrusion": {
+      "sensors": {
+        "1": {
+          "name": "System Board Intrusion",
+          "reading": "1",
+          "status": "ok"
+        }
+      },
+      "count": 1
+    },
+    "battery": {
+      "sensors": {
+        "1": {
+          "name": "System Battery 1",
+          "reading": "4",
+          "status": "ok"
+        },
+        "2": {
+          "name": "System Battery 2",
+          "reading": "4",
+          "status": "ok"
+        }
+      },
+      "count": 2
+    }
+  },
+  "summary": {
+    "total_sensors": 48,
+    "categories_with_data": 9
+  }
+}

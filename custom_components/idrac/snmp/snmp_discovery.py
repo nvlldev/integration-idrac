@@ -357,7 +357,34 @@ async def discover_power_consumption_sensors(
     _LOGGER.debug("Starting power consumption sensor discovery for base OID: %s", base_oid)
     discovered_sensors = []
     
-    # Test indices from 1 to 10 (power consumption typically has fewer sensors)
+    # Power consumption uses fixed OIDs, not indexed ones
+    # Check the specific current power OID: base_oid.3
+    test_oid = f"{base_oid}.3"
+    
+    try:
+        error_indication, error_status, error_index, var_binds = await getCmd(
+            engine,
+            auth_data,
+            transport_target,
+            context_data,
+            ObjectType(ObjectIdentity(test_oid)),
+        )
+        
+        if not error_indication and not error_status and var_binds:
+            for name, val in var_binds:
+                if val is not None and str(val) != "No Such Object currently exists at this OID":
+                    try:
+                        # Check if it's a numeric value (power reading)
+                        int(val)
+                        discovered_sensors.append(1)  # Use index 1 as a flag that power is available
+                        _LOGGER.debug("Found power consumption sensor at OID %s: %s = %s W", test_oid, name, val)
+                    except (ValueError, TypeError):
+                        _LOGGER.debug("Power consumption value is not numeric at %s: %s", test_oid, val)
+                    break
+    except Exception as exc:
+        _LOGGER.debug("Exception during power consumption discovery: %s", exc)
+    
+    # Also test legacy indices from 1 to 10 for older iDRACs
     for index in range(1, 11):
         test_oid = f"{base_oid}.{index}"
         

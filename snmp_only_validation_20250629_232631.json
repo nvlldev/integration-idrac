@@ -1,0 +1,24 @@
+{
+  "validation": {
+    "expected_total": 46,
+    "regular_sensors": 13,
+    "binary_sensors": 33,
+    "validation_passed": true
+  },
+  "configuration": {
+    "configuration": {
+      "connection_type": "snmp_only",
+      "snmp_community": "public",
+      "snmp_version": "v2c",
+      "snmp_scan_interval": 15,
+      "host": "192.168.50.131"
+    },
+    "features": {
+      "redfish_disabled": true,
+      "fast_updates": true,
+      "comprehensive_monitoring": true,
+      "legacy_compatibility": true
+    }
+  },
+  "timestamp": "2025-06-29T23:26:31.847126"
+}

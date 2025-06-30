@@ -1,0 +1,23 @@
+{
+  "summary": {
+    "total_sensors": 2450,
+    "categories_with_data": 9
+  },
+  "recommendations": [
+    "Temperature sensors available via SNMP",
+    "Fan sensors available via SNMP",
+    "Voltage sensors available via SNMP",
+    "Power sensors available via SNMP"
+  ],
+  "sensor_counts": {
+    "system_info": 200,
+    "temperatures": 400,
+    "fans": 300,
+    "voltages": 400,
+    "power": 300,
+    "power_supplies": 200,
+    "memory": 250,
+    "processors": 250,
+    "intrusion": 150
+  }
+}

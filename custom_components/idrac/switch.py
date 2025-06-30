@@ -25,7 +25,7 @@ async def async_setup_entry(
 ) -> None:
     """Set up the Dell iDRAC switches."""
     coordinators = hass.data[DOMAIN][config_entry.entry_id]
-    redfish_coordinator = coordinators["redfish"]
+    redfish_coordinator = coordinators.get("redfish")
     
     entities: list[IdracSwitch] = []
     

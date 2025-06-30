@@ -253,6 +253,16 @@ class SNMPDataProcessor:
         """Process fan sensor data from SNMP values."""
         processed_count = 0
         
+        # First pass: collect all fan locations to detect duplicates
+        fan_locations = {}
+        for fan_id in self.discovered_fans:
+            fan_location = strings.get(format_oid_with_index(IDRAC_OIDS["cooling_device_location"], fan_id))
+            if fan_location:
+                if fan_location not in fan_locations:
+                    fan_locations[fan_location] = []
+                fan_locations[fan_location].append(fan_id)
+        
+        # Second pass: process fans with proper naming
         for fan_id in self.discovered_fans:
             fan_reading = values.get(format_oid_with_index(IDRAC_OIDS["cooling_device_reading"], fan_id))
             
@@ -260,8 +270,21 @@ class SNMPDataProcessor:
                 fan_status = values.get(format_oid_with_index(IDRAC_OIDS["cooling_device_status"], fan_id))
                 fan_location = strings.get(format_oid_with_index(IDRAC_OIDS["cooling_device_location"], fan_id))
                 
+                # Handle duplicate fan names for dual-fan assemblies (1A/1B)
+                fan_name = fan_location or f"Fan {fan_id}"
+                
+                # Check if this location has duplicates
+                if fan_location and fan_location in fan_locations and len(fan_locations[fan_location]) > 1:
+                    # This location has multiple fans, add A/B suffix
+                    fan_ids_for_location = fan_locations[fan_location]
+                    position = fan_ids_for_location.index(fan_id)
+                    suffix = chr(ord('A') + position)
+                    
+                    # For "System Board Fan1", make it "System Board Fan1A"
+                    fan_name = f"{fan_location}{suffix}"
+                
                 sensor_data = {
-                    "name": fan_location or f"Fan {fan_id}",
+                    "name": fan_name,
                     "speed_rpm": fan_reading,
                     "status": FAN_STATUS.get(fan_status, "unknown"),
                 }

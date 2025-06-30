@@ -334,10 +334,32 @@ class RedfishCoordinator:
             # Process fans - optimize by filtering None readings upfront
             fans = [fan for fan in thermal_data.get("Fans", []) 
                    if fan.get("Reading") is not None]
+            # First pass: count occurrences of each fan name
+            fan_name_counts = {}
+            for fan in fans:
+                fan_name = fan.get("Name", "")
+                if fan_name:
+                    fan_name_counts[fan_name] = fan_name_counts.get(fan_name, 0) + 1
+            
+            # Second pass: process fans with proper naming
+            fan_name_indices = {}
             for i, fan in enumerate(fans):
                 fan_name = fan.get("Name", f"Fan {i+1}")
+                
+                # Only add suffix if there are duplicates
+                if fan_name_counts.get(fan_name, 0) > 1:
+                    # Track which instance this is
+                    if fan_name not in fan_name_indices:
+                        fan_name_indices[fan_name] = 0
+                    
+                    suffix = chr(ord('A') + fan_name_indices[fan_name])
+                    fan_name_indices[fan_name] += 1
+                    unique_fan_name = f"{fan_name}{suffix}"
+                else:
+                    unique_fan_name = fan_name
+                
                 data["fans"][f"fan_{i+1}"] = {
-                    "name": fan_name,
+                    "name": unique_fan_name,
                     "speed_rpm": fan.get("Reading"),
                     "speed_percent": fan.get("ReadingUnits") == "Percent" and fan.get("Reading"),
                     "status": fan.get("Status", {}).get("Health"),

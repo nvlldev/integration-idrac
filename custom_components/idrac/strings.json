@@ -202,8 +202,17 @@
     "step": {
       "init": {
         "title": "Dell iDRAC Options",
+        "description": "Choose what you would like to configure:",
+        "menu_options": {
+          "settings": "Configuration Settings",
+          "refresh_sensors": "Refresh Sensors"
+        }
+      },
+      "settings": {
+        "title": "Dell iDRAC Settings",
         "description": "Configure advanced options for your Dell iDRAC integration.",
         "data": {
+          "connection_type": "Connection Type",
           "request_timeout": "Request Timeout",
           "session_timeout": "Session Timeout", 
           "snmp_timeout": "SNMP Timeout",
@@ -211,13 +220,27 @@
           "redfish_scan_interval": "Redfish Scan Interval"
         },
         "data_description": {
+          "connection_type": "Change connection type. SNMP-Only provides 40+ sensors for legacy iDRACs (iDRAC6/7/8)",
           "request_timeout": "Timeout for individual Redfish HTTP requests (5-120 seconds)",
           "session_timeout": "Timeout for Redfish session connections (30-600 seconds)",
           "snmp_timeout": "Timeout for individual SNMP requests (1-30 seconds)",
           "snmp_scan_interval": "How often to update SNMP sensors like temperatures, fans, power (5-300 seconds)",
           "redfish_scan_interval": "How often to update Redfish sensors like system info, controls (15-600 seconds)"
         }
+      },
+      "refresh_sensors": {
+        "title": "Refresh Sensors", 
+        "description": "Force rediscovery of all sensors.\n\n⚠️ **Warning**: {warning}\n\nℹ️ **Info**: {info}",
+        "data": {
+          "confirm_refresh": "Confirm sensor refresh"
+        },
+        "data_description": {
+          "confirm_refresh": "Check this box to confirm you want to refresh all sensors"
+        }
       }
+    },
+    "abort": {
+      "refresh_cancelled": "Sensor refresh cancelled"
     }
   }
 }
