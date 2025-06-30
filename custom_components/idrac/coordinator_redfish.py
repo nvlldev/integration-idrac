@@ -40,12 +40,9 @@ class RedfishDataUpdateCoordinator(DataUpdateCoordinator):
                 entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
             )
 
-        _LOGGER.debug("Redfish coordinator for %s with %ds update interval", self.host, scan_interval)
-        
         # Create Redfish coordinator
         try:
             self.redfish_coordinator = RedfishCoordinator(hass, entry)
-            _LOGGER.debug("Redfish coordinator created successfully")
         except Exception as exc:
             _LOGGER.error("Failed to create Redfish coordinator: %s", exc, exc_info=True)
             raise

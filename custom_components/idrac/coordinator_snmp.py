@@ -40,12 +40,9 @@ class SNMPDataUpdateCoordinator(DataUpdateCoordinator):
                 entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
             )
 
-        _LOGGER.debug("SNMP coordinator for %s with %ds update interval", self.host, scan_interval)
-        
         # Create SNMP coordinator
         try:
             self.snmp_coordinator = SNMPCoordinator(hass, entry)
-            _LOGGER.debug("SNMP coordinator created successfully")
         except Exception as exc:
             _LOGGER.error("Failed to create SNMP coordinator: %s", exc, exc_info=True)
             raise

@@ -51,6 +51,9 @@ async def async_setup_entry(
     
     entities: list[IdracSensor] = []
     
+    # Track sensors and their sources for comprehensive logging
+    sensor_registry = []
+    
     # Log coordinator status
     log_coordinator_status(snmp_coordinator, redfish_coordinator)
     
@@ -72,7 +75,14 @@ async def async_setup_entry(
                 _LOGGER.info("Creating %d %s sensors using %s coordinator", 
                            len(items), category, type(coordinator).__name__)
                 for item_id, item_data in items.items():
-                    entities.append(sensor_class(coordinator, config_entry, item_id, item_data))
+                    sensor = sensor_class(coordinator, config_entry, item_id, item_data)
+                    entities.append(sensor)
+                    sensor_registry.append({
+                        "name": item_data.get("name", f"{category}_{item_id}"),
+                        "category": category,
+                        "source": coordinator.connection_type,
+                        "sensor_type": sensor_class.__name__
+                    })
     
     # Memory health sensors removed - now handled by binary_sensor.py as DIMM Socket Health binary sensors
     
@@ -82,8 +92,14 @@ async def async_setup_entry(
         for voltage_id, voltage_data in voltage_coordinator.data["voltages"].items():
             # Only include PSU input voltage sensors from PowerSupplies.LineInputVoltage (around 120V)
             if voltage_data.get("source") == "power_supply_line_input":
-                entities.append(IdracVoltageSensor(voltage_coordinator, config_entry, voltage_id, voltage_data))
-                _LOGGER.debug("Created PSU voltage sensor: %s", voltage_data.get("name"))
+                sensor = IdracVoltageSensor(voltage_coordinator, config_entry, voltage_id, voltage_data)
+                entities.append(sensor)
+                sensor_registry.append({
+                    "name": voltage_data.get("name", f"PSU_voltage_{voltage_id}"),
+                    "category": "voltages",
+                    "source": voltage_coordinator.connection_type,
+                    "sensor_type": "IdracVoltageSensor"
+                })
     
     # Single instance sensors
     single_sensors = [
@@ -94,14 +110,26 @@ async def async_setup_entry(
     for category, sensor_class, preferred in single_sensors:
         coordinator = get_coordinator_for_category(category, snmp_coordinator, redfish_coordinator, preferred)
         if coordinator and coordinator.data and category in coordinator.data and coordinator.data[category]:
-            entities.append(sensor_class(coordinator, config_entry))
-            _LOGGER.debug("Created %s using %s coordinator", sensor_class.__name__, type(coordinator).__name__)
+            sensor = sensor_class(coordinator, config_entry)
+            entities.append(sensor)
+            sensor_registry.append({
+                "name": sensor_class.__name__.replace("Idrac", "").replace("Sensor", ""),
+                "category": category,
+                "source": coordinator.connection_type,
+                "sensor_type": sensor_class.__name__
+            })
     
     # Energy consumption sensor (integral of power consumption)
     power_coordinator = get_coordinator_for_category("power_consumption", snmp_coordinator, redfish_coordinator, "snmp")
     if power_coordinator:
-        entities.append(IdracEnergyConsumptionSensor(power_coordinator, config_entry))
-        _LOGGER.debug("Created energy consumption sensor using %s coordinator", type(power_coordinator).__name__)
+        sensor = IdracEnergyConsumptionSensor(power_coordinator, config_entry)
+        entities.append(sensor)
+        sensor_registry.append({
+            "name": "Energy Consumption",
+            "category": "power_consumption",
+            "source": power_coordinator.connection_type,
+            "sensor_type": "IdracEnergyConsumptionSensor"
+        })
     
     # System information sensors (typically Redfish)
     system_coordinator = get_coordinator_for_category("system_info", snmp_coordinator, redfish_coordinator, "redfish")
@@ -117,14 +145,28 @@ async def async_setup_entry(
             IdracProcessorCurrentSpeedSensor,
         ]
         for sensor_class in system_sensors:
-            entities.append(sensor_class(system_coordinator, config_entry))
+            sensor = sensor_class(system_coordinator, config_entry)
+            entities.append(sensor)
+            sensor_registry.append({
+                "name": sensor_class.__name__.replace("Idrac", "").replace("Sensor", ""),
+                "category": "system_info",
+                "source": system_coordinator.connection_type,
+                "sensor_type": sensor_class.__name__
+            })
     
     # Manager information sensors (Redfish only)
     manager_coordinator = get_coordinator_for_category("manager_info", snmp_coordinator, redfish_coordinator, "redfish")
     if manager_coordinator and manager_coordinator.data and "manager_info" in manager_coordinator.data:
         manager_sensors = [IdracFirmwareVersionSensor, IdracDateTimeSensor]
         for sensor_class in manager_sensors:
-            entities.append(sensor_class(manager_coordinator, config_entry))
+            sensor = sensor_class(manager_coordinator, config_entry)
+            entities.append(sensor)
+            sensor_registry.append({
+                "name": sensor_class.__name__.replace("Idrac", "").replace("Sensor", ""),
+                "category": "manager_info",
+                "source": manager_coordinator.connection_type,
+                "sensor_type": sensor_class.__name__
+            })
     
     # Power consumption aggregate sensors removed per user request
     
@@ -135,7 +177,14 @@ async def async_setup_entry(
         
         # CPU temperature average
         if count_pattern_matches(temp_data, "cpu") > 0:
-            entities.append(IdracAverageCpuTemperatureSensor(temp_coordinator, config_entry))
+            sensor = IdracAverageCpuTemperatureSensor(temp_coordinator, config_entry)
+            entities.append(sensor)
+            sensor_registry.append({
+                "name": "Average CPU Temperature",
+                "category": "temperatures",
+                "source": temp_coordinator.connection_type,
+                "sensor_type": "IdracAverageCpuTemperatureSensor"
+            })
         
         # Temperature delta (inlet/outlet)
         inlet_found = any("inlet" in item.get("name", "").lower() or "intake" in item.get("name", "").lower() or "ambient" in item.get("name", "").lower() for item in temp_data.values())
@@ -143,7 +192,14 @@ async def async_setup_entry(
         
         _LOGGER.debug("Temperature Rise sensor check: inlet_found=%s, outlet_found=%s", inlet_found, outlet_found)
         if inlet_found and outlet_found:
-            entities.append(IdracTemperatureDeltaSensor(temp_coordinator, config_entry))
+            sensor = IdracTemperatureDeltaSensor(temp_coordinator, config_entry)
+            entities.append(sensor)
+            sensor_registry.append({
+                "name": "Temperature Rise",
+                "category": "temperatures",
+                "source": temp_coordinator.connection_type,
+                "sensor_type": "IdracTemperatureDeltaSensor"
+            })
             _LOGGER.info("Created Temperature Rise sensor with inlet and outlet temperature sensors")
         else:
             _LOGGER.debug("Temperature Rise sensor not created - missing inlet (%s) or outlet (%s) sensors", inlet_found, outlet_found)
@@ -151,19 +207,72 @@ async def async_setup_entry(
     # Average fan speed
     fan_coordinator = get_coordinator_for_category("fans", snmp_coordinator, redfish_coordinator, "snmp")
     if fan_coordinator and fan_coordinator.data and "fans" in fan_coordinator.data and fan_coordinator.data["fans"]:
-        entities.append(IdracAverageFanSpeedSensor(fan_coordinator, config_entry))
+        sensor = IdracAverageFanSpeedSensor(fan_coordinator, config_entry)
+        entities.append(sensor)
+        sensor_registry.append({
+            "name": "Average Fan Speed",
+            "category": "fans",
+            "source": fan_coordinator.connection_type,
+            "sensor_type": "IdracAverageFanSpeedSensor"
+        })
 
     # Add response time sensors for each coordinator
     if snmp_coordinator:
-        entities.append(IdracSnmpResponseTimeSensor(snmp_coordinator, config_entry))
-        _LOGGER.debug("Created SNMP response time sensor")
+        sensor = IdracSnmpResponseTimeSensor(snmp_coordinator, config_entry)
+        entities.append(sensor)
+        sensor_registry.append({
+            "name": "SNMP Response Time",
+            "category": "diagnostics",
+            "source": "snmp",
+            "sensor_type": "IdracSnmpResponseTimeSensor"
+        })
     
     if redfish_coordinator:
-        entities.append(IdracRedfishResponseTimeSensor(redfish_coordinator, config_entry))
-        _LOGGER.debug("Created Redfish response time sensor")
+        sensor = IdracRedfishResponseTimeSensor(redfish_coordinator, config_entry)
+        entities.append(sensor)
+        sensor_registry.append({
+            "name": "Redfish Response Time",
+            "category": "diagnostics",
+            "source": "redfish",
+            "sensor_type": "IdracRedfishResponseTimeSensor"
+        })
 
     if entities:
         _LOGGER.info("Successfully created %d sensor entities for iDRAC", len(entities))
+        
+        # Comprehensive sensor source logging
+        if sensor_registry:
+            _LOGGER.info("=== SENSOR SOURCE SUMMARY ===")
+            snmp_count = sum(1 for s in sensor_registry if s["source"] == "snmp")
+            redfish_count = sum(1 for s in sensor_registry if s["source"] == "redfish")
+            _LOGGER.info("Total sensors: %d (SNMP: %d, Redfish: %d)", 
+                        len(sensor_registry), snmp_count, redfish_count)
+            
+            # Group by category and source
+            by_category = {}
+            for sensor in sensor_registry:
+                category = sensor["category"]
+                source = sensor["source"]
+                if category not in by_category:
+                    by_category[category] = {"snmp": [], "redfish": []}
+                by_category[category][source].append(sensor["name"])
+            
+            # Log detailed breakdown
+            for category, sources in by_category.items():
+                snmp_sensors = sources["snmp"]
+                redfish_sensors = sources["redfish"]
+                total = len(snmp_sensors) + len(redfish_sensors)
+                _LOGGER.info("%s: %d sensors (SNMP: %d, Redfish: %d)", 
+                           category.title(), total, len(snmp_sensors), len(redfish_sensors))
+                
+                # Log individual sensor names if debug is enabled
+                if snmp_sensors:
+                    _LOGGER.debug("  SNMP %s: %s", category, ", ".join(snmp_sensors))
+                if redfish_sensors:
+                    _LOGGER.debug("  Redfish %s: %s", category, ", ".join(redfish_sensors))
+            
+            _LOGGER.info("=== END SENSOR SUMMARY ===")
+        
     else:
         _LOGGER.error("No sensor entities created - check SNMP/Redfish connectivity and sensor discovery")
     
