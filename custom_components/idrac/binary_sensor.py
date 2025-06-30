@@ -41,8 +41,8 @@ async def async_setup_entry(
     from .sensor_setup import get_coordinator_for_category, log_coordinator_status
     
     coordinators = hass.data[DOMAIN][config_entry.entry_id]
-    snmp_coordinator = coordinators["snmp"]
-    redfish_coordinator = coordinators["redfish"]
+    snmp_coordinator = coordinators.get("snmp")
+    redfish_coordinator = coordinators.get("redfish")
     
     # Log coordinator status
     log_coordinator_status(snmp_coordinator, redfish_coordinator)

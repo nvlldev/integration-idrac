@@ -409,7 +409,10 @@ async def main():
         sys.exit(1)
     finally:
         # Clean up SNMP engine
-        discovery.engine.observer.stop()
+        try:
+            discovery.engine.observer.stop()
+        except:
+            pass
 
 
 if __name__ == "__main__":

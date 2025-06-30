@@ -28,58 +28,69 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     
     hass.data.setdefault(DOMAIN, {})
 
-    # Create independent coordinators for SNMP and Redfish
-    # This allows each protocol to update on its own schedule and fail independently
+    # Create coordinators based on connection type
+    connection_type = entry.data.get("connection_type", "hybrid")
     coordinators = {}
     
     try:
-        # Create SNMP coordinator with faster update interval (SNMP is typically fast)
-        snmp_scan_interval = entry.options.get("snmp_scan_interval", entry.data.get("snmp_scan_interval", 15))  # Default 15s for SNMP
-        from .coordinator_snmp import SNMPDataUpdateCoordinator
-        snmp_coordinator = SNMPDataUpdateCoordinator(hass, entry, snmp_scan_interval)
-        coordinators["snmp"] = snmp_coordinator
+        # Always create SNMP coordinator for SNMP-capable modes
+        if connection_type in ["snmp", "snmp_only", "hybrid"]:
+            snmp_scan_interval = entry.options.get("snmp_scan_interval", entry.data.get("snmp_scan_interval", 15))  # Default 15s for SNMP
+            from .coordinator_snmp import SNMPDataUpdateCoordinator
+            snmp_coordinator = SNMPDataUpdateCoordinator(hass, entry, snmp_scan_interval)
+            coordinators["snmp"] = snmp_coordinator
+            _LOGGER.debug("Created SNMP coordinator with %ds update interval", snmp_scan_interval)
         
-        # Create Redfish coordinator with standard update interval  
-        redfish_scan_interval = entry.options.get("redfish_scan_interval", entry.data.get("redfish_scan_interval", 45))  # Default 45s for Redfish
-        from .coordinator_redfish import RedfishDataUpdateCoordinator
-        redfish_coordinator = RedfishDataUpdateCoordinator(hass, entry, redfish_scan_interval)
-        coordinators["redfish"] = redfish_coordinator
+        # Create Redfish coordinator only for Redfish-capable modes (skip in SNMP-only mode)
+        if connection_type in ["redfish", "hybrid"]:
+            redfish_scan_interval = entry.options.get("redfish_scan_interval", entry.data.get("redfish_scan_interval", 45))  # Default 45s for Redfish
+            from .coordinator_redfish import RedfishDataUpdateCoordinator
+            redfish_coordinator = RedfishDataUpdateCoordinator(hass, entry, redfish_scan_interval)
+            coordinators["redfish"] = redfish_coordinator
+            _LOGGER.debug("Created Redfish coordinator with %ds update interval", redfish_scan_interval)
         
-        _LOGGER.debug("Created coordinators - SNMP: %ds, Redfish: %ds", snmp_scan_interval, redfish_scan_interval)
+        _LOGGER.info("Connection mode: %s - Created %d coordinators", connection_type, len(coordinators))
         
     except Exception as exc:
         _LOGGER.error("Failed to create independent coordinators: %s", exc, exc_info=True)
         raise ConfigEntryNotReady from exc
 
-    # Initialize both coordinators
+    # Initialize coordinators
     try:
-        # Start both coordinators in parallel but don't fail if one fails
         import asyncio
-        snmp_task = asyncio.create_task(coordinators["snmp"].async_config_entry_first_refresh())
-        redfish_task = asyncio.create_task(coordinators["redfish"].async_config_entry_first_refresh())
+        tasks = []
         
-        # Wait for both with individual error handling
-        snmp_success = False
-        redfish_success = False
+        # Create initialization tasks for available coordinators
+        if "snmp" in coordinators:
+            tasks.append(("snmp", asyncio.create_task(coordinators["snmp"].async_config_entry_first_refresh())))
+        if "redfish" in coordinators:
+            tasks.append(("redfish", asyncio.create_task(coordinators["redfish"].async_config_entry_first_refresh())))
         
-        try:
-            await snmp_task
-            snmp_success = coordinators["snmp"].last_update_success
-        except Exception as exc:
-            _LOGGER.warning("SNMP coordinator initialization failed: %s", exc)
-            
-        try:
-            await redfish_task  
-            redfish_success = coordinators["redfish"].last_update_success
-        except Exception as exc:
-            _LOGGER.warning("Redfish coordinator initialization failed: %s", exc)
+        # Wait for coordinators with individual error handling
+        coordinator_results = {}
+        
+        for coord_name, task in tasks:
+            try:
+                await task
+                coordinator_results[coord_name] = coordinators[coord_name].last_update_success
+            except Exception as exc:
+                _LOGGER.warning("%s coordinator initialization failed: %s", coord_name.title(), exc)
+                coordinator_results[coord_name] = False
             
         # Ensure at least one coordinator is working
-        if not snmp_success and not redfish_success:
-            raise ConfigEntryNotReady("Both SNMP and Redfish coordinators failed to initialize")
+        successful_coordinators = [name for name, success in coordinator_results.items() if success]
+        if not successful_coordinators:
+            failed_names = list(coordinator_results.keys())
+            raise ConfigEntryNotReady(f"All coordinators failed to initialize: {', '.join(failed_names)}")
             
-        _LOGGER.info("Coordinators initialized - SNMP: %s, Redfish: %s", 
-                    "✓" if snmp_success else "✗", "✓" if redfish_success else "✗")
+        # Log results
+        status_parts = []
+        for coord_name in ["snmp", "redfish"]:
+            if coord_name in coordinator_results:
+                status = "✓" if coordinator_results[coord_name] else "✗"
+                status_parts.append(f"{coord_name.title()}: {status}")
+                
+        _LOGGER.info("Coordinators initialized - %s", ", ".join(status_parts))
             
     except ConfigEntryNotReady:
         raise

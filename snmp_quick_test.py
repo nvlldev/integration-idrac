@@ -80,7 +80,10 @@ async def test_single_oid(host: str, oid: str, community: str = "public") -> str
     except Exception as e:
         return f"Exception: {e}"
     finally:
-        engine.observer.stop()
+        try:
+            engine.observer.stop()
+        except:
+            pass
         
     return "Unknown error"
 
@@ -125,7 +128,10 @@ async def walk_oid(host: str, base_oid: str, community: str = "public", max_resu
     except Exception as e:
         logger.error(f"Exception during walk: {e}")
     finally:
-        engine.observer.stop()
+        try:
+            engine.observer.stop()
+        except:
+            pass
         
     return results
 

@@ -54,7 +54,7 @@ DEFAULT_REDFISH_SCAN_INTERVAL: Final = 45  # Slower update interval for Redfish 
 DEFAULT_PASSWORD: Final = "calvin"  # Default Dell iDRAC password
 
 # Connection type options
-CONNECTION_TYPES: Final = ["redfish", "snmp", "hybrid"]
+CONNECTION_TYPES: Final = ["redfish", "snmp", "snmp_only", "hybrid"]
 
 # SNMP version options
 SNMP_VERSIONS: Final = ["v2c", "v3"]
