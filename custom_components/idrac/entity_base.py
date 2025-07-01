@@ -32,7 +32,9 @@ class IdracEntityBase(CoordinatorEntity):
         self._entity_key = entity_key
         host = config_entry.data[CONF_HOST]
         port = config_entry.data.get(CONF_PORT, 443)  # Default to 443 if not present (SNMP-only mode)
-        device_id = f"{host}:{port}"
+        # Use host-only device ID to ensure all entities belong to same device
+        # regardless of protocol port (SNMP 161 vs Redfish 443)
+        device_id = host
         
         # Set entity name without device prefix (new naming pattern)
         # Home Assistant will automatically combine device + entity names

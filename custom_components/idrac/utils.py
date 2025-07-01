@@ -46,7 +46,8 @@ def validate_coordinator_data(coordinator: SNMPDataUpdateCoordinator | RedfishDa
 def get_fallback_device_info(host: str, port: int = 443) -> dict[str, Any] | None:
     """Get fallback device info when coordinator device info is unavailable."""
     from .const import DOMAIN
-    server_id = f"{host}:{port}"
+    # Use host-only identifier to ensure all entities belong to same device
+    server_id = host
     return {
         "identifiers": {(DOMAIN, server_id)},
         "name": f"Dell iDRAC ({host})",

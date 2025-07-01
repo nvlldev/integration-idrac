@@ -85,7 +85,7 @@ class SNMPCoordinator:
         _LOGGER.debug("Fetching SNMP device info for %s", self._server_id)
         
         device_info = {
-            "identifiers": {(DOMAIN, self._server_id)},
+            "identifiers": {(DOMAIN, self.host)},  # Use host-only identifier
             "manufacturer": "Dell",
             "name": f"Dell iDRAC ({self.host})",  # Consistent name regardless of SNMP data
         }
